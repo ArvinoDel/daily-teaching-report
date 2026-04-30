@@ -133,8 +133,8 @@ exports.update = async (req, res) => {
 exports.destroy = async (req, res) => {
   try {
     await Report.findByIdAndDelete(req.params.id);
-    res.redirect('/reports?success=Laporan+berhasil+dihapus!');
+    res.redirect('/reports?success=Report+has+been deleted!');
   } catch (err) {
-    res.render('error', { message: 'Gagal menghapus laporan.' });
+    res.render('error', { message: 'Failed to delete report.' });
   }
 };
