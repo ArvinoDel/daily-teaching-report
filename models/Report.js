@@ -1,7 +1,13 @@
 const mongoose = require('mongoose');
 
+
 const reportSchema = new mongoose.Schema(
   {
+    teacher: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'User',
+  required: true,
+},
     date: {
       type: Date,
       required: [true, 'Tanggal mengajar wajib diisi.'],

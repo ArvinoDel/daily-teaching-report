@@ -13,7 +13,7 @@ const typeBadgeColor = {
 exports.index = async (req, res) => {
   try {
     const { teaching_type } = req.query;
-    const filter = {};
+    const filter = { teacher: req.session.user._id };
     if (teaching_type && TEACHING_TYPES.includes(teaching_type)) {
       filter.teaching_type = teaching_type;
     }
@@ -21,7 +21,7 @@ exports.index = async (req, res) => {
     const reports = await Report.find(filter).sort({ date: -1 });
 
     // Statistik ringkasan
-    const allReports = await Report.find();
+    const allReports = await Report.find({ teacher: req.session.user._id });
     const totalMinutes = allReports.reduce((sum, r) => sum + r.duration, 0);
     const totalHours = (totalMinutes / 60).toFixed(1);
     const totalReports = allReports.length;
@@ -72,7 +72,12 @@ exports.newForm = (req, res) => {
 exports.create = async (req, res) => {
   try {
     const { date, subject, class_name, duration, teaching_type, notes } = req.body;
-    const report = new Report({ date, subject, class_name, duration: Number(duration), teaching_type, notes });
+    const report = new Report({
+      date, subject, class_name,
+      duration: Number(duration),
+      teaching_type, notes,
+      teacher: req.session.user._id,
+    });
     await report.save();
     res.redirect('/reports?success=Laporan+berhasil+ditambahkan!');
   } catch (err) {
@@ -90,7 +95,7 @@ exports.create = async (req, res) => {
 // GET /:id — Detail laporan
 exports.show = async (req, res) => {
   try {
-    const report = await Report.findById(req.params.id);
+    const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
     if (!report) return res.render('error', { message: 'Laporan tidak ditemukan.' });
     res.render('reports/show', { report, typeBadgeColor });
   } catch (err) {
@@ -101,7 +106,7 @@ exports.show = async (req, res) => {
 // GET /:id/edit — Form edit laporan
 exports.editForm = async (req, res) => {
   try {
-    const report = await Report.findById(req.params.id);
+    const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
     if (!report) return res.render('error', { message: 'Laporan tidak ditemukan.' });
     res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [] });
   } catch (err) {
@@ -124,7 +129,7 @@ exports.update = async (req, res) => {
     const errors = err.errors
       ? Object.values(err.errors).map(e => e.message)
       : ['Terjadi kesalahan saat memperbarui.'];
-    const report = await Report.findById(req.params.id);
+    const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
     res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors });
   }
 };
