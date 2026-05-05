@@ -1,12 +1,13 @@
 const Report = require('../models/Report');
 
-const TEACHING_TYPES = ['Prime Teacher', 'Assistant Teacher', '1/2 Prime Teacher'];
+const TEACHING_TYPES = ['Prime Teacher (Full)', 'Assistant Teacher', '1/2 Prime Teacher', 'Prime Teacher (Assisted)'];
 
 // Helper: badge color per teaching type
 const typeBadgeColor = {
-  'Prime Teacher': 'emerald',
+  'Prime Teacher (Full)': 'emerald',
   'Assistant Teacher': 'sky',
   '1/2 Prime Teacher': 'amber',
+  'Prime Teacher (Assisted)': 'purple',
 };
 
 // GET / — Dashboard & list semua laporan (dengan filter)
@@ -47,15 +48,16 @@ exports.index = async (req, res) => {
         monthlyHours,
         monthlyReports: monthlyReports.length,
         // Tambahkan 3 baris ini:
-        primeCount: countByType('Prime Teacher'),
+        primeCount: countByType('Prime Teacher (Full)'),
         assistCount: countByType('Assistant Teacher'),
         halfCount: countByType('1/2 Prime Teacher'),
+        primeAssistedCount: countByType('Prime Teacher (Assisted)')
       },
       successMessage: req.query.success || null,
     });
   } catch (err) {
     console.error(err);
-    res.render('error', { message: 'Gagal memuat laporan.' });
+    res.render('error', { message: 'Failed to load report!' });
   }
 };
 
@@ -79,7 +81,7 @@ exports.create = async (req, res) => {
       teacher: req.session.user._id,
     });
     await report.save();
-    res.redirect('/reports?success=Laporan+berhasil+ditambahkan!');
+    res.redirect('/reports?success=Report+has+been+created!');
   } catch (err) {
     const errors = err.errors
       ? Object.values(err.errors).map(e => e.message)
@@ -96,10 +98,10 @@ exports.create = async (req, res) => {
 exports.show = async (req, res) => {
   try {
     const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
-    if (!report) return res.render('error', { message: 'Laporan tidak ditemukan.' });
+    if (!report) return res.render('error', { message: 'Report not found.' });
     res.render('reports/show', { report, typeBadgeColor });
   } catch (err) {
-    res.render('error', { message: 'Laporan tidak ditemukan.' });
+    res.render('error', { message: 'Report not found.' });
   }
 };
 
@@ -107,10 +109,10 @@ exports.show = async (req, res) => {
 exports.editForm = async (req, res) => {
   try {
     const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
-    if (!report) return res.render('error', { message: 'Laporan tidak ditemukan.' });
+    if (!report) return res.render('error', { message: 'Report not found.' });
     res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [] });
   } catch (err) {
-    res.render('error', { message: 'Laporan tidak ditemukan.' });
+    res.render('error', { message: 'Report not found.' });
   }
 };
 
@@ -123,8 +125,8 @@ exports.update = async (req, res) => {
       { date, subject, class_name, duration: Number(duration), teaching_type, notes },
       { new: true, runValidators: true }
     );
-    if (!report) return res.render('error', { message: 'Laporan tidak ditemukan.' });
-    res.redirect('/reports?success=Laporan+berhasil+diperbarui!');
+    if (!report) return res.render('error', { message: 'Report not found.' });
+    res.redirect('/reports?success=Report+has+been+updated!');
   } catch (err) {
     const errors = err.errors
       ? Object.values(err.errors).map(e => e.message)

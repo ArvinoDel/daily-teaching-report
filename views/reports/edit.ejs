@@ -1,11 +1,11 @@
-<%- include('../partials/header', { title: 'Edit Laporan' }) %>
+<%- include('../partials/header', { title: 'Edit Report' }) %>
 
 <div class="max-w-2xl mx-auto">
   <a href="/reports" class="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-brand-600 mb-6 transition font-medium">
     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
       <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
     </svg>
-    Kembali ke Dashboard
+    Back to Dashboard
   </a>
 
   <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -16,7 +16,7 @@
         </svg>
       </div>
       <div>
-        <h1 class="text-lg font-bold text-slate-900">Edit Laporan</h1>
+        <h1 class="text-lg font-bold text-slate-900">Edit Report</h1>
         <p class="text-slate-400 text-xs mt-0.5 font-mono">ID: <%= report._id %></p>
       </div>
     </div>
@@ -88,7 +88,7 @@
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
           </svg>
-          Perbarui Laporan
+          Update the Report
         </button>
       </div>
     </form>

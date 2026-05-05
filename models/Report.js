@@ -4,13 +4,13 @@ const mongoose = require('mongoose');
 const reportSchema = new mongoose.Schema(
   {
     teacher: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: 'User',
-  required: true,
-},
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
     date: {
       type: Date,
-      required: [true, 'Tanggal mengajar wajib diisi.'],
+      required: [true, 'Teaching date must be filled diisi.'],
     },
     subject: {
       type: String,
@@ -34,7 +34,7 @@ const reportSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Tipe pengajar wajib dipilih.'],
       enum: {
-        values: ['Prime Teacher', 'Assistant Teacher', '1/2 Prime Teacher'],
+        values: ['Prime Teacher (Full)', 'Assistant Teacher', '1/2 Prime Teacher', 'Prime Teacher (Assisted)'],
         message: '{VALUE} bukan tipe pengajar yang valid.',
       },
     },
@@ -54,9 +54,9 @@ const reportSchema = new mongoose.Schema(
 reportSchema.virtual('durationFormatted').get(function () {
   const hours = Math.floor(this.duration / 60);
   const minutes = this.duration % 60;
-  if (hours === 0) return `${minutes} menit`;
-  if (minutes === 0) return `${hours} jam`;
-  return `${hours} jam ${minutes} menit`;
+  if (hours === 0) return `${minutes} minute(s)`;
+  if (minutes === 0) return `${hours} hour(s)`;
+  return `${hours} hour ${minutes} minute(s)`;
 });
 
 // Virtual: tanggal dalam format lokal Indonesia

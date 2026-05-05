@@ -30,19 +30,19 @@
         <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
           <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Teaching Hours Total</p>
           <p class="text-3xl font-bold text-brand-600">
-            <%= stats.totalHours %> <span class="text-base font-medium text-slate-400">jam</span>
+            <%= stats.totalHours %> <span class="text-base font-medium text-slate-400">hour(s)</span>
           </p>
         </div>
         <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
           <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">This Month</p>
           <p class="text-3xl font-bold text-slate-900">
-            <%= stats.monthlyReports %> <span class="text-base font-medium text-slate-400">sesi</span>
+            <%= stats.monthlyReports %> <span class="text-base font-medium text-slate-400">session(s)</span>
           </p>
         </div>
         <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Teaching Hour in This Month</p>
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Teaching Hour(s) in This Month</p>
           <p class="text-3xl font-bold text-slate-900">
-            <%= stats.monthlyHours %> <span class="text-base font-medium text-slate-400">jam</span>
+            <%= stats.monthlyHours %> <span class="text-base font-medium text-slate-400">hour(s)</span>
           </p>
         </div>
       </div>
@@ -50,21 +50,27 @@
       <!-- Tambahkan setelah baris penutup </div> dari grid stats sebelumnya -->
       <div class="grid grid-cols-3 gap-4 mb-8">
         <div class="bg-emerald-50 rounded-2xl border border-emerald-100 shadow-sm p-5">
-          <p class="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-1">Prime Teacher</p>
+          <p class="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-1">Prime Teacher (Full)</p>
           <p class="text-3xl font-bold text-emerald-700">
-            <%= stats.primeCount %> <span class="text-base font-medium text-emerald-400">sesi</span>
+            <%= stats.primeCount %> <span class="text-base font-medium text-emerald-400">session(s)</span>
+          </p>
+        </div>
+         <div class="bg-emerald-50 rounded-2xl border border-emerald-100 shadow-sm p-5">
+          <p class="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-1">Prime Teacher (Assisted)</p>
+          <p class="text-3xl font-bold text-emerald-700">
+            <%= stats.primeAssistedCount %> <span class="text-base font-medium text-emerald-400">session(s)</span>
           </p>
         </div>
         <div class="bg-sky-50 rounded-2xl border border-sky-100 shadow-sm p-5">
           <p class="text-xs font-semibold text-sky-600 uppercase tracking-wider mb-1">Assistant Teacher</p>
           <p class="text-3xl font-bold text-sky-700">
-            <%= stats.assistCount %> <span class="text-base font-medium text-sky-400">sesi</span>
+            <%= stats.assistCount %> <span class="text-base font-medium text-sky-400">session(s)</span>
           </p>
         </div>
         <div class="bg-amber-50 rounded-2xl border border-amber-100 shadow-sm p-5">
           <p class="text-xs font-semibold text-amber-600 uppercase tracking-wider mb-1">½ Prime Teacher</p>
           <p class="text-3xl font-bold text-amber-700">
-            <%= stats.halfCount %> <span class="text-base font-medium text-amber-400">sesi</span>
+            <%= stats.halfCount %> <span class="text-base font-medium text-amber-400">session(s)</span>
           </p>
         </div>
       </div>
