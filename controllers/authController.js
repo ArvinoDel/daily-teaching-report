@@ -30,9 +30,13 @@ exports.login = async (req, res) => {
       role: user.role,
     };
 
-    const returnTo = req.session.returnTo || '/reports';
+    // [FIX] Validate returnTo to prevent open redirect - must be internal path
+    const returnTo = req.session.returnTo;
+    const safeReturnTo = (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//'))
+      ? returnTo
+      : '/reports';
     delete req.session.returnTo;
-    res.redirect(returnTo);
+    res.redirect(safeReturnTo);
   } catch (err) {
     console.error(err);
     res.render('auth/login', { error: 'Something went wrong. Please try again.' });

@@ -5,6 +5,8 @@ const path = require('path');
 const methodOverride = require('method-override');
 const session = require('express-session');
 const { MongoStore } = require('connect-mongo');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const reportRoutes = require('./routes/reports');
 const authRoutes = require('./routes/auth');
@@ -18,11 +20,47 @@ mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ MongoDB connected'))
   .catch(err => console.error('❌ MongoDB error:', err));
 
+// [FIX 1] Security headers via Helmet
+app.use(helmet({
+  contentSecurityPolicy: process.env.NODE_ENV === 'production'
+    ? {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://*.tailwindcss.com"],
+          styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://*.tailwindcss.com", "https://fonts.googleapis.com"],
+          fontSrc: ["'self'", "https://fonts.gstatic.com"],
+          imgSrc: ["'self'", "data:"],
+          connectSrc: ["'self'", "https://*.tailwindcss.com"],
+        },
+      }
+    : false, // Disable CSP in development to avoid blocking Tailwind CDN
+}));
+
+// [FIX 2] Rate limiting - login brute force protection
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  message: 'Too many login attempts, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// [FIX 3] General API rate limit
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.use(generalLimiter);
+
+// [FIX 4] Body size limit to prevent DoS via large payloads
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+app.use(express.json({ limit: '10kb' }));
 app.use(methodOverride('_method'));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -31,8 +69,17 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   store: new MongoStore({ mongoUrl: MONGO_URI }),
-  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }
+  name: 'sid', // [FIX 5] Hide default 'connect.sid' session name
+  cookie: {
+    maxAge: 1000 * 60 * 60 * 24 * 7,
+    httpOnly: true,          // [FIX 6] Prevent JS access to cookie
+    secure: process.env.NODE_ENV === 'production', // [FIX 7] HTTPS-only in prod
+    sameSite: 'lax',         // [FIX 8] CSRF protection via SameSite
+  }
 }));
+
+// Apply login rate limiter specifically to login route
+app.use('/auth/login', loginLimiter);
 
 // Make user available in all views
 app.use((req, res, next) => {
