@@ -7,7 +7,7 @@ const typeBadgeColor = {
   'Prime Teacher (Full)': 'emerald',
   'Assistant Teacher': 'sky',
   '1/2 Prime Teacher': 'amber',
-  'Prime Teacher (Assisted)': 'purple',
+  'Prime Teacher (Assisted)': 'violet',
 };
 
 // [FIX] Server-side input validation helper
