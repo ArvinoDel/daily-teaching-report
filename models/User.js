@@ -27,6 +27,20 @@ const userSchema = new mongoose.Schema({
     enum: ['teacher', 'admin'],
     default: 'teacher',
   },
+  workingExperience: {
+    type: Number,
+    min: [0, 'Working experience cannot be negative.'],
+    max: [60, 'Working experience seems too high.'],
+    default: 0,
+  },
+  profilePicture: {
+    type: String,
+    default: null,
+  },
+  lastActiveAt: {
+    type: Date,
+    default: null,
+  },
 }, { timestamps: true });
 
 // Hash password before saving

@@ -7,7 +7,7 @@ const typeBadgeColor = {
   'Prime Teacher (Full)': 'emerald',
   'Assistant Teacher': 'sky',
   '1/2 Prime Teacher': 'amber',
-  'Prime Teacher (Assisted)': 'violet',
+  'Prime Teacher (Assisted)': 'purple',
 };
 
 // [FIX] Server-side input validation helper
@@ -29,28 +29,68 @@ function validateReportInput({ date, subject, class_name, duration, teaching_typ
 exports.index = async (req, res) => {
   try {
     const { teaching_type } = req.query;
-    const filter = { teacher: req.session.user._id };
-    if (teaching_type && TEACHING_TYPES.includes(teaching_type)) {
-      filter.teaching_type = teaching_type;
+
+    // Month navigation — default: current month, accept ?month=YYYY-MM
+    let selectedYear, selectedMonth;
+    if (req.query.month && /^\d{4}-\d{2}$/.test(req.query.month)) {
+      const [y, m] = req.query.month.split('-').map(Number);
+      selectedYear = y;
+      selectedMonth = m - 1;
+    } else {
+      const now = new Date();
+      selectedYear = now.getFullYear();
+      selectedMonth = now.getMonth();
     }
 
-    const reports = await Report.find(filter).sort({ date: -1 });
+    const monthStart = new Date(selectedYear, selectedMonth, 1);
+    const monthEnd   = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59, 999);
 
-    // Statistik ringkasan
+    const toMonthStr = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    const prevMonth  = toMonthStr(new Date(selectedYear, selectedMonth - 1, 1));
+    const nextMonth  = toMonthStr(new Date(selectedYear, selectedMonth + 1, 1));
+    const isCurrentMonth = toMonthStr(new Date(selectedYear, selectedMonth, 1)) === toMonthStr(new Date());
+    const monthLabel = new Date(selectedYear, selectedMonth, 1)
+      .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+    // All-time stats for top cards
     const allReports = await Report.find({ teacher: req.session.user._id });
     const totalMinutes = allReports.reduce((sum, r) => sum + r.duration, 0);
-    const totalHours = (totalMinutes / 60).toFixed(1);
+    const totalHours   = (totalMinutes / 60).toFixed(1);
     const totalReports = allReports.length;
-    const thisMonth = new Date();
-    const monthlyReports = allReports.filter(r => {
-      const d = new Date(r.date);
-      return d.getMonth() === thisMonth.getMonth() && d.getFullYear() === thisMonth.getFullYear();
-    });
-    const monthlyMinutes = monthlyReports.reduce((sum, r) => sum + r.duration, 0);
-    const monthlyHours = (monthlyMinutes / 60).toFixed(1);
-    const countByType = (type) => allReports.filter(r => r.teaching_type === type).length;
 
-    // Ambil flash message dari session lalu hapus agar tidak muncul lagi
+    const now2 = new Date();
+    const thisMonthReports = allReports.filter(r => {
+      const d = new Date(r.date);
+      return d.getMonth() === now2.getMonth() && d.getFullYear() === now2.getFullYear();
+    });
+    const monthlyMinutes = thisMonthReports.reduce((sum, r) => sum + r.duration, 0);
+    const monthlyHours   = (monthlyMinutes / 60).toFixed(1);
+
+    // Selected month reports for breakdown + daily summary
+    const selectedMonthReports = await Report.find({
+      teacher: req.session.user._id,
+      date: { $gte: monthStart, $lte: monthEnd },
+    }).sort({ date: 1 });
+
+    const countByType = (type) => selectedMonthReports.filter(r => r.teaching_type === type).length;
+
+    // Daily summary — group by date, skip days with no sessions
+    const dailyMap = {};
+    for (const r of selectedMonthReports) {
+      const key = r.date.toISOString().substring(0, 10);
+      if (!dailyMap[key]) {
+        dailyMap[key] = { date: r.date, dateKey: key, reports: [], counts: { 'Prime Teacher (Full)': 0, 'Prime Teacher (Assisted)': 0, 'Assistant Teacher': 0, '1/2 Prime Teacher': 0 } };
+      }
+      dailyMap[key].reports.push(r);
+      if (dailyMap[key].counts[r.teaching_type] !== undefined) dailyMap[key].counts[r.teaching_type]++;
+    }
+    const dailySummary = Object.values(dailyMap).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    // List (all-time with optional type filter)
+    const listFilter = { teacher: req.session.user._id };
+    if (teaching_type && TEACHING_TYPES.includes(teaching_type)) listFilter.teaching_type = teaching_type;
+    const reports = await Report.find(listFilter).sort({ date: -1 });
+
     const successMessage = req.session.flash || null;
     delete req.session.flash;
 
@@ -60,15 +100,16 @@ exports.index = async (req, res) => {
       selectedType: teaching_type || '',
       typeBadgeColor,
       stats: {
-        totalReports,
-        totalHours,
-        monthlyHours,
-        monthlyReports: monthlyReports.length,
-        primeCount: countByType('Prime Teacher (Full)'),
-        assistCount: countByType('Assistant Teacher'),
-        halfCount: countByType('1/2 Prime Teacher'),
-        primeAssistedCount: countByType('Prime Teacher (Assisted)')
+        totalReports, totalHours, monthlyHours,
+        monthlyReports: thisMonthReports.length,
+        primeCount:         countByType('Prime Teacher (Full)'),
+        assistCount:        countByType('Assistant Teacher'),
+        halfCount:          countByType('1/2 Prime Teacher'),
+        primeAssistedCount: countByType('Prime Teacher (Assisted)'),
       },
+      monthLabel, prevMonth, nextMonth, isCurrentMonth,
+      selectedMonthStr: toMonthStr(new Date(selectedYear, selectedMonth, 1)),
+      dailySummary,
       successMessage,
     });
   } catch (err) {

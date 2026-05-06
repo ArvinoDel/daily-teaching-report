@@ -28,6 +28,7 @@ exports.login = async (req, res) => {
       username: user.username,
       displayName: user.displayName,
       role: user.role,
+      profilePicture: user.profilePicture || null,
     };
 
     // [FIX] Validate returnTo to prevent open redirect - must be internal path

@@ -10,6 +10,7 @@ const rateLimit = require('express-rate-limit');
 
 const reportRoutes = require('./routes/reports');
 const authRoutes = require('./routes/auth');
+const profileRoutes = require('./routes/profile');
 const { requireAuth } = require('./middleware/auth');
 
 const app = express();
@@ -81,14 +82,25 @@ app.use(session({
 // Apply login rate limiter specifically to login route
 app.use('/auth/login', loginLimiter);
 
-// Make user available in all views
+// Make user available in all views + track last active
 app.use((req, res, next) => {
   res.locals.currentUser = req.session.user || null;
+  // Update lastActiveAt every 60s to avoid too many DB writes
+  if (req.session.user) {
+    const User = require('./models/User');
+    const now = Date.now();
+    const lastTracked = req.session._lastTracked || 0;
+    if (now - lastTracked > 60000) {
+      req.session._lastTracked = now;
+      User.findByIdAndUpdate(req.session.user._id, { lastActiveAt: new Date() }).exec();
+    }
+  }
   next();
 });
 
 app.use('/auth', authRoutes);
 app.use('/reports', requireAuth, reportRoutes);
+app.use('/profile', requireAuth, profileRoutes);
 app.get('/score-calculator', requireAuth, (req, res) => res.render('score-calculator'));
 app.get('/', (req, res) => res.redirect('/reports'));
 

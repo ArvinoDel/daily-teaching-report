@@ -1,0 +1,90 @@
+const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const path = require('path');
+
+// GET /profile/edit
+exports.editForm = async (req, res) => {
+  try {
+    const user = await User.findById(req.session.user._id);
+    if (!user) return res.render('error', { message: 'User not found.' });
+    res.render('profile/edit', { user, errors: [], success: null });
+  } catch (err) {
+    res.render('error', { message: 'Something went wrong.' });
+  }
+};
+
+// POST /profile/edit
+exports.update = async (req, res) => {
+  try {
+    const { username, password, password_confirm, workingExperience } = req.body;
+    const user = await User.findById(req.session.user._id);
+    if (!user) return res.render('error', { message: 'User not found.' });
+
+    const errors = [];
+
+    // Validate username
+    if (!username || username.trim().length < 3) {
+      errors.push('Username must be at least 3 characters.');
+    } else if (username.trim().length > 30) {
+      errors.push('Username max 30 characters.');
+    } else {
+      // Check uniqueness (exclude self)
+      const existing = await User.findOne({ username: username.toLowerCase().trim(), _id: { $ne: user._id } });
+      if (existing) errors.push('Username already taken.');
+    }
+
+    // Validate working experience
+    const exp = Number(workingExperience);
+    if (isNaN(exp) || exp < 0 || exp > 60) {
+      errors.push('Working experience must be between 0 and 60 years.');
+    }
+
+    // Validate password if provided
+    if (password && password.length > 0) {
+      if (password.length < 6) errors.push('Password must be at least 6 characters.');
+      if (password !== password_confirm) errors.push('Passwords do not match.');
+    }
+
+    if (errors.length > 0) {
+      // Delete uploaded file if there was an error
+      if (req.file) {
+        fs.unlink(req.file.path, () => {});
+      }
+      return res.render('profile/edit', { user, errors, success: null });
+    }
+
+    // Apply updates
+    user.username = username.toLowerCase().trim();
+    user.workingExperience = exp;
+
+    if (password && password.length > 0) {
+      user.password = password; // pre-save hook will hash it
+    }
+
+    if (req.file) {
+      // Delete old profile picture if exists
+      if (user.profilePicture) {
+        const oldPath = path.join(__dirname, '../public', user.profilePicture);
+        fs.unlink(oldPath, () => {});
+      }
+      user.profilePicture = '/uploads/avatars/' + req.file.filename;
+    }
+
+    await user.save();
+
+    // Update session
+    req.session.user.username = user.username;
+    req.session.user.profilePicture = user.profilePicture;
+
+    return res.render('profile/edit', {
+      user,
+      errors: [],
+      success: 'Profile updated successfully!',
+    });
+  } catch (err) {
+    console.error(err);
+    const user = await User.findById(req.session.user._id);
+    res.render('profile/edit', { user, errors: ['Something went wrong. Please try again.'], success: null });
+  }
+};
