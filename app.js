@@ -83,17 +83,26 @@ app.use(session({
 app.use('/auth/login', loginLimiter);
 
 // Make user available in all views + track last active
-app.use((req, res, next) => {
-  res.locals.currentUser = req.session.user || null;
-  // Update lastActiveAt every 60s to avoid too many DB writes
-  if (req.session.user) {
+app.use(async (req, res, next) => {
+  if (!req.session.user) {
+    res.locals.currentUser = null;
+    return next();
+  }
+  const now = Date.now();
+  const lastTracked = req.session._lastTracked || 0;
+  const needsUpdate = now - lastTracked > 60000;
+
+  try {
     const User = require('./models/User');
-    const now = Date.now();
-    const lastTracked = req.session._lastTracked || 0;
-    if (now - lastTracked > 60000) {
+    if (needsUpdate) {
       req.session._lastTracked = now;
-      User.findByIdAndUpdate(req.session.user._id, { lastActiveAt: new Date() }).exec();
+      await User.findByIdAndUpdate(req.session.user._id, { lastActiveAt: new Date() });
     }
+    // Always fetch fresh user data for dropdown (workingExperience, profilePicture, lastActiveAt)
+    const user = await User.findById(req.session.user._id).select('username displayName role workingExperience profilePicture lastActiveAt');
+    res.locals.currentUser = user || null;
+  } catch (e) {
+    res.locals.currentUser = req.session.user || null;
   }
   next();
 });
