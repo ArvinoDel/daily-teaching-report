@@ -14,6 +14,8 @@ const profileRoutes = require('./routes/profile');
 const { requireAuth } = require('./middleware/auth');
 
 const app = express();
+app.set('trust proxy', 1); // fix #2
+
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/daily_teaching_report';
 
@@ -25,15 +27,15 @@ mongoose.connect(MONGO_URI)
 app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === 'production'
     ? {
-        directives: {
-          defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://*.tailwindcss.com"],
-          styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://*.tailwindcss.com", "https://fonts.googleapis.com"],
-          fontSrc: ["'self'", "https://fonts.gstatic.com"],
-          imgSrc: ["'self'", "data:"],
-          connectSrc: ["'self'", "https://*.tailwindcss.com"],
-        },
-      }
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://*.tailwindcss.com"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://*.tailwindcss.com", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        imgSrc: ["'self'", "data:"],
+        connectSrc: ["'self'", "https://*.tailwindcss.com"],
+      },
+    }
     : false, // Disable CSP in development to avoid blocking Tailwind CDN
 }));
 
@@ -69,7 +71,7 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'teaching-report-secret-key',
   resave: false,
   saveUninitialized: false,
-  store: new MongoStore({ mongoUrl: MONGO_URI }),
+  store: MongoStore.create({ mongoUrl: MONGO_URI }),
   name: 'sid', // [FIX 5] Hide default 'connect.sid' session name
   cookie: {
     maxAge: 1000 * 60 * 60 * 24 * 7,

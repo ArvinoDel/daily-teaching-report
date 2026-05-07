@@ -22,24 +22,26 @@
   <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 md:p-5">
       <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Reports</p>
-      <p class="text-2xl md:text-3xl font-bold text-slate-900"><%= stats.totalReports %></p>
+      <p class="text-2xl md:text-3xl font-bold text-brand-400">
+        <%= stats.totalReports %> <span class="text-sm font-medium text-slate-400">Hour(s)</span>
+      </p>
     </div>
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 md:p-5">
       <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Hours</p>
       <p class="text-2xl md:text-3xl font-bold text-brand-600">
-        <%= stats.totalHours %> <span class="text-sm font-medium text-slate-400">hr</span>
+        <%= stats.totalHours %> <span class="text-sm font-medium text-slate-400">Hour(s)</span>
       </p>
     </div>
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 md:p-5">
       <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">This Month</p>
       <p class="text-2xl md:text-3xl font-bold text-slate-900">
-        <%= stats.monthlyReports %> <span class="text-sm font-medium text-slate-400">session(s)</span>
+        <%= stats.monthlyReports %> <span class="text-sm font-medium text-slate-400">Session(s)</span>
       </p>
     </div>
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 md:p-5">
       <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Hours This Month</p>
       <p class="text-2xl md:text-3xl font-bold text-slate-900">
-        <%= stats.monthlyHours %> <span class="text-sm font-medium text-slate-400">hr</span>
+        <%= stats.monthlyHours %> <span class="text-sm font-medium text-slate-400">Hour(s)</span>
       </p>
     </div>
   </div>
