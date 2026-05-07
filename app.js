@@ -45,7 +45,7 @@ app.use(helmet({
           "https://fonts.googleapis.com"
         ],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        imgSrc: ["'self'", "data:"],
+        imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],  // ← tambah cloudinary
         connectSrc: ["'self'", "https://*.tailwindcss.com"],
       },
     }
