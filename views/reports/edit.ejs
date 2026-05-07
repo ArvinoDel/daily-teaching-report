@@ -33,26 +33,26 @@
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div class="space-y-1.5">
-          <label for="date" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Tanggal Mengajar <span class="text-red-500">*</span></label>
+          <label for="date" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Teaching Date <span class="text-red-500">*</span></label>
           <input type="date" id="date" name="date" value="<%= report.dateInputFormat %>" required
             class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
         </div>
         <div class="space-y-1.5">
-          <label for="class_name" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Nama Kelas <span class="text-red-500">*</span></label>
+          <label for="class_name" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Class Name <span class="text-red-500">*</span></label>
           <input type="text" id="class_name" name="class_name" value="<%= report.class_name %>" required
             class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
         </div>
       </div>
 
       <div class="space-y-1.5">
-        <label for="subject" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Mata Pelajaran <span class="text-red-500">*</span></label>
+        <label for="subject" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Material <span class="text-red-500">*</span></label>
         <input type="text" id="subject" name="subject" value="<%= report.subject %>" required
           class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div class="space-y-1.5">
-          <label for="teaching_type" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Tipe Pengajar <span class="text-red-500">*</span></label>
+          <label for="teaching_type" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Type <span class="text-red-500">*</span></label>
           <div class="relative">
             <select id="teaching_type" name="teaching_type" required
               class="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition cursor-pointer pr-10">
@@ -66,17 +66,17 @@
           </div>
         </div>
         <div class="space-y-1.5">
-          <label for="duration" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Durasi (menit) <span class="text-red-500">*</span></label>
+          <label for="duration" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Duration <span class="text-red-500">*</span></label>
           <div class="relative">
             <input type="number" id="duration" name="duration" value="<%= report.duration %>" min="1" required
               class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 pr-16 text-sm font-mono focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
-            <span class="absolute inset-y-0 right-4 flex items-center text-xs text-slate-400 pointer-events-none">menit</span>
+            <span class="absolute inset-y-0 right-4 flex items-center text-xs text-slate-400 pointer-events-none">minute(s)</span>
           </div>
         </div>
       </div>
 
       <div class="space-y-1.5">
-        <label for="notes" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Catatan Kegiatan</label>
+        <label for="notes" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Note(s)</label>
         <textarea id="notes" name="notes" rows="4"
           class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition resize-none"><%= report.notes %></textarea>
       </div>
