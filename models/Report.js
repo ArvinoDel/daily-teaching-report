@@ -44,6 +44,14 @@ const reportSchema = new mongoose.Schema(
       maxlength: [1000, 'Catatan maksimal 1000 karakter.'],
       default: '',
     },
+    ac_students: {
+      type: [String],
+      default: [],
+    },
+    absent_students: {
+      type: [String],
+      default: [],
+    },
   },
   {
     timestamps: true,

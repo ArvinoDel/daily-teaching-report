@@ -10,8 +10,14 @@ const typeBadgeColor = {
   'Prime Teacher (Assisted)': 'purple',
 };
 
+// Helper: parse comma-separated student names into a clean array
+function parseStudentList(raw) {
+  if (!raw || raw.trim() === '') return [];
+  return raw.split(',').map(s => s.trim()).filter(Boolean);
+}
+
 // [FIX] Server-side input validation helper
-function validateReportInput({ date, subject, class_name, duration, teaching_type, notes }) {
+function validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students }) {
   const errors = [];
   if (!date || isNaN(new Date(date).getTime())) errors.push('Tanggal tidak valid.');
   if (!subject || subject.trim().length === 0) errors.push('Mata pelajaran wajib diisi.');
@@ -22,6 +28,10 @@ function validateReportInput({ date, subject, class_name, duration, teaching_typ
   if (!duration || isNaN(dur) || dur < 1 || !Number.isInteger(dur)) errors.push('Durasi harus berupa bilangan bulat minimal 1 menit.');
   if (!teaching_type || !TEACHING_TYPES.includes(teaching_type)) errors.push('Tipe pengajar tidak valid.');
   if (notes && notes.length > 1000) errors.push('Catatan maksimal 1000 karakter.');
+  if (ac_students && ac_students.some(s => s.length > 50)) errors.push('Nama siswa AC maksimal 50 karakter.');
+  if (absent_students && absent_students.some(s => s.length > 50)) errors.push('Nama siswa Absent maksimal 50 karakter.');
+  if (ac_students && ac_students.length > 100) errors.push('Maksimal 100 siswa AC.');
+  if (absent_students && absent_students.length > 100) errors.push('Maksimal 100 siswa Absent.');
   return errors;
 }
 
@@ -43,11 +53,11 @@ exports.index = async (req, res) => {
     }
 
     const monthStart = new Date(selectedYear, selectedMonth, 1);
-    const monthEnd   = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59, 999);
+    const monthEnd = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59, 999);
 
     const toMonthStr = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
-    const prevMonth  = toMonthStr(new Date(selectedYear, selectedMonth - 1, 1));
-    const nextMonth  = toMonthStr(new Date(selectedYear, selectedMonth + 1, 1));
+    const prevMonth = toMonthStr(new Date(selectedYear, selectedMonth - 1, 1));
+    const nextMonth = toMonthStr(new Date(selectedYear, selectedMonth + 1, 1));
     const isCurrentMonth = toMonthStr(new Date(selectedYear, selectedMonth, 1)) === toMonthStr(new Date());
     const monthLabel = new Date(selectedYear, selectedMonth, 1)
       .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -55,7 +65,7 @@ exports.index = async (req, res) => {
     // All-time stats for top cards
     const allReports = await Report.find({ teacher: req.session.user._id });
     const totalMinutes = allReports.reduce((sum, r) => sum + r.duration, 0);
-    const totalHours   = (totalMinutes / 60).toFixed(1);
+    const totalHours = (totalMinutes / 60).toFixed(1);
     const totalReports = allReports.length;
 
     const now2 = new Date();
@@ -64,7 +74,7 @@ exports.index = async (req, res) => {
       return d.getMonth() === now2.getMonth() && d.getFullYear() === now2.getFullYear();
     });
     const monthlyMinutes = thisMonthReports.reduce((sum, r) => sum + r.duration, 0);
-    const monthlyHours   = (monthlyMinutes / 60).toFixed(1);
+    const monthlyHours = (monthlyMinutes / 60).toFixed(1);
 
     // Selected month reports for breakdown + daily summary
     const selectedMonthReports = await Report.find({
@@ -102,9 +112,9 @@ exports.index = async (req, res) => {
       stats: {
         totalReports, totalHours, monthlyHours,
         monthlyReports: thisMonthReports.length,
-        primeCount:         countByType('Prime Teacher (Full)'),
-        assistCount:        countByType('Assistant Teacher'),
-        halfCount:          countByType('1/2 Prime Teacher'),
+        primeCount: countByType('Prime Teacher (Full)'),
+        assistCount: countByType('Assistant Teacher'),
+        halfCount: countByType('1/2 Prime Teacher'),
         primeAssistedCount: countByType('Prime Teacher (Assisted)'),
       },
       monthLabel, prevMonth, nextMonth, isCurrentMonth,
@@ -131,9 +141,11 @@ exports.newForm = (req, res) => {
 exports.create = async (req, res) => {
   try {
     const { date, subject, class_name, duration, teaching_type, notes } = req.body;
+    const ac_students = parseStudentList(req.body.ac_students);
+    const absent_students = parseStudentList(req.body.absent_students);
 
     // [FIX] Server-side validation before trusting any input
-    const validationErrors = validateReportInput({ date, subject, class_name, duration, teaching_type, notes });
+    const validationErrors = validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students });
     if (validationErrors.length > 0) {
       return res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: validationErrors, formData: req.body });
     }
@@ -142,6 +154,8 @@ exports.create = async (req, res) => {
       date, subject: subject.trim(), class_name: class_name.trim(),
       duration: Number(duration),
       teaching_type, notes: (notes || '').trim(),
+      ac_students,
+      absent_students,
       teacher: req.session.user._id,
     });
     await report.save();
@@ -185,9 +199,11 @@ exports.editForm = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { date, subject, class_name, duration, teaching_type, notes } = req.body;
+    const ac_students = parseStudentList(req.body.ac_students);
+    const absent_students = parseStudentList(req.body.absent_students);
 
     // [FIX] Server-side validation before trusting any input
-    const validationErrors = validateReportInput({ date, subject, class_name, duration, teaching_type, notes });
+    const validationErrors = validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students });
     if (validationErrors.length > 0) {
       const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
       return res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors });
@@ -195,7 +211,16 @@ exports.update = async (req, res) => {
 
     const report = await Report.findOneAndUpdate(
       { _id: req.params.id, teacher: req.session.user._id }, // [FIX] Verify ownership
-      { date, subject: subject.trim(), class_name: class_name.trim(), duration: Number(duration), teaching_type, notes: (notes || '').trim() },
+      {
+        date,
+        subject: subject.trim(),
+        class_name: class_name.trim(),
+        duration: Number(duration),
+        teaching_type,
+        notes: (notes || '').trim(),
+        ac_students,
+        absent_students,
+      },
       { new: true, runValidators: true }
     );
     if (!report) return res.render('error', { message: 'Report not found.' });
