@@ -29,14 +29,26 @@ app.use(helmet({
     ? {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://*.tailwindcss.com"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://*.tailwindcss.com", "https://fonts.googleapis.com"],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "'unsafe-eval'",        // ← tambah ini
+          "https://cdn.tailwindcss.com",
+          "https://*.tailwindcss.com"
+        ],
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://cdn.tailwindcss.com",
+          "https://*.tailwindcss.com",
+          "https://fonts.googleapis.com"  // ← tambah ini juga
+        ],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         imgSrc: ["'self'", "data:"],
         connectSrc: ["'self'", "https://*.tailwindcss.com"],
       },
     }
-    : false, // Disable CSP in development to avoid blocking Tailwind CDN
+    : false,
 }));
 
 // [FIX 2] Rate limiting - login brute force protection
