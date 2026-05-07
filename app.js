@@ -27,28 +27,28 @@ mongoose.connect(MONGO_URI)
 app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === 'production'
     ? {
-        directives: {
-          defaultSrc: ["'self'"],
-          scriptSrc: [
-            "'self'",
-            "'unsafe-inline'",
-            "'unsafe-eval'",
-            "https://cdn.tailwindcss.com",
-            "https://*.tailwindcss.com"
-          ],
-          scriptSrcAttr: ["'unsafe-inline'"],  // ← ini yang fix masalahnya
-          styleSrc: [
-            "'self'",
-            "'unsafe-inline'",
-            "https://cdn.tailwindcss.com",
-            "https://*.tailwindcss.com",
-            "https://fonts.googleapis.com"
-          ],
-          fontSrc: ["'self'", "https://fonts.gstatic.com"],
-          imgSrc: ["'self'", "data:"],
-          connectSrc: ["'self'", "https://*.tailwindcss.com"],
-        },
-      }
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "'unsafe-eval'",
+          "https://cdn.tailwindcss.com",
+          "https://*.tailwindcss.com"
+        ],
+        scriptSrcAttr: ["'unsafe-inline'"],  // ← ini fix-nya
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://cdn.tailwindcss.com",
+          "https://*.tailwindcss.com",
+          "https://fonts.googleapis.com"
+        ],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        imgSrc: ["'self'", "data:"],
+        connectSrc: ["'self'", "https://*.tailwindcss.com"],
+      },
+    }
     : false,
 }));
 
