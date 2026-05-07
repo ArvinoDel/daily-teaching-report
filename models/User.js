@@ -33,7 +33,11 @@ const userSchema = new mongoose.Schema({
     max: [60, 'Working experience seems too high.'],
     default: 0,
   },
-  profilePicture: {
+ profilePicture: {
+    type: String,
+    default: null,
+  },
+  cloudinaryId: {        // ← tambah ini
     type: String,
     default: null,
   },

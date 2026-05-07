@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cloudinary": "^1.41.3",
     "connect-mongo": "^6.0.0",
     "dotenv": "^17.4.2",
     "ejs": "^3.1.10",
@@ -18,7 +19,8 @@
     "helmet": "^8.1.0",
     "method-override": "^3.0.0",
     "mongoose": "^8.4.0",
-    "multer": "^2.1.1"
+    "multer": "^2.1.1",
+    "multer-storage-cloudinary": "^4.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.3"

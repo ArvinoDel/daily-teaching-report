@@ -1,7 +1,5 @@
 const User = require('../models/User');
-const bcrypt = require('bcryptjs');
-const fs = require('fs');
-const path = require('path');
+const cloudinary = require('cloudinary').v2;
 
 // GET /profile/edit
 exports.editForm = async (req, res) => {
@@ -29,7 +27,6 @@ exports.update = async (req, res) => {
     } else if (username.trim().length > 30) {
       errors.push('Username max 30 characters.');
     } else {
-      // Check uniqueness (exclude self)
       const existing = await User.findOne({ username: username.toLowerCase().trim(), _id: { $ne: user._id } });
       if (existing) errors.push('Username already taken.');
     }
@@ -47,9 +44,9 @@ exports.update = async (req, res) => {
     }
 
     if (errors.length > 0) {
-      // Delete uploaded file if there was an error
-      if (req.file) {
-        fs.unlink(req.file.path, () => {});
+      // Kalau ada error, hapus file yang sudah terupload ke Cloudinary
+      if (req.file && req.file.filename) {
+        await cloudinary.uploader.destroy(req.file.filename);
       }
       return res.render('profile/edit', { user, errors, success: null });
     }
@@ -59,29 +56,27 @@ exports.update = async (req, res) => {
     user.workingExperience = exp;
 
     if (password && password.length > 0) {
-      user.password = password; // pre-save hook will hash it
+      user.password = password;
     }
 
     if (req.file) {
-      // Delete old profile picture if exists
-      if (user.profilePicture) {
-        const oldPath = path.join(__dirname, '../public', user.profilePicture);
-        fs.unlink(oldPath, () => {});
+      // Hapus foto lama dari Cloudinary kalau ada
+      if (user.cloudinaryId) {
+        await cloudinary.uploader.destroy(user.cloudinaryId);
       }
-      user.profilePicture = '/uploads/avatars/' + req.file.filename;
+      // Simpan URL dan public_id baru
+      user.profilePicture = req.file.path;
+      user.cloudinaryId   = req.file.filename;
     }
 
     await user.save();
 
     // Update session
-    req.session.user.username = user.username;
+    req.session.user.username       = user.username;
     req.session.user.profilePicture = user.profilePicture;
 
-    return res.render('profile/edit', {
-      user,
-      errors: [],
-      success: 'Profile updated successfully!',
-    });
+    return res.render('profile/edit', { user, errors: [], success: 'Profile updated successfully!' });
+
   } catch (err) {
     console.error(err);
     const user = await User.findById(req.session.user._id);
