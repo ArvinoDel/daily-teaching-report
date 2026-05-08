@@ -14,7 +14,7 @@ const profileRoutes = require('./routes/profile');
 const { requireAuth } = require('./middleware/auth');
 
 const app = express();
-app.set('trust proxy', 1); // fix #2
+app.set('trust proxy', 1);
 
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/daily_teaching_report';
@@ -23,7 +23,7 @@ mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ MongoDB connected'))
   .catch(err => console.error('❌ MongoDB error:', err));
 
-// [FIX 1] Security headers via Helmet
+// Security headers via Helmet
 app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === 'production'
     ? {
@@ -36,7 +36,7 @@ app.use(helmet({
           "https://cdn.tailwindcss.com",
           "https://*.tailwindcss.com"
         ],
-        scriptSrcAttr: ["'unsafe-inline'"],  // ← ini fix-nya
+        scriptSrcAttr: ["'unsafe-inline'"],
         styleSrc: [
           "'self'",
           "'unsafe-inline'",
@@ -45,23 +45,23 @@ app.use(helmet({
           "https://fonts.googleapis.com"
         ],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],  // ← tambah cloudinary
+        imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
         connectSrc: ["'self'", "https://*.tailwindcss.com"],
       },
     }
     : false,
 }));
 
-// [FIX 2] Rate limiting - login brute force protection
+// Rate limiting - login brute force protection
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 20,
   message: 'Too many login attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// [FIX 3] General API rate limit
+// General API rate limit
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
@@ -74,7 +74,7 @@ app.set('views', path.join(__dirname, 'views'));
 
 app.use(generalLimiter);
 
-// [FIX 4] Body size limit to prevent DoS via large payloads
+// Body size limit to prevent DoS via large payloads
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(express.json({ limit: '10kb' }));
 app.use(methodOverride('_method'));
@@ -85,12 +85,12 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   store: MongoStore.create({ mongoUrl: MONGO_URI }),
-  name: 'sid', // [FIX 5] Hide default 'connect.sid' session name
+  name: 'sid',
   cookie: {
     maxAge: 1000 * 60 * 60 * 24 * 7,
-    httpOnly: true,          // [FIX 6] Prevent JS access to cookie
-    secure: process.env.NODE_ENV === 'production', // [FIX 7] HTTPS-only in prod
-    sameSite: 'lax',         // [FIX 8] CSRF protection via SameSite
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
   }
 }));
 
@@ -113,8 +113,9 @@ app.use(async (req, res, next) => {
       req.session._lastTracked = now;
       await User.findByIdAndUpdate(req.session.user._id, { lastActiveAt: new Date() });
     }
-    // Always fetch fresh user data for dropdown (workingExperience, profilePicture, lastActiveAt)
-    const user = await User.findById(req.session.user._id).select('username displayName role workingExperience profilePicture lastActiveAt');
+    // Always fetch fresh user data for dropdown
+    const user = await User.findById(req.session.user._id)
+      .select('username displayName role joinDate commission profilePicture lastActiveAt');
     res.locals.currentUser = user || null;
   } catch (e) {
     res.locals.currentUser = req.session.user || null;
