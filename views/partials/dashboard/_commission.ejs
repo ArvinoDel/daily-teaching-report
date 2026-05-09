@@ -1,0 +1,75 @@
+<%
+  const commBadge = {
+    'Prime Teacher (Full)':     'badge-emerald',
+    'Prime Teacher (Assisted)': 'badge-purple',
+    'Assistant Teacher':        'badge-sky',
+    '1/2 Prime Teacher':        'badge-amber',
+  };
+%>
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
+  <div class="px-4 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+    <div>
+      <h2 class="text-sm font-bold text-slate-800">Commission</h2>
+      <p class="text-xs text-slate-400 mt-0.5">Estimated income for <span class="font-semibold"><%= monthLabel %></span></p>
+    </div>
+    <a href="/profile/edit"
+      class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-brand-600 transition px-3 py-1.5 rounded-lg hover:bg-slate-50">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" />
+      </svg>
+      Edit Prices
+    </a>
+  </div>
+
+  <% if (!hasCommission) { %>
+    <div class="px-6 py-10 text-center">
+      <div class="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75" />
+        </svg>
+      </div>
+      <p class="text-sm font-semibold text-slate-600 mb-1">Commission prices not set yet</p>
+      <p class="text-xs text-slate-400 mb-4">Set your price per session type to see your estimated monthly income.</p>
+      <a href="/profile/edit"
+        class="inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow transition">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+        </svg>
+        Go to Edit Profile
+      </a>
+    </div>
+  <% } else { %>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs font-semibold text-slate-400 uppercase tracking-wider bg-slate-50">
+            <th class="px-4 sm:px-6 py-3 text-left">Type</th>
+            <th class="px-4 sm:px-6 py-3 text-center">Sessions</th>
+            <th class="px-4 sm:px-6 py-3 text-right hidden sm:table-cell">Price / Session</th>
+            <th class="px-4 sm:px-6 py-3 text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-50">
+          <% commissionTable.forEach(function(row) { %>
+            <tr class="hover:bg-slate-50 transition <%= row.sessions === 0 ? 'opacity-50' : '' %>">
+              <td class="px-4 sm:px-6 py-3.5">
+                <span class="<%= commBadge[row.type] || '' %> text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap"><%= row.type %></span>
+              </td>
+              <td class="px-4 sm:px-6 py-3.5 text-center font-bold text-slate-700"><%= row.sessions %></td>
+              <td class="px-4 sm:px-6 py-3.5 text-right font-mono text-xs text-slate-500 hidden sm:table-cell"><%= row.priceFormatted %></td>
+              <td class="px-4 sm:px-6 py-3.5 text-right font-mono text-sm font-semibold text-slate-800"><%= row.totalFormatted %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+        <tfoot>
+          <tr class="border-t-2 border-slate-200 bg-slate-50">
+            <td class="px-4 sm:px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Total</td>
+            <td class="px-4 sm:px-6 py-4 text-center text-sm font-bold text-slate-700"><%= totalSessions %></td>
+            <td class="px-4 sm:px-6 py-4 hidden sm:table-cell"></td>
+            <td class="px-4 sm:px-6 py-4 text-right font-mono text-base font-bold text-brand-600"><%= commissionTotalFormatted %></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  <% } %>
+</div>
