@@ -1,0 +1,28 @@
+<script>
+  function toggleMenu() {
+    var menu      = document.getElementById('mobile-menu');
+    var iconOpen  = document.getElementById('icon-open');
+    var iconClose = document.getElementById('icon-close');
+    menu.classList.toggle('hidden');
+    iconOpen.classList.toggle('hidden');
+    iconClose.classList.toggle('hidden');
+  }
+
+  function toggleProfileDropdown() {
+    var dropdown = document.getElementById('profile-dropdown');
+    var chevron  = document.getElementById('profile-chevron');
+    if (!dropdown) return;
+    dropdown.classList.toggle('hidden');
+    if (chevron) chevron.classList.toggle('rotate-180');
+  }
+
+  /* BUG FIX: close dropdown when clicking outside */
+  document.addEventListener('click', function (e) {
+    var wrapper = document.getElementById('profile-dropdown-wrapper');
+    if (!wrapper || wrapper.contains(e.target)) return;
+    var dropdown = document.getElementById('profile-dropdown');
+    var chevron  = document.getElementById('profile-chevron');
+    if (dropdown) dropdown.classList.add('hidden');
+    if (chevron)  chevron.classList.remove('rotate-180');
+  });
+</script>
