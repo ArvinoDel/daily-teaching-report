@@ -3,6 +3,7 @@
 <body class="bg-slate-50 min-h-screen text-slate-800">
 
 <%
+  /* Hitung experience string sekali, dipakai di desktop & mobile */
   let _expStr = null;
   if (typeof currentUser !== 'undefined' && currentUser && currentUser.joinDate) {
     const _now      = new Date();
@@ -19,7 +20,7 @@
     else                      _expStr = _yrs + 'yr ' + _mos + 'mo';
   }
 
-  
+  /* BUG FIX: isOnline dihitung satu kali saja, bukan dua kali terpisah */
   const _isOnline = typeof currentUser !== 'undefined' && currentUser &&
     currentUser.lastActiveAt &&
     (Date.now() - new Date(currentUser.lastActiveAt).getTime()) < 5 * 60 * 1000;
@@ -33,7 +34,7 @@
     <%- include('./nav/nav-right',         { title, _expStr, _isOnline }) %>
 
   </div>
-  <%- include('./nav/mobile-menu',         { title, _expStr }) %>
+  <%- include('./nav/mobile-menu',         { title, _expStr, _isOnline }) %>
 </nav>
 
 <%- include('./nav/nav-scripts') %>

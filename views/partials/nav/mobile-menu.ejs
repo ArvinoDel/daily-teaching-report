@@ -11,16 +11,35 @@
   <!-- User info strip -->
   <% if (typeof currentUser !== 'undefined' && currentUser) { %>
     <div class="flex items-center gap-2.5 px-3 py-2.5 mb-2 bg-slate-50 rounded-xl">
-      <div class="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 text-sm font-bold flex-shrink-0">
-        <%= currentUser.displayName[0].toUpperCase() %>
+
+      <!-- Avatar + online dot -->
+      <div class="relative flex-shrink-0">
+        <% if (currentUser.profilePicture) { %>
+          <img src="<%= currentUser.profilePicture %>" alt="Avatar"
+            class="w-9 h-9 rounded-full object-cover border border-slate-200">
+        <% } else { %>
+          <div class="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 text-sm font-bold">
+            <%= currentUser.displayName[0].toUpperCase() %>
+          </div>
+        <% } %>
+        <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-50 <%= _isOnline ? 'bg-emerald-400' : 'bg-slate-300' %>"></span>
       </div>
-      <div>
-        <p class="text-xs font-bold text-slate-800"><%= currentUser.displayName %></p>
-        <p class="text-xs text-slate-400">
-          @<%= currentUser.username %>
-          <% if (_expStr) { %><span class="ml-1 text-slate-300">·</span> <%= _expStr %><% } %>
-        </p>
+
+      <!-- Name, username, online status + exp -->
+      <div class="min-w-0">
+        <p class="text-xs font-bold text-slate-800 truncate"><%= currentUser.displayName %></p>
+        <p class="text-xs text-slate-400 truncate">@<%= currentUser.username %></p>
+        <div class="flex items-center gap-1.5 mt-0.5">
+          <span class="text-xs <%= _isOnline ? 'text-emerald-500' : 'text-slate-400' %> font-medium">
+            <%= _isOnline ? '● Online' : '○ Offline' %>
+          </span>
+          <% if (_expStr) { %>
+            <span class="text-slate-300 text-xs">·</span>
+            <span class="text-xs text-slate-400"><%= _expStr %></span>
+          <% } %>
+        </div>
       </div>
+
     </div>
   <% } %>
 
