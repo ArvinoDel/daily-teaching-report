@@ -92,7 +92,7 @@ exports.index = async (req, res) => {
       dailyMap[key].reports.push(r);
       if (dailyMap[key].counts[r.teaching_type] !== undefined) dailyMap[key].counts[r.teaching_type]++;
     }
-    const dailySummary = Object.values(dailyMap).sort((a, b) => new Date(a.date) - new Date(b.date));
+   const dailySummary = Object.values(dailyMap).sort((a, b) => new Date(b.date) - new Date(a.date));
 
     const listFilter = { teacher: req.session.user._id };
     if (teaching_type && TEACHING_TYPES.includes(teaching_type)) listFilter.teaching_type = teaching_type;
