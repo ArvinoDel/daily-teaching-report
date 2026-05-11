@@ -46,8 +46,8 @@
       var reportId = escHtml(r._id);
 
       return '<tr class="hover:bg-slate-50 transition group">' +
-        '<td class="px-4 sm:px-6 py-4 font-semibold text-slate-800">'         + escHtml(r.subject)    + '</td>' +
-        '<td class="px-4 sm:px-6 py-4 text-slate-600 hidden sm:table-cell">'  + escHtml(r.class_name) + '</td>' +
+        '<td class="px-4 sm:px-6 py-4 font-semibold text-slate-800">'         + escHtml(r.class_name)    + '</td>' +
+        '<td class="px-4 sm:px-6 py-4 text-slate-600 hidden sm:table-cell">'  + escHtml(r.subject) + '</td>' +
         '<td class="px-4 sm:px-6 py-4 hidden sm:table-cell"><span class="' + badge + ' text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap">' + escHtml(r.teaching_type) + '</span></td>' +
         '<td class="px-4 sm:px-6 py-4 font-mono text-xs text-slate-500 hidden md:table-cell whitespace-nowrap">' + escHtml(r.durationFormatted) + '</td>' +
         '<td class="px-4 sm:px-6 py-4">' +
