@@ -1,0 +1,274 @@
+<script>
+  /* ── Tab Switching ─────────────────────────────────────────── */
+  function switchTab(tab) {
+    document.querySelectorAll('.panel').forEach(function(p) { p.classList.add('hidden'); });
+    document.querySelectorAll('.tab-btn').forEach(function(b) {
+      b.classList.remove('bg-white', 'shadow-sm', 'text-slate-800');
+      b.classList.add('text-slate-500');
+    });
+    document.getElementById('panel-' + tab).classList.remove('hidden');
+    var btn = document.getElementById('tab-' + tab);
+    btn.classList.add('bg-white', 'shadow-sm', 'text-slate-800');
+    btn.classList.remove('text-slate-500');
+  }
+
+  /* ══════════════════════════════════════════════════════════ */
+  /* RP Score                                                   */
+  /* ══════════════════════════════════════════════════════════ */
+  function mistakesToScore(m) {
+    if (m === 0)  return 10;
+    if (m <= 5)   return 9;
+    if (m <= 10)  return 8;
+    if (m <= 15)  return 7;
+    if (m <= 20)  return 6;
+    if (m <= 25)  return 5;
+    return 4;
+  }
+
+  function rpGradeInfo(avg) {
+    if (avg >= 9) return { label: 'Excellent', cls: 'bg-emerald-100 text-emerald-700' };
+    if (avg >= 7) return { label: 'Good',      cls: 'bg-sky-100 text-sky-700' };
+    if (avg >= 6) return { label: 'Fair',      cls: 'bg-amber-100 text-amber-700' };
+    return              { label: 'Below',      cls: 'bg-red-100 text-red-600' };
+  }
+
+  function addRpTopic(card) {
+    var pill = document.getElementById('rp-topic-tpl').content.cloneNode(true).querySelector('.topic-pill');
+    var list = card.querySelector('.topics-list');
+
+    function relabel() {
+      list.querySelectorAll('.topic-label').forEach(function(el, i) { el.textContent = 'T' + (i + 1); });
+    }
+    pill.querySelector('.remove-topic-btn').addEventListener('click', function() {
+      pill.remove(); relabel(); rpRecalc(card);
+    });
+    var input     = pill.querySelector('.topic-input');
+    var scoreSpan = pill.querySelector('.topic-score');
+    input.addEventListener('input', function() {
+      var v = input.value.trim();
+      scoreSpan.textContent = (v !== '' && !isNaN(+v)) ? '→ ' + mistakesToScore(+v) : '';
+      rpRecalc(card);
+    });
+    list.appendChild(pill);
+    relabel();
+  }
+
+  function rpRecalc(card) {
+    var scores = [], mistakes = [];
+    card.querySelectorAll('.topic-input').forEach(function(inp) {
+      var v = inp.value.trim();
+      if (v !== '' && !isNaN(+v)) { mistakes.push(+v); scores.push(mistakesToScore(+v)); }
+    });
+    var calcEl  = card.querySelector('.calc-string');
+    var scoreEl = card.querySelector('.final-score');
+    var badgeEl = card.querySelector('.grade-badge');
+    if (!scores.length) {
+      calcEl.textContent = '—'; scoreEl.textContent = '—';
+      badgeEl.classList.add('hidden'); return;
+    }
+    var sum     = scores.reduce(function(a, b) { return a + b; }, 0);
+    var avg     = sum / scores.length;
+    var rounded = Math.round(avg * 10) / 10;
+    calcEl.textContent = scores.length === 1
+      ? mistakes[0] + ' mistakes → ' + scores[0].toFixed(1)
+      : mistakes.join(' + ') + ' → ' + scores.map(function(s) { return s.toFixed(0); }).join(' + ') + ' = ' + sum + ' ÷ ' + scores.length + ' = ' + rounded.toFixed(1);
+    scoreEl.textContent = rounded.toFixed(1);
+    var g = rpGradeInfo(rounded);
+    badgeEl.textContent = g.label;
+    badgeEl.className   = 'grade-badge text-xs font-semibold px-2.5 py-1 rounded-full ' + g.cls;
+    badgeEl.classList.remove('hidden');
+  }
+
+  function addRpStudent() {
+    var card      = document.getElementById('rp-student-tpl').content.cloneNode(true).querySelector('.student-card');
+    var avatar    = card.querySelector('.avatar');
+    var nameInput = card.querySelector('.name-input');
+    nameInput.addEventListener('input', function() {
+      avatar.textContent = nameInput.value.trim() ? nameInput.value.trim()[0].toUpperCase() : '?';
+    });
+    card.querySelector('.remove-btn').addEventListener('click', function() { card.remove(); });
+    card.querySelector('.add-topic-btn').addEventListener('click', function() { addRpTopic(card); });
+    document.getElementById('rp-students-container').appendChild(card);
+    addRpTopic(card); addRpTopic(card);
+    nameInput.focus();
+  }
+
+
+  /* ══════════════════════════════════════════════════════════ */
+  /* General Score                                              */
+  /* ══════════════════════════════════════════════════════════ */
+  function generalGradeInfo(score) {
+    if (score >= 9) return { label: 'Excellent', cls: 'bg-emerald-100 text-emerald-700' };
+    if (score >= 7) return { label: 'Good',      cls: 'bg-sky-100 text-sky-700' };
+    if (score >= 6) return { label: 'Fair',      cls: 'bg-amber-100 text-amber-700' };
+    return              { label: 'Below',        cls: 'bg-red-100 text-red-600' };
+  }
+
+  function addGenTopic(card) {
+    var pill = document.getElementById('gen-topic-tpl').content.cloneNode(true).querySelector('.topic-pill');
+    var list = card.querySelector('.topics-list');
+
+    function relabel() {
+      list.querySelectorAll('.topic-label').forEach(function(el, i) { el.textContent = 'T' + (i + 1); });
+    }
+    pill.querySelector('.remove-topic-btn').addEventListener('click', function() {
+      pill.remove(); relabel(); genRecalc(card);
+    });
+    var correctInput = pill.querySelector('.correct-input');
+    var totalInput   = pill.querySelector('.total-input');
+    var scoreSpan    = pill.querySelector('.topic-score');
+    function updateScore() {
+      var c = parseFloat(correctInput.value);
+      var t = parseFloat(totalInput.value);
+      scoreSpan.textContent = (!isNaN(c) && !isNaN(t) && t > 0) ? '→ ' + ((c / t) * 10).toFixed(1) : '';
+      genRecalc(card);
+    }
+    correctInput.addEventListener('input', updateScore);
+    totalInput.addEventListener('input', updateScore);
+    list.appendChild(pill);
+    relabel();
+  }
+
+  function genRecalc(card) {
+    var scores = [], parts = [];
+    card.querySelectorAll('.topic-pill').forEach(function(pill) {
+      var c = parseFloat(pill.querySelector('.correct-input').value);
+      var t = parseFloat(pill.querySelector('.total-input').value);
+      if (!isNaN(c) && !isNaN(t) && t > 0) {
+        var s = (c / t) * 10;
+        scores.push(s);
+        parts.push(c + '/' + t + ' → ' + s.toFixed(1));
+      }
+    });
+    var calcEl  = card.querySelector('.calc-string');
+    var scoreEl = card.querySelector('.final-score');
+    var badgeEl = card.querySelector('.grade-badge');
+    if (!scores.length) {
+      calcEl.textContent = '—'; scoreEl.textContent = '—';
+      badgeEl.classList.add('hidden'); return;
+    }
+    var sum     = scores.reduce(function(a, b) { return a + b; }, 0);
+    var avg     = sum / scores.length;
+    var rounded = Math.round(avg * 10) / 10;
+    calcEl.textContent = scores.length === 1 ? parts[0] : parts.join(',  ') + '  =  avg ' + rounded.toFixed(1);
+    scoreEl.textContent = rounded.toFixed(1);
+    var g = generalGradeInfo(rounded);
+    badgeEl.textContent = g.label;
+    badgeEl.className   = 'grade-badge text-xs font-semibold px-2.5 py-1 rounded-full ' + g.cls;
+    badgeEl.classList.remove('hidden');
+  }
+
+  function addGenStudent() {
+    var card      = document.getElementById('gen-student-tpl').content.cloneNode(true).querySelector('.student-card');
+    var avatar    = card.querySelector('.avatar');
+    var nameInput = card.querySelector('.name-input');
+    nameInput.addEventListener('input', function() {
+      avatar.textContent = nameInput.value.trim() ? nameInput.value.trim()[0].toUpperCase() : '?';
+    });
+    card.querySelector('.remove-btn').addEventListener('click', function() { card.remove(); });
+    card.querySelector('.add-topic-btn').addEventListener('click', function() { addGenTopic(card); });
+    document.getElementById('gen-students-container').appendChild(card);
+    addGenTopic(card); addGenTopic(card);
+    nameInput.focus();
+  }
+
+
+  /* ══════════════════════════════════════════════════════════ */
+  /* IELTS Band                                                 */
+  /* ══════════════════════════════════════════════════════════ */
+  function correctAnswersToBand(n) {
+    var v = Math.round(n);
+    if (v >= 40) return 9.0;
+    if (v >= 39) return 8.5;
+    if (v >= 37) return 8.0;
+    if (v >= 36) return 7.5;
+    if (v >= 34) return 7.0;
+    if (v >= 32) return 6.5;
+    if (v >= 30) return 6.0;
+    if (v >= 27) return 5.5;
+    if (v >= 23) return 5.0;
+    if (v >= 19) return 4.5;
+    if (v >= 15) return 4.0;
+    if (v >= 12) return 3.5;
+    if (v >= 9)  return 3.0;
+    if (v >= 6)  return 2.5;
+    return null; // below 6
+  }
+
+  function ieltsBandInfo(band) {
+    if (band >= 8.0) return { label: 'Expert',    cls: 'bg-emerald-100 text-emerald-700' };
+    if (band >= 6.5) return { label: 'Good User', cls: 'bg-sky-100 text-sky-700' };
+    if (band >= 5.0) return { label: 'Modest',    cls: 'bg-amber-100 text-amber-700' };
+    return               { label: 'Limited',      cls: 'bg-red-100 text-red-600' };
+  }
+
+  function addIeltsSection(card) {
+    var pill = document.getElementById('ielts-section-tpl').content.cloneNode(true).querySelector('.topic-pill');
+    var list = card.querySelector('.topics-list');
+
+    function relabel() {
+      list.querySelectorAll('.topic-label').forEach(function(el, i) { el.textContent = 'S' + (i + 1); });
+    }
+    pill.querySelector('.remove-topic-btn').addEventListener('click', function() {
+      pill.remove(); relabel(); ieltsRecalc(card);
+    });
+    var input     = pill.querySelector('.topic-input');
+    var scoreSpan = pill.querySelector('.topic-score');
+    input.addEventListener('input', function() {
+      var v    = parseInt(input.value, 10);
+      var band = (!isNaN(v) && v >= 0 && v <= 40) ? correctAnswersToBand(v) : null;
+      scoreSpan.textContent = band !== null ? '→ ' + band.toFixed(1) : (input.value !== '' ? '→ ?' : '');
+      ieltsRecalc(card);
+    });
+    list.appendChild(pill);
+    relabel();
+  }
+
+  function ieltsRecalc(card) {
+    var bands = [], parts = [];
+    card.querySelectorAll('.topic-pill').forEach(function(pill) {
+      var v = parseInt(pill.querySelector('.topic-input').value, 10);
+      if (!isNaN(v) && v >= 0 && v <= 40) {
+        var band = correctAnswersToBand(v);
+        if (band !== null) { bands.push(band); parts.push(v + ' → ' + band.toFixed(1)); }
+      }
+    });
+    var calcEl  = card.querySelector('.calc-string');
+    var scoreEl = card.querySelector('.final-score');
+    var badgeEl = card.querySelector('.grade-badge');
+    if (!bands.length) {
+      calcEl.textContent = '—'; scoreEl.textContent = '—';
+      badgeEl.classList.add('hidden'); return;
+    }
+    var sum     = bands.reduce(function(a, b) { return a + b; }, 0);
+    var avg     = sum / bands.length;
+    /* IELTS official rounding: round to nearest 0.5 */
+    var rounded = Math.round(avg * 2) / 2;
+    calcEl.textContent  = bands.length === 1 ? parts[0] : parts.join(',  ') + '  =  band ' + rounded.toFixed(1);
+    scoreEl.textContent = rounded.toFixed(1);
+    var g = ieltsBandInfo(rounded);
+    badgeEl.textContent = g.label;
+    badgeEl.className   = 'grade-badge text-xs font-semibold px-2.5 py-1 rounded-full ' + g.cls;
+    badgeEl.classList.remove('hidden');
+  }
+
+  function addIeltsStudent() {
+    var card      = document.getElementById('ielts-student-tpl').content.cloneNode(true).querySelector('.student-card');
+    var avatar    = card.querySelector('.avatar');
+    var nameInput = card.querySelector('.name-input');
+    nameInput.addEventListener('input', function() {
+      avatar.textContent = nameInput.value.trim() ? nameInput.value.trim()[0].toUpperCase() : '?';
+    });
+    card.querySelector('.remove-btn').addEventListener('click', function() { card.remove(); });
+    card.querySelector('.add-topic-btn').addEventListener('click', function() { addIeltsSection(card); });
+    document.getElementById('ielts-students-container').appendChild(card);
+    addIeltsSection(card); addIeltsSection(card);
+    nameInput.focus();
+  }
+
+
+  /* ── Init ──────────────────────────────────────────────────── */
+  addRpStudent();
+  addGenStudent();
+  addIeltsStudent();
+</script>
