@@ -1,6 +1,5 @@
-<script>
-  /* ── Data ────────────────────────────────────────────────── */
-  const dailyData = <%- JSON.stringify(dailySummary.map(function (day) {
+<script type="application/json" id="daily-data-json">
+  <%- JSON.stringify(dailySummary.map(function (day) {
     return {
       dateLabel: new Date(day.date).toLocaleDateString('id-ID', {
         weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
@@ -18,7 +17,11 @@
         };
       }),
     };
-  })) %>;
+  })) %>
+</script>
+<script>
+  /* ── Data ────────────────────────────────────────────────── */
+  const dailyData = JSON.parse(document.getElementById('daily-data-json').textContent);
 
   const badgeMap = {
     'Prime Teacher (Full)':     'badge-emerald',
