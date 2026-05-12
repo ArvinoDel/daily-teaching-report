@@ -14,9 +14,9 @@ const reportSchema = new mongoose.Schema(
     },
     subject: {
       type: String,
-      required: [true, 'Mata pelajaran wajib diisi.'],
       trim: true,
       maxlength: [100, 'Mata pelajaran maksimal 100 karakter.'],
+      default: '',
     },
     class_name: {
       type: String,
@@ -51,6 +51,20 @@ const reportSchema = new mongoose.Schema(
     absent_students: {
       type: [String],
       default: [],
+    },
+    session_mode: {
+      type: String,
+      enum: ['online', 'offline'],
+      default: 'offline',
+    },
+    uses_personal_internet: {
+      type: Boolean,
+      default: false,
+    },
+    session_type: {
+      type: String,
+      enum: ['group', 'private'],
+      default: 'group',
     },
   },
   {

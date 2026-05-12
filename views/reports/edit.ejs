@@ -29,8 +29,15 @@
     </div>
     <% } %>
 
-    <form action="/reports/<%= report._id %>?_method=PUT" method="POST" class="px-8 py-7 space-y-6">
+    <form action="/reports/<%= report._id %>" method="POST" class="px-8 py-7 space-y-6"
+      id="report-form"
+      data-session-type="<%= report.session_type || 'group' %>"
+      data-session-mode="<%= report.session_mode || 'offline' %>"
+      data-uses-personal-internet="<%= report.uses_personal_internet %>">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="_method" value="PUT">
 
+      <!-- Row 1: Date & Class -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div class="space-y-1.5">
           <label for="date" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Teaching Date <span class="text-red-500">*</span></label>
@@ -44,12 +51,62 @@
         </div>
       </div>
 
+      <!-- Row 2: Session Type & Class Mode -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+
+        <!-- Session Type -->
+        <div class="space-y-2">
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Session Type</label>
+          <div class="flex gap-2">
+            <button type="button" id="btn-group"
+              class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition"
+              onclick="setSessionType('group')">Group</button>
+            <button type="button" id="btn-private"
+              class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition"
+              onclick="setSessionType('private')">Private</button>
+          </div>
+          <input type="hidden" name="session_type" id="session_type_input" value="<%= report.session_type || 'group' %>">
+        </div>
+
+        <!-- Class Mode -->
+        <div class="space-y-2">
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Class Mode</label>
+          <div class="flex gap-2">
+            <button type="button" id="btn-offline"
+              class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition"
+              onclick="setMode('offline')">Offline</button>
+            <button type="button" id="btn-online"
+              class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition"
+              onclick="setMode('online')">Online</button>
+          </div>
+          <input type="hidden" name="session_mode" id="session_mode_input" value="<%= report.session_mode || 'offline' %>">
+
+          <div id="personal-internet-wrapper" class="hidden">
+            <label class="flex items-center gap-3 cursor-pointer bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mt-1">
+              <input type="checkbox" name="uses_personal_internet" value="true" id="personal_internet_check"
+                class="w-4 h-4 rounded border-blue-300 text-blue-600 focus:ring-blue-200 flex-shrink-0"
+                <%= report.uses_personal_internet ? 'checked' : '' %>>
+              <div>
+                <p class="text-sm font-semibold text-blue-700">Personal Internet</p>
+                <p class="text-xs text-blue-400 mt-0.5">Using own data / wifi</p>
+              </div>
+            </label>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Material (optional) -->
       <div class="space-y-1.5">
-        <label for="subject" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Material <span class="text-red-500">*</span></label>
-        <input type="text" id="subject" name="subject" value="<%= report.subject %>" required
+        <label for="subject" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+          Material
+          <span class="ml-1 font-normal normal-case text-slate-400">— optional</span>
+        </label>
+        <input type="text" id="subject" name="subject" value="<%= report.subject %>"
           class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
       </div>
 
+      <!-- Teaching Type & Duration -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div class="space-y-1.5">
           <label for="teaching_type" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Type <span class="text-red-500">*</span></label>
@@ -75,50 +132,39 @@
         </div>
       </div>
 
+      <!-- Notes -->
       <div class="space-y-1.5">
         <label for="notes" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Note(s)</label>
         <textarea id="notes" name="notes" rows="4"
           class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition resize-none"><%= report.notes %></textarea>
       </div>
 
-      <!-- Divider -->
       <div class="border-t border-slate-100"></div>
 
       <!-- AC & Absent -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-
-        <!-- Achievement Card -->
         <div class="space-y-1.5">
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Achievement Card (AC)
-          </label>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Achievement Card (AC)</label>
           <p class="text-xs text-slate-400 -mt-1">Type name then press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd></p>
           <div id="ac-tag-box"
             class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition"
-            onclick="document.getElementById('ac-input').focus()">
-          </div>
+            onclick="document.getElementById('ac-input').focus()"></div>
           <input type="text" id="ac-input" placeholder="e.g: Darren" autocomplete="off"
             class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition" />
           <input type="hidden" name="ac_students" id="ac-hidden" value="<%= (report.ac_students || []).join(',') %>" />
           <p class="text-xs text-slate-400"><span id="ac-count">0</span> student(s)</p>
         </div>
-
-        <!-- Absent -->
         <div class="space-y-1.5">
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Absent
-          </label>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Absent</label>
           <p class="text-xs text-slate-400 -mt-1">Type name then press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd></p>
           <div id="absent-tag-box"
             class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition"
-            onclick="document.getElementById('absent-input').focus()">
-          </div>
+            onclick="document.getElementById('absent-input').focus()"></div>
           <input type="text" id="absent-input" placeholder="e.g: Michael" autocomplete="off"
             class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition" />
           <input type="hidden" name="absent_students" id="absent-hidden" value="<%= (report.absent_students || []).join(',') %>" />
           <p class="text-xs text-slate-400"><span id="absent-count">0</span> student(s)</p>
         </div>
-
       </div>
 
       <div class="flex items-center justify-between pt-2">
@@ -136,59 +182,89 @@
 </div>
 
 <script>
-  // ── Tag Input System ───────────────────────────────────────────
+  /* ── Session Type Toggle ─────────────────────────────────────── */
+  function setSessionType(type) {
+    document.getElementById('session_type_input').value = type;
+    var btnGroup   = document.getElementById('btn-group');
+    var btnPrivate = document.getElementById('btn-private');
+    if (type === 'group') {
+      btnGroup.className   = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-brand-500 bg-brand-50 text-brand-700';
+      btnPrivate.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+    } else {
+      btnGroup.className   = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+      btnPrivate.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-purple-400 bg-purple-50 text-purple-700';
+    }
+  }
+
+  /* ── Class Mode Toggle ───────────────────────────────────────── */
+  function setMode(mode) {
+    document.getElementById('session_mode_input').value = mode;
+    var btnOffline = document.getElementById('btn-offline');
+    var btnOnline  = document.getElementById('btn-online');
+    var piWrapper  = document.getElementById('personal-internet-wrapper');
+    if (mode === 'online') {
+      btnOnline.className  = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-blue-500 bg-blue-50 text-blue-700';
+      btnOffline.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+      piWrapper.classList.remove('hidden');
+    } else {
+      btnOffline.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-700 bg-slate-700 text-white';
+      btnOnline.className  = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+      piWrapper.classList.add('hidden');
+      document.getElementById('personal_internet_check').checked = false;
+    }
+  }
+
+  /* ── Init from existing report data (read from form data attributes) ─ */
+  var formEl = document.getElementById('report-form');
+  setSessionType(formEl.dataset.sessionType);
+  setMode(formEl.dataset.sessionMode);
+  if (formEl.dataset.usesPersonalInternet === 'true') {
+    document.getElementById('personal_internet_check').checked = true;
+  }
+
+  /* ── Tag Input System ────────────────────────────────────────── */
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
   function initTagInput({ inputId, boxId, hiddenId, countId, tagCls }) {
-    const input   = document.getElementById(inputId);
-    const box     = document.getElementById(boxId);
-    const hidden  = document.getElementById(hiddenId);
-    const countEl = document.getElementById(countId);
-
-    let tags = hidden.value ? hidden.value.split(',').map(s => s.trim()).filter(Boolean) : [];
+    var input   = document.getElementById(inputId);
+    var box     = document.getElementById(boxId);
+    var hidden  = document.getElementById(hiddenId);
+    var countEl = document.getElementById(countId);
+    var tags    = hidden.value ? hidden.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
 
     function render() {
       box.innerHTML = '';
-      tags.forEach((tag, i) => {
-        const pill = document.createElement('span');
-        pill.className = `inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${tagCls}`;
-        pill.innerHTML = `${escHtml(tag)} <button type="button" class="ml-0.5 leading-none opacity-60 hover:opacity-100 transition text-sm" data-i="${i}">×</button>`;
-        pill.querySelector('button').addEventListener('click', () => { tags.splice(i, 1); sync(); });
+      tags.forEach(function(tag, i) {
+        var pill = document.createElement('span');
+        pill.className = 'inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ' + tagCls;
+        pill.innerHTML = escHtml(tag) + ' <button type="button" class="ml-0.5 leading-none opacity-60 hover:opacity-100 transition text-sm" data-i="' + i + '">×</button>';
+        pill.querySelector('button').addEventListener('click', function() { tags.splice(i, 1); render(); });
         box.appendChild(pill);
       });
       countEl.textContent = tags.length;
       hidden.value = tags.join(',');
     }
 
-    function sync() { render(); }
-
     function tryAdd() {
-      const val = input.value.replace(/,/g, '').trim();
-      if (val && !tags.includes(val)) { tags.push(val); }
+      var val = input.value.replace(/,/g, '').trim();
+      if (val && !tags.includes(val)) tags.push(val);
       input.value = '';
-      sync();
+      render();
     }
 
-    input.addEventListener('keydown', e => {
+    input.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') { e.preventDefault(); tryAdd(); }
       else if (e.key === ',') { e.preventDefault(); tryAdd(); }
-      else if (e.key === 'Backspace' && input.value === '' && tags.length) { tags.pop(); sync(); }
+      else if (e.key === 'Backspace' && input.value === '' && tags.length) { tags.pop(); render(); }
     });
-    input.addEventListener('blur', () => { if (input.value.trim()) tryAdd(); });
-
+    input.addEventListener('blur', function() { if (input.value.trim()) tryAdd(); });
     render();
   }
 
-  initTagInput({
-    inputId: 'ac-input', boxId: 'ac-tag-box', hiddenId: 'ac-hidden', countId: 'ac-count',
-    tagCls: 'bg-emerald-100 text-emerald-700',
-  });
-  initTagInput({
-    inputId: 'absent-input', boxId: 'absent-tag-box', hiddenId: 'absent-hidden', countId: 'absent-count',
-    tagCls: 'bg-red-100 text-red-600',
-  });
+  initTagInput({ inputId: 'ac-input', boxId: 'ac-tag-box', hiddenId: 'ac-hidden', countId: 'ac-count', tagCls: 'bg-emerald-100 text-emerald-700' });
+  initTagInput({ inputId: 'absent-input', boxId: 'absent-tag-box', hiddenId: 'absent-hidden', countId: 'absent-count', tagCls: 'bg-red-100 text-red-600' });
 </script>
 
 <%- include('../partials/footer') %>

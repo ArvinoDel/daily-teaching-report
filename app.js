@@ -7,7 +7,9 @@ const session = require('express-session');
 const { MongoStore } = require('connect-mongo');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const multer = require('multer');
 
+const csrfProtection = require('./middleware/csrf');
 const reportRoutes = require('./routes/reports');
 const authRoutes = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
@@ -18,6 +20,13 @@ app.set('trust proxy', 1);
 
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/daily_teaching_report';
+
+// Enforce SESSION_SECRET — refuse to start with the insecure default
+const SESSION_SECRET = process.env.SESSION_SECRET;
+if (!SESSION_SECRET) {
+  console.error('❌ SESSION_SECRET environment variable is required. Add it to your .env file.');
+  process.exit(1);
+}
 
 mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ MongoDB connected'))
@@ -77,11 +86,18 @@ app.use(generalLimiter);
 // Body size limit to prevent DoS via large payloads
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(express.json({ limit: '10kb' }));
-app.use(methodOverride('_method'));
+// Only allow method override via POST body hidden field (not query string)
+app.use(methodOverride(function (req) {
+  if (req.body && typeof req.body === 'object' && '_method' in req.body) {
+    const method = req.body._method;
+    delete req.body._method;
+    return method;
+  }
+}));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'teaching-report-secret-key',
+  secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   store: MongoStore.create({ mongoUrl: MONGO_URI }),
@@ -93,6 +109,9 @@ app.use(session({
     sameSite: 'lax',
   }
 }));
+
+// CSRF protection — must come after session middleware
+app.use(csrfProtection);
 
 // Apply login rate limiter specifically to login route
 app.use('/auth/login', loginLimiter);
@@ -130,7 +149,15 @@ app.get('/score-calculator', requireAuth, (req, res) => res.render('score-calcul
 app.get('/', (req, res) => res.redirect('/reports'));
 
 app.use((req, res) => res.status(404).render('error', { message: 'Page not found.' }));
+
+// Multer file-upload error handler
 app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    let message = 'File upload error.';
+    if (err.code === 'LIMIT_FILE_SIZE') message = 'File too large. Maximum size is 2MB.';
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') message = 'Unexpected file field.';
+    return res.status(400).render('error', { message });
+  }
   console.error(err.stack);
   res.status(500).render('error', { message: 'Internal server error.' });
 });

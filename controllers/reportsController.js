@@ -10,15 +10,26 @@ const typeBadgeColor = {
   'Prime Teacher (Assisted)': 'purple',
 };
 
+/**
+ * Safely serialize data as JSON for embedding in an HTML <script> block.
+ * Escapes <, >, & to prevent XSS breakout from </script> or similar.
+ */
+function safeJsonForHtml(data) {
+  return JSON.stringify(data)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
+}
+
 function parseStudentList(raw) {
   if (!raw || raw.trim() === '') return [];
   return raw.split(',').map(s => s.trim()).filter(Boolean);
 }
 
-function validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students }) {
+function validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type }) {
   const errors = [];
   if (!date || isNaN(new Date(date).getTime())) errors.push('Tanggal tidak valid.');
-  if (!subject || subject.trim().length === 0) errors.push('Mata pelajaran wajib diisi.');
+  // subject is now optional
   if (subject && subject.trim().length > 100) errors.push('Mata pelajaran maksimal 100 karakter.');
   if (!class_name || class_name.trim().length === 0) errors.push('Nama kelas wajib diisi.');
   if (class_name && class_name.trim().length > 50) errors.push('Nama kelas maksimal 50 karakter.');
@@ -30,6 +41,8 @@ function validateReportInput({ date, subject, class_name, duration, teaching_typ
   if (absent_students && absent_students.some(s => s.length > 50)) errors.push('Nama siswa Absent maksimal 50 karakter.');
   if (ac_students && ac_students.length > 100) errors.push('Maksimal 100 siswa AC.');
   if (absent_students && absent_students.length > 100) errors.push('Maksimal 100 siswa Absent.');
+  if (session_mode && !['online', 'offline'].includes(session_mode)) errors.push('Mode kelas tidak valid.');
+  if (session_type && !['group', 'private'].includes(session_type)) errors.push('Tipe sesi tidak valid.');
   return errors;
 }
 
@@ -40,7 +53,7 @@ function formatIDR(n) {
 // GET / — Dashboard
 exports.index = async (req, res) => {
   try {
-    const { teaching_type } = req.query;
+    const { teaching_type, session_mode, session_type } = req.query;
 
     let selectedYear, selectedMonth;
     if (req.query.month && /^\d{4}-\d{2}$/.test(req.query.month)) {
@@ -92,10 +105,13 @@ exports.index = async (req, res) => {
       dailyMap[key].reports.push(r);
       if (dailyMap[key].counts[r.teaching_type] !== undefined) dailyMap[key].counts[r.teaching_type]++;
     }
-   const dailySummary = Object.values(dailyMap).sort((a, b) => new Date(b.date) - new Date(a.date));
+    const dailySummary = Object.values(dailyMap).sort((a, b) => new Date(b.date) - new Date(a.date));
 
+    // Build list filter with all active filters
     const listFilter = { teacher: req.session.user._id };
     if (teaching_type && TEACHING_TYPES.includes(teaching_type)) listFilter.teaching_type = teaching_type;
+    if (session_mode && ['online', 'offline'].includes(session_mode)) listFilter.session_mode = session_mode;
+    if (session_type && ['group', 'private'].includes(session_type)) listFilter.session_type = session_type;
     const reports = await Report.find(listFilter).sort({ date: -1 });
 
     // ── Commission table ─────────────────────────────────────────
@@ -125,6 +141,8 @@ exports.index = async (req, res) => {
 
     res.render('reports/index', {
       reports, teachingTypes: TEACHING_TYPES, selectedType: teaching_type || '', typeBadgeColor,
+      selectedMode: session_mode || '',
+      selectedSessionType: session_type || '',
       stats: {
         totalReports, totalHours, monthlyHours,
         monthlyReports: thisMonthReports.length,
@@ -136,6 +154,19 @@ exports.index = async (req, res) => {
       monthLabel, prevMonth, nextMonth, isCurrentMonth,
       selectedMonthStr: toMonthStr(new Date(selectedYear, selectedMonth, 1)),
       dailySummary, successMessage,
+      // Pre-serialized JSON for safe embedding in <script> tags
+      dailySummaryJson: safeJsonForHtml(dailySummary.map(day => ({
+        dateLabel: new Date(day.date).toLocaleDateString('id-ID', {
+          weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+        }),
+        reports: day.reports.map(r => ({
+          _id:              String(r._id),
+          subject:          r.subject,
+          class_name:       r.class_name,
+          teaching_type:    r.teaching_type,
+          durationFormatted: r.durationFormatted,
+        })),
+      }))),
       hasCommission, commissionTable, commissionTotal, commissionTotalFormatted, totalSessions,
     });
   } catch (err) {
@@ -150,19 +181,29 @@ exports.newForm = (req, res) => {
 
 exports.create = async (req, res) => {
   try {
-    const { date, subject, class_name, duration, teaching_type, notes } = req.body;
+    const { date, subject, class_name, duration, teaching_type, notes, session_mode, session_type } = req.body;
+    const uses_personal_internet = req.body.uses_personal_internet === 'true';
     const ac_students     = parseStudentList(req.body.ac_students);
     const absent_students = parseStudentList(req.body.absent_students);
 
-    const validationErrors = validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students });
+    const validationErrors = validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type });
     if (validationErrors.length > 0) {
       return res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: validationErrors, formData: req.body });
     }
 
     const report = new Report({
-      date, subject: subject.trim(), class_name: class_name.trim(),
-      duration: Number(duration), teaching_type, notes: (notes || '').trim(),
-      ac_students, absent_students, teacher: req.session.user._id,
+      date,
+      subject: subject ? subject.trim() : '',
+      class_name: class_name.trim(),
+      duration: Number(duration),
+      teaching_type,
+      notes: (notes || '').trim(),
+      ac_students,
+      absent_students,
+      teacher: req.session.user._id,
+      session_mode: session_mode || 'offline',
+      uses_personal_internet,
+      session_type: session_type || 'group',
     });
     await report.save();
     req.session.flash = 'Report has been created!';
@@ -195,11 +236,12 @@ exports.editForm = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
-    const { date, subject, class_name, duration, teaching_type, notes } = req.body;
+    const { date, subject, class_name, duration, teaching_type, notes, session_mode, session_type } = req.body;
+    const uses_personal_internet = req.body.uses_personal_internet === 'true';
     const ac_students     = parseStudentList(req.body.ac_students);
     const absent_students = parseStudentList(req.body.absent_students);
 
-    const validationErrors = validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students });
+    const validationErrors = validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type });
     if (validationErrors.length > 0) {
       const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
       return res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors });
@@ -207,7 +249,19 @@ exports.update = async (req, res) => {
 
     const report = await Report.findOneAndUpdate(
       { _id: req.params.id, teacher: req.session.user._id },
-      { date, subject: subject.trim(), class_name: class_name.trim(), duration: Number(duration), teaching_type, notes: (notes || '').trim(), ac_students, absent_students },
+      {
+        date,
+        subject: subject ? subject.trim() : '',
+        class_name: class_name.trim(),
+        duration: Number(duration),
+        teaching_type,
+        notes: (notes || '').trim(),
+        ac_students,
+        absent_students,
+        session_mode: session_mode || 'offline',
+        uses_personal_internet,
+        session_type: session_type || 'group',
+      },
       { new: true, runValidators: true }
     );
     if (!report) return res.render('error', { message: 'Report not found.' });

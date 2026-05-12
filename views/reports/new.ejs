@@ -22,7 +22,7 @@
         </div>
         <div>
           <h1 class="text-lg font-bold text-slate-900">Add Teaching Report</h1>
-          <p class="text-slate-400 text-xs mt-0.5">Required fill all.</p>
+          <p class="text-slate-400 text-xs mt-0.5">Required fill all fields marked with *</p>
         </div>
       </div>
     </div>
@@ -42,74 +42,111 @@
     <% } %>
 
     <!-- Form -->
-    <form action="/reports" method="POST" class="px-8 py-7 space-y-6">
+    <form action="/reports" method="POST" class="px-8 py-7 space-y-6"
+      id="report-form"
+      data-session-type="<%= formData.session_type || 'group' %>"
+      data-session-mode="<%= formData.session_mode || 'offline' %>"
+      data-uses-personal-internet="<%= formData.uses_personal_internet === 'true' %>">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
 
-      <!-- Row: Date & Class -->
+      <!-- Row 1: Date & Class -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-
-        <!-- Tanggal Mengajar -->
         <div class="space-y-1.5">
           <label for="date" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Date <span class="text-red-500">*</span>
           </label>
-          <input
-            type="date"
-            id="date"
-            name="date"
+          <input type="date" id="date" name="date"
             value="<%= formData.date || new Date().toISOString().substring(0,10) %>"
             required
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"
-          />
+            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
         </div>
-
-        <!-- Nama Kelas -->
         <div class="space-y-1.5">
           <label for="class_name" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Group's Name <span class="text-red-500">*</span>
+            Group/Private Name <span class="text-red-500">*</span>
           </label>
-          <input
-            type="text"
-            id="class_name"
-            name="class_name"
+          <input type="text" id="class_name" name="class_name"
             value="<%= formData.class_name || '' %>"
             placeholder="e.g: Darren's Group"
             required
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"
-          />
+            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
         </div>
       </div>
 
-      <!-- Mata Pelajaran -->
-      <div class="space-y-1.5">
-        <label for="subject" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
-          Material <span class="text-red-500">*</span>
-        </label>
-        <input
-          type="text"
-          id="subject"
-          name="subject"
-          value="<%= formData.subject || '' %>"
-          placeholder="e.g: Folder AA-BB"
-          required
-          class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"
-        />
-      </div>
-
-      <!-- Row: Tipe Pengajar & Durasi -->
+      <!-- Row 2: Session Type & Class Mode -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
 
-        <!-- Tipe Pengajar -->
+        <!-- Session Type (Group / Private) -->
+        <div class="space-y-2">
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Session Type</label>
+          <div class="flex gap-2">
+            <button type="button" id="btn-group"
+              class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition"
+              onclick="setSessionType('group')">
+              Group
+            </button>
+            <button type="button" id="btn-private"
+              class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition"
+              onclick="setSessionType('private')">
+              Private
+            </button>
+          </div>
+          <input type="hidden" name="session_type" id="session_type_input" value="<%= formData.session_type || 'group' %>">
+        </div>
+
+        <!-- Class Mode (Offline / Online) -->
+        <div class="space-y-2">
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Class Mode</label>
+          <div class="flex gap-2">
+            <button type="button" id="btn-offline"
+              class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition"
+              onclick="setMode('offline')">
+              Offline
+            </button>
+            <button type="button" id="btn-online"
+              class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition"
+              onclick="setMode('online')">
+              Online
+            </button>
+          </div>
+          <input type="hidden" name="session_mode" id="session_mode_input" value="<%= formData.session_mode || 'offline' %>">
+
+          <!-- Personal internet — revealed when Online -->
+          <div id="personal-internet-wrapper" class="hidden">
+            <label class="flex items-center gap-3 cursor-pointer bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mt-1">
+              <input type="checkbox" name="uses_personal_internet" value="true" id="personal_internet_check"
+                class="w-4 h-4 rounded border-blue-300 text-blue-600 focus:ring-blue-200 flex-shrink-0"
+                <%= formData.uses_personal_internet === 'true' ? 'checked' : '' %>>
+              <div>
+                <p class="text-sm font-semibold text-blue-700">Personal Internet</p>
+                <p class="text-xs text-blue-400 mt-0.5">Using own data / wifi</p>
+              </div>
+            </label>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Material (optional) -->
+      <div class="space-y-1.5">
+        <label for="subject" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+          Material
+          <span class="ml-1 font-normal normal-case text-slate-400">— optional</span>
+        </label>
+        <input type="text" id="subject" name="subject"
+          value="<%= formData.subject || '' %>"
+          placeholder="e.g: Folder AA-BB"
+          class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
+      </div>
+
+      <!-- Row: Teaching Type & Duration -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div class="space-y-1.5">
           <label for="teaching_type" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Type <span class="text-red-500">*</span>
           </label>
           <div class="relative">
-            <select
-              id="teaching_type"
-              name="teaching_type"
-              required
-              class="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition cursor-pointer pr-10"
-            >
+            <select id="teaching_type" name="teaching_type" required
+              class="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition cursor-pointer pr-10">
               <option value="" disabled <%= !formData.teaching_type ? 'selected' : '' %>>— Pilih tipe —</option>
               <% teachingTypes.forEach(type => { %>
               <option value="<%= type %>" <%= formData.teaching_type === type ? 'selected' : '' %>><%= type %></option>
@@ -121,98 +158,71 @@
               </svg>
             </div>
           </div>
-          <!-- Visual badge preview -->
           <div id="type-preview" class="hidden text-xs font-semibold px-2.5 py-1 rounded-full inline-block mt-1"></div>
         </div>
 
-        <!-- Durasi -->
         <div class="space-y-1.5">
           <label for="duration" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Duration (minute) <span class="text-red-500">*</span>
           </label>
           <div class="relative">
-            <input
-              type="number"
-              id="duration"
-              name="duration"
+            <input type="number" id="duration" name="duration"
               value="<%= formData.duration || '' %>"
               placeholder="e.g: 60"
               min="1"
               required
-              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 pr-16 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition font-mono"
-            />
+              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 pr-16 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition font-mono" />
             <span class="absolute inset-y-0 right-4 flex items-center text-xs text-slate-400 font-medium pointer-events-none">menit</span>
           </div>
           <p id="duration-hint" class="text-xs text-slate-400"></p>
         </div>
       </div>
 
-      <!-- Catatan -->
+      <!-- Notes -->
       <div class="space-y-1.5">
         <label for="notes" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
           Notes
         </label>
-        <textarea
-          id="notes"
-          name="notes"
-          rows="4"
+        <textarea id="notes" name="notes" rows="4"
           placeholder="Notes for the class or student(s)"
           class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition resize-none"
         ><%= formData.notes || '' %></textarea>
         <p class="text-xs text-slate-400 text-right"><span id="char-count">0</span>/1000 karakter</p>
       </div>
 
-      <!-- Divider -->
       <div class="border-t border-slate-100"></div>
 
       <!-- AC & Absent -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-
-        <!-- Achievement Card -->
         <div class="space-y-1.5">
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Achievement Card (AC)
-          </label>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Achievement Card (AC)</label>
           <p class="text-xs text-slate-400 -mt-1">Type name then press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd></p>
-          <!-- Tag container -->
           <div id="ac-tag-box"
             class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition"
-            onclick="document.getElementById('ac-input').focus()">
-            <!-- tags injected here by JS -->
-          </div>
+            onclick="document.getElementById('ac-input').focus()"></div>
           <input type="text" id="ac-input" placeholder="e.g: Darren" autocomplete="off"
             class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition" />
           <input type="hidden" name="ac_students" id="ac-hidden" value="<%= formData.ac_students || '' %>" />
           <p class="text-xs text-slate-400"><span id="ac-count">0</span> student(s) added</p>
         </div>
-
-        <!-- Absent -->
         <div class="space-y-1.5">
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Absent
-          </label>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Absent</label>
           <p class="text-xs text-slate-400 -mt-1">Type name then press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd></p>
-          <!-- Tag container -->
           <div id="absent-tag-box"
             class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition"
-            onclick="document.getElementById('absent-input').focus()">
-            <!-- tags injected here by JS -->
-          </div>
+            onclick="document.getElementById('absent-input').focus()"></div>
           <input type="text" id="absent-input" placeholder="e.g: Michael" autocomplete="off"
             class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition" />
           <input type="hidden" name="absent_students" id="absent-hidden" value="<%= formData.absent_students || '' %>" />
           <p class="text-xs text-slate-400"><span id="absent-count">0</span> student(s) added</p>
         </div>
-
       </div>
 
       <!-- Actions -->
       <div class="flex items-center justify-between pt-2">
         <a href="/reports" class="text-sm font-semibold text-slate-400 hover:text-slate-600 transition">Cancel</a>
-        <button
-          type="submit"
-          class="inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-700 active:scale-95 text-white font-semibold text-sm px-6 py-2.5 rounded-xl shadow transition"
-        >
+        <button type="submit"
+          class="inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-700 active:scale-95 text-white font-semibold text-sm px-6 py-2.5 rounded-xl shadow transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
           </svg>
@@ -225,14 +235,54 @@
 </div>
 
 <script>
-  // ── Duration hint ──────────────────────────────────────────────
-  const durationInput = document.getElementById('duration');
-  const durationHint  = document.getElementById('duration-hint');
+  /* ── Session Type Toggle ───────────────────────────────────── */
+  function setSessionType(type) {
+    document.getElementById('session_type_input').value = type;
+    var btnGroup   = document.getElementById('btn-group');
+    var btnPrivate = document.getElementById('btn-private');
+    if (type === 'group') {
+      btnGroup.className   = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-brand-500 bg-brand-50 text-brand-700';
+      btnPrivate.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+    } else {
+      btnGroup.className   = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+      btnPrivate.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-purple-400 bg-purple-50 text-purple-700';
+    }
+  }
+
+  /* ── Class Mode Toggle ─────────────────────────────────────── */
+  function setMode(mode) {
+    document.getElementById('session_mode_input').value = mode;
+    var btnOffline = document.getElementById('btn-offline');
+    var btnOnline  = document.getElementById('btn-online');
+    var piWrapper  = document.getElementById('personal-internet-wrapper');
+    if (mode === 'online') {
+      btnOnline.className  = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-blue-500 bg-blue-50 text-blue-700';
+      btnOffline.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+      piWrapper.classList.remove('hidden');
+    } else {
+      btnOffline.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-700 bg-slate-700 text-white';
+      btnOnline.className  = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+      piWrapper.classList.add('hidden');
+      document.getElementById('personal_internet_check').checked = false;
+    }
+  }
+
+  /* ── Init defaults (read from form data attributes) ────────── */
+  var formEl = document.getElementById('report-form');
+  setSessionType(formEl.dataset.sessionType);
+  setMode(formEl.dataset.sessionMode);
+  if (formEl.dataset.usesPersonalInternet === 'true') {
+    document.getElementById('personal_internet_check').checked = true;
+  }
+
+  /* ── Duration hint ─────────────────────────────────────────── */
+  var durationInput = document.getElementById('duration');
+  var durationHint  = document.getElementById('duration-hint');
   durationInput.addEventListener('input', function () {
-    const val = parseInt(this.value);
+    var val = parseInt(this.value);
     if (!isNaN(val) && val > 0) {
-      const h = Math.floor(val / 60), m = val % 60;
-      const parts = [];
+      var h = Math.floor(val / 60), m = val % 60;
+      var parts = [];
       if (h > 0) parts.push(h + ' hour(s)');
       if (m > 0) parts.push(m + ' minute(s)');
       durationHint.textContent = '= ' + parts.join(' ');
@@ -241,19 +291,19 @@
     }
   });
 
-  // ── Teaching type badge preview ────────────────────────────────
-  const typeSelect  = document.getElementById('teaching_type');
-  const typePreview = document.getElementById('type-preview');
-  const typeColors  = {
+  /* ── Teaching type badge preview ───────────────────────────── */
+  var typeSelect  = document.getElementById('teaching_type');
+  var typePreview = document.getElementById('type-preview');
+  var typeColors  = {
     'Prime Teacher (Full)':     'badge-emerald',
     'Prime Teacher (Assisted)': 'badge-violet',
     'Assistant Teacher':        'badge-sky',
     '1/2 Prime Teacher':        'badge-amber',
   };
   typeSelect.addEventListener('change', function () {
-    const color = typeColors[this.value];
+    var color = typeColors[this.value];
     if (color) {
-      typePreview.className = color + ' text-xs font-semibold px-2.5 py-1 rounded-full inline-block mt-1';
+      typePreview.className   = color + ' text-xs font-semibold px-2.5 py-1 rounded-full inline-block mt-1';
       typePreview.textContent = this.value;
       typePreview.classList.remove('hidden');
     } else {
@@ -261,68 +311,57 @@
     }
   });
 
-  // ── Char counter for notes ─────────────────────────────────────
-  const notes   = document.getElementById('notes');
-  const counter = document.getElementById('char-count');
+  /* ── Char counter ──────────────────────────────────────────── */
+  var notes   = document.getElementById('notes');
+  var counter = document.getElementById('char-count');
   notes.addEventListener('input', function () {
     counter.textContent = this.value.length;
     counter.classList.toggle('text-red-400', this.value.length > 900);
   });
 
-  // ── Tag Input System ───────────────────────────────────────────
+  /* ── Tag Input System ──────────────────────────────────────── */
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
   function initTagInput({ inputId, boxId, hiddenId, countId, tagCls }) {
-    const input  = document.getElementById(inputId);
-    const box    = document.getElementById(boxId);
-    const hidden = document.getElementById(hiddenId);
-    const countEl = document.getElementById(countId);
-
-    // Seed from hidden value (handles form re-render on validation error)
-    let tags = hidden.value ? hidden.value.split(',').map(s => s.trim()).filter(Boolean) : [];
+    var input   = document.getElementById(inputId);
+    var box     = document.getElementById(boxId);
+    var hidden  = document.getElementById(hiddenId);
+    var countEl = document.getElementById(countId);
+    var tags    = hidden.value ? hidden.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
 
     function render() {
       box.innerHTML = '';
-      tags.forEach((tag, i) => {
-        const pill = document.createElement('span');
-        pill.className = `inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${tagCls}`;
-        pill.innerHTML = `${escHtml(tag)} <button type="button" class="ml-0.5 leading-none opacity-60 hover:opacity-100 transition text-sm" data-i="${i}">×</button>`;
-        pill.querySelector('button').addEventListener('click', () => { tags.splice(i, 1); sync(); });
+      tags.forEach(function(tag, i) {
+        var pill = document.createElement('span');
+        pill.className = 'inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ' + tagCls;
+        pill.innerHTML = escHtml(tag) + ' <button type="button" class="ml-0.5 leading-none opacity-60 hover:opacity-100 transition text-sm" data-i="' + i + '">×</button>';
+        pill.querySelector('button').addEventListener('click', function() { tags.splice(i, 1); render(); });
         box.appendChild(pill);
       });
       countEl.textContent = tags.length;
       hidden.value = tags.join(',');
     }
 
-    function sync() { render(); }
-
     function tryAdd() {
-      const val = input.value.replace(/,/g, '').trim();
-      if (val && !tags.includes(val)) { tags.push(val); }
+      var val = input.value.replace(/,/g, '').trim();
+      if (val && !tags.includes(val)) tags.push(val);
       input.value = '';
-      sync();
+      render();
     }
 
-    input.addEventListener('keydown', e => {
+    input.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') { e.preventDefault(); tryAdd(); }
       else if (e.key === ',') { e.preventDefault(); tryAdd(); }
-      else if (e.key === 'Backspace' && input.value === '' && tags.length) { tags.pop(); sync(); }
+      else if (e.key === 'Backspace' && input.value === '' && tags.length) { tags.pop(); render(); }
     });
-    input.addEventListener('blur', () => { if (input.value.trim()) tryAdd(); });
-
+    input.addEventListener('blur', function() { if (input.value.trim()) tryAdd(); });
     render();
   }
 
-  initTagInput({
-    inputId: 'ac-input', boxId: 'ac-tag-box', hiddenId: 'ac-hidden', countId: 'ac-count',
-    tagCls: 'bg-emerald-100 text-emerald-700',
-  });
-  initTagInput({
-    inputId: 'absent-input', boxId: 'absent-tag-box', hiddenId: 'absent-hidden', countId: 'absent-count',
-    tagCls: 'bg-red-100 text-red-600',
-  });
+  initTagInput({ inputId: 'ac-input', boxId: 'ac-tag-box', hiddenId: 'ac-hidden', countId: 'ac-count', tagCls: 'bg-emerald-100 text-emerald-700' });
+  initTagInput({ inputId: 'absent-input', boxId: 'absent-tag-box', hiddenId: 'absent-hidden', countId: 'absent-count', tagCls: 'bg-red-100 text-red-600' });
 </script>
 
 <%- include('../partials/footer') %>

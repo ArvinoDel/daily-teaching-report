@@ -53,6 +53,7 @@
       <% } %>
 
       <form action="/auth/register" method="POST" class="space-y-4">
+          <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
 
         <div class="space-y-1.5">
           <label for="displayName" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Full Name</label>

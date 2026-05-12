@@ -18,11 +18,18 @@ exports.update = async (req, res) => {
   const currentYear = new Date().getFullYear();
 
   try {
-    const { username, password, password_confirm, joinMonth, joinYear } = req.body;
+    const { username, displayName, password, password_confirm, joinMonth, joinYear } = req.body;
     const user = await User.findById(req.session.user._id);
     if (!user) return res.render('error', { message: 'User not found.' });
 
     const errors = [];
+
+    // Validate displayName
+    if (!displayName || displayName.trim().length === 0) {
+      errors.push('Full name is required.');
+    } else if (displayName.trim().length > 50) {
+      errors.push('Full name max 50 characters.');
+    }
 
     // Validate username
     if (!username || username.trim().length < 3) {
@@ -79,8 +86,9 @@ exports.update = async (req, res) => {
     }
 
     // Apply updates
-    user.username  = username.toLowerCase().trim();
-    user.joinDate  = parsedJoinDate;
+    user.username    = username.toLowerCase().trim();
+    user.displayName = displayName.trim();
+    user.joinDate    = parsedJoinDate;
     user.commission = {
       primeFull:     commValues.primeFull     ?? user.commission?.primeFull     ?? 0,
       primeAssisted: commValues.primeAssisted ?? user.commission?.primeAssisted ?? 0,
@@ -102,8 +110,10 @@ exports.update = async (req, res) => {
 
     await user.save();
 
-    // Update session
+    // Refresh full session data
     req.session.user.username       = user.username;
+    req.session.user.displayName    = user.displayName;
+    req.session.user.role           = user.role;
     req.session.user.profilePicture = user.profilePicture;
 
     return res.render('profile/edit', { user, errors: [], success: 'Profile updated successfully!', currentYear });

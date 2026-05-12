@@ -1,21 +1,7 @@
 <script>
   /* ── Data ────────────────────────────────────────────────── */
-  const dailyData = <%- JSON.stringify(dailySummary.map(function (day) {
-    return {
-      dateLabel: new Date(day.date).toLocaleDateString('id-ID', {
-        weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
-      }),
-      reports: day.reports.map(function (r) {
-        return {
-          _id:              String(r._id),
-          subject:          r.subject,
-          class_name:       r.class_name,
-          teaching_type:    r.teaching_type,
-          durationFormatted: r.durationFormatted,
-        };
-      }),
-    };
-  })) %>;
+  // Pre-serialized in the controller with XSS-safe escaping
+  const dailyData = <%- dailySummaryJson %>;
 
   const badgeMap = {
     'Prime Teacher (Full)':     'badge-emerald',
@@ -105,7 +91,10 @@
     try {
       var res = await fetch(deleteTargetUrl, {
         method: 'DELETE',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRF-Token': '<%= csrfToken %>',
+        },
       });
       if (res.ok || res.redirected) {
         /* BUG FIX: reload in-place so the current month filter is preserved */
