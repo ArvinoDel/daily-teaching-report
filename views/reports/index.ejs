@@ -3,11 +3,12 @@
 <%- include('../partials/dashboard/_toast',         { successMessage }) %>
 <%- include('../partials/dashboard/_page-header') %>
 <%- include('../partials/dashboard/_stats-alltime', { stats }) %>
-<%- include('../partials/dashboard/_month-nav',     { prevMonth, nextMonth, selectedType, monthLabel, isCurrentMonth }) %>
+<%- include('../partials/dashboard/_month-nav',     { prevMonth, nextMonth, selectedType, selectedMode, selectedSessionType, monthLabel, isCurrentMonth }) %>
+<%- include('../partials/dashboard/_filters',       { teachingTypes, selectedType, selectedMode, selectedSessionType, selectedMonthStr }) %>
 <%- include('../partials/dashboard/_type-breakdown',{ stats }) %>
 <%- include('../partials/dashboard/_commission',    { hasCommission, commissionTable, monthLabel, totalSessions, commissionTotalFormatted }) %>
 <%- include('../partials/dashboard/_daily-summary', { dailySummary, monthLabel }) %>
 <%- include('../partials/dashboard/_delete-modal') %>
-<%- include('../partials/dashboard/_scripts',       { dailySummaryJson }) %>
+<%- include('../partials/dashboard/_scripts',       { dailySummary }) %>
 
 <%- include('../partials/footer') %>

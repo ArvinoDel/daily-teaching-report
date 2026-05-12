@@ -1,0 +1,62 @@
+<%
+  function filterUrl(overrides) {
+    var p = Object.assign({}, {
+      month:        selectedMonthStr,
+      teaching_type: selectedType,
+      session_mode:  selectedMode,
+      session_type:  selectedSessionType,
+    }, overrides);
+    var parts = [];
+    if (p.month)         parts.push('month='         + encodeURIComponent(p.month));
+    if (p.teaching_type) parts.push('teaching_type=' + encodeURIComponent(p.teaching_type));
+    if (p.session_mode)  parts.push('session_mode='  + encodeURIComponent(p.session_mode));
+    if (p.session_type)  parts.push('session_type='  + encodeURIComponent(p.session_type));
+    return '/reports?' + parts.join('&');
+  }
+
+  var activeBase = 'px-3 py-1.5 rounded-full text-xs font-semibold transition whitespace-nowrap';
+  var inactiveBase = activeBase + ' bg-slate-100 text-slate-500 hover:bg-slate-200';
+%>
+
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm px-4 sm:px-5 py-3.5 mb-5 flex flex-wrap items-center gap-x-4 gap-y-2.5">
+
+  <!-- Teaching Type -->
+  <div class="flex items-center gap-1.5 flex-wrap">
+    <span class="text-xs font-bold text-slate-300 uppercase tracking-wider mr-0.5">Type</span>
+    <a href="<%= filterUrl({ teaching_type: '' }) %>"
+      class="<%= !selectedType ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">All</a>
+    <% teachingTypes.forEach(function(type) { %>
+      <a href="<%= filterUrl({ teaching_type: type }) %>"
+        class="<%= selectedType === type ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">
+        <%= type %>
+      </a>
+    <% }); %>
+  </div>
+
+  <span class="self-stretch w-px bg-slate-100 hidden sm:block"></span>
+
+  <!-- Mode: Online / Offline -->
+  <div class="flex items-center gap-1.5">
+    <span class="text-xs font-bold text-slate-300 uppercase tracking-wider mr-0.5">Mode</span>
+    <a href="<%= filterUrl({ session_mode: '' }) %>"
+      class="<%= !selectedMode ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">All</a>
+    <a href="<%= filterUrl({ session_mode: 'online' }) %>"
+      class="<%= selectedMode === 'online' ? activeBase + ' bg-blue-600 text-white' : inactiveBase %>">Online</a>
+    <a href="<%= filterUrl({ session_mode: 'offline' }) %>"
+      class="<%= selectedMode === 'offline' ? activeBase + ' bg-slate-600 text-white' : inactiveBase %>">Offline</a>
+  </div>
+
+  <span class="self-stretch w-px bg-slate-100 hidden sm:block"></span>
+
+  <!-- Session: Group / Private -->
+  <div class="flex items-center gap-1.5">
+    <span class="text-xs font-bold text-slate-300 uppercase tracking-wider mr-0.5">Session</span>
+    <a href="<%= filterUrl({ session_type: '' }) %>"
+      class="<%= !selectedSessionType ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">All</a>
+    <a href="<%= filterUrl({ session_type: 'group' }) %>"
+      class="<%= selectedSessionType === 'group' ? activeBase + ' bg-brand-600 text-white' : inactiveBase %>">Group</a>
+    <a href="<%= filterUrl({ session_type: 'private' }) %>"
+      class="<%= selectedSessionType === 'private' ? activeBase + ' bg-purple-600 text-white' : inactiveBase %>">Private</a>
+  </div>
+
+</div>

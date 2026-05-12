@@ -1,12 +1,15 @@
 <%
-  const typeQuery = selectedType ? '&teaching_type=' + encodeURIComponent(selectedType) : '';
+  var typeQuery  = selectedType        ? '&teaching_type=' + encodeURIComponent(selectedType)        : '';
+  var modeQuery  = selectedMode        ? '&session_mode='  + encodeURIComponent(selectedMode)        : '';
+  var stypeQuery = selectedSessionType ? '&session_type='  + encodeURIComponent(selectedSessionType) : '';
+  var filterQuery = typeQuery + modeQuery + stypeQuery;
 %>
 <div class="flex items-center justify-between mb-4">
   <h2 class="text-base font-bold text-slate-800">Monthly Overview</h2>
   <div class="flex items-center gap-2">
 
     <!-- Prev -->
-    <a href="/reports?month=<%= prevMonth %><%= typeQuery %>"
+    <a href="/reports?month=<%= prevMonth %><%= filterQuery %>"
       class="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition shadow-sm">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
@@ -17,7 +20,7 @@
 
     <!-- Next (disabled when current month) -->
     <% if (!isCurrentMonth) { %>
-      <a href="/reports?month=<%= nextMonth %><%= typeQuery %>"
+      <a href="/reports?month=<%= nextMonth %><%= filterQuery %>"
         class="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition shadow-sm">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
