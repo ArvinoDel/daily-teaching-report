@@ -43,7 +43,8 @@ app.use(helmet({
           "'unsafe-inline'",
           "'unsafe-eval'",
           "https://cdn.tailwindcss.com",
-          "https://*.tailwindcss.com"
+          "https://*.tailwindcss.com",
+          "https://cdn.jsdelivr.net"
         ],
         scriptSrcAttr: ["'unsafe-inline'"],
         styleSrc: [
@@ -51,7 +52,8 @@ app.use(helmet({
           "'unsafe-inline'",
           "https://cdn.tailwindcss.com",
           "https://*.tailwindcss.com",
-          "https://fonts.googleapis.com"
+          "https://fonts.googleapis.com",
+          "https://cdn.jsdelivr.net"
         ],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],

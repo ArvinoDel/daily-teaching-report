@@ -37,6 +37,11 @@
       .replace(/'/g, '&#39;');
   }
 
+  function getCsrfToken() {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+  }
+
   /* ── Daily detail view ───────────────────────────────────── */
   function showDayDetail(idx) {
     var day = dailyData[idx];
@@ -103,48 +108,82 @@
     document.getElementById('daily-detail-view').classList.add('hidden');
   }
 
-  /* ── Delete modal ────────────────────────────────────────── */
-  var deleteTargetUrl = null;
-
+  /* ── SweetAlert2 Delete (Dashboard detail view) ─────────── */
   document.getElementById('detail-tbody').addEventListener('click', function (e) {
     var btn = e.target.closest('.js-open-delete');
-    if (btn) openDeleteModal(btn.dataset.deleteUrl);
-  });
+    if (!btn) return;
 
-  function openDeleteModal(url) {
-    deleteTargetUrl = url;
-    document.getElementById('delete-modal').classList.remove('hidden');
-  }
+    var deleteUrl = btn.dataset.deleteUrl;
+    if (!deleteUrl) return;
 
-  function closeDeleteModal() {
-    deleteTargetUrl = null;
-    document.getElementById('delete-modal').classList.add('hidden');
-  }
+    Swal.fire({
+      title: 'Delete this report?',
+      text: 'This action cannot be undone.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'Yes, delete it!',
+      cancelButtonText: 'Cancel',
+      reverseButtons: true,
+      focusCancel: true,
+      customClass: {
+        popup: 'rounded-2xl',
+        confirmButton: 'rounded-xl',
+        cancelButton: 'rounded-xl',
+      },
+    }).then(function (result) {
+      if (!result.isConfirmed) return;
 
-  document.getElementById('confirm-delete-btn').addEventListener('click', async function () {
-    if (!deleteTargetUrl) return;
-    this.disabled    = true;
-    this.textContent = 'Deleting…';
-    try {
-      var res = await fetch(deleteTargetUrl, {
-        method: 'DELETE',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      /* Show loading state */
+      Swal.fire({
+        title: 'Deleting…',
+        text: 'Please wait.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: function () { Swal.showLoading(); },
       });
-      if (res.ok || res.redirected) {
-        window.location.reload();
-      } else {
-        alert('Failed to delete. Please try again.');
-        this.disabled    = false;
-        this.textContent = 'Delete';
-      }
-    } catch (_) {
-      alert('Network error. Please try again.');
-      this.disabled    = false;
-      this.textContent = 'Delete';
-    }
-  });
 
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') closeDeleteModal();
+      fetch(deleteUrl, {
+        method: 'DELETE',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'x-csrf-token': getCsrfToken(),
+        },
+      })
+        .then(function (res) {
+          if (res.ok || res.redirected) {
+            Swal.fire({
+              title: 'Deleted!',
+              text: 'The report has been removed.',
+              icon: 'success',
+              confirmButtonColor: '#16a34a',
+              customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+              timer: 1500,
+              showConfirmButton: false,
+            }).then(function () {
+              window.location.reload();
+            });
+          } else {
+            Swal.fire({
+              title: 'Error',
+              text: 'Failed to delete. Please try again.',
+              icon: 'error',
+              confirmButtonColor: '#ef4444',
+              customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+            });
+          }
+        })
+        .catch(function () {
+          Swal.fire({
+            title: 'Network Error',
+            text: 'Could not reach the server. Please try again.',
+            icon: 'error',
+            confirmButtonColor: '#ef4444',
+            customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+          });
+        });
+    });
   });
 </script>
