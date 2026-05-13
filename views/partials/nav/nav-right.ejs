@@ -34,7 +34,7 @@
 
       <!-- Dropdown Panel -->
       <div id="profile-dropdown"
-        class="hidden absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50">
+        class="hidden absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50">
 
         <!-- User info -->
         <div class="px-4 py-4 border-b border-slate-100 flex items-center gap-3">
@@ -52,13 +52,13 @@
           <div class="min-w-0">
             <p class="text-sm font-bold text-slate-800 truncate"><%= currentUser.displayName %></p>
             <p class="text-xs text-slate-400 truncate">@<%= currentUser.username %></p>
-            <div class="flex items-center gap-2 mt-1">
+            <div class="flex items-center gap-3 mt-1">
               <span class="text-xs <%= _isOnline ? 'text-emerald-500' : 'text-slate-400' %> font-medium">
                 <%= _isOnline ? '● Online' : '○ Offline' %>
               </span>
               <% if (_expStr) { %>
                 <span class="text-slate-200 text-xs">·</span>
-                <span class="text-xs text-slate-400"><%= _expStr %></span>
+                <span class="max-w-24 text-xs text-slate-400"><%= _expStr %></span>
               <% } %>
             </div>
           </div>

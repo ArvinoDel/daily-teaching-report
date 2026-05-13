@@ -134,7 +134,7 @@
               );
               const expYrs = Math.floor(totalMos / 12);
               const expMos = totalMos % 12;
-              let expStr = expYrs > 0 ? (expMos > 0 ? `${expYrs}yr ${expMos}mo` : `${expYrs}yr`) : (expMos > 0 ? `${expMos}mo` : '< 1 mo');
+              let expStr = expYrs > 0 ? (expMos > 0 ? `${expYrs} year(s) and ${expMos} month(s)` : `${expYrs} year(s)`) : (expMos > 0 ? `${expMos} month(s)` : '< 1 month');
             %>
             <p class="text-xs text-brand-600 font-semibold mt-1">Experience: <%= expStr %></p>
           <% } %>

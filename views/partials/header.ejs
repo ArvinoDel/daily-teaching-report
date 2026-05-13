@@ -14,10 +14,10 @@
     );
     const _yrs = Math.floor(_totalMos / 12);
     const _mos = _totalMos % 12;
-    if      (_totalMos === 0) _expStr = '< 1 mo';
-    else if (_yrs === 0)      _expStr = _mos + 'mo';
-    else if (_mos === 0)      _expStr = _yrs + 'yr';
-    else                      _expStr = _yrs + 'yr ' + _mos + 'mo';
+    if      (_totalMos === 0) _expStr = '< 1 month';
+    else if (_yrs === 0)      _expStr = _mos + ' month(s)';
+    else if (_mos === 0)      _expStr = _yrs + ' year(s)';
+    else                      _expStr = _yrs + ' year(s) and ' + _mos + ' month(s)';
   }
 
   /* BUG FIX: isOnline dihitung satu kali saja, bukan dua kali terpisah */
