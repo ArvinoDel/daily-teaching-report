@@ -209,7 +209,7 @@ exports.create = async (req, res) => {
     req.session.flash = 'Report has been created!';
     res.redirect('/reports');
   } catch (err) {
-    const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['Terjadi kesalahan. Silakan coba lagi.'];
+    const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['Something is wrong. Try again later.'];
     res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors, formData: req.body });
   }
 };
@@ -268,7 +268,7 @@ exports.update = async (req, res) => {
     req.session.flash = 'Report has been updated!';
     res.redirect('/reports');
   } catch (err) {
-    const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['Terjadi kesalahan saat memperbarui.'];
+    const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['Something is wrong to update.'];
     const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
     res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors });
   }
