@@ -1,97 +1,113 @@
-<%
-  function mobileNavClass(pageTitle) {
-    return typeof title !== 'undefined' && title === pageTitle
-      ? 'bg-brand-50 text-brand-700'
-      : 'text-slate-600 hover:bg-slate-100';
-  }
-%>
-<div id="mobile-menu"
-  class="hidden sm:hidden border-t border-slate-100 bg-white/95 backdrop-blur-md px-4 py-3 space-y-1">
+<% function mobileNavClass(pageTitle) { return typeof title !=='undefined' && title===pageTitle
+  ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100' ; } const isAdminPage=typeof title !=='undefined'
+  && title.startsWith('Admin'); %>
+  <div id="mobile-menu"
+    class="hidden sm:hidden border-t border-slate-100 bg-white/95 backdrop-blur-md px-4 py-3 space-y-1">
 
-  <!-- User info strip -->
-  <% if (typeof currentUser !== 'undefined' && currentUser) { %>
-    <div class="flex items-center gap-2.5 px-3 py-2.5 mb-2 bg-slate-50 rounded-xl">
+    <!-- User info strip -->
+    <% if (typeof currentUser !=='undefined' && currentUser) { %>
+      <div class="flex items-center gap-2.5 px-3 py-2.5 mb-2 bg-slate-50 rounded-xl">
 
-      <!-- Avatar + online dot -->
-      <div class="relative flex-shrink-0">
-        <% if (currentUser.profilePicture) { %>
-          <img src="<%= currentUser.profilePicture %>" alt="Avatar"
-            class="w-9 h-9 rounded-full object-cover border border-slate-200">
-        <% } else { %>
-          <div class="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 text-sm font-bold">
-            <%= currentUser.displayName[0].toUpperCase() %>
-          </div>
-        <% } %>
-        <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-50 <%= _isOnline ? 'bg-emerald-400' : 'bg-slate-300' %>"></span>
-      </div>
-
-      <!-- Name, username, online status + exp -->
-      <div class="min-w-0">
-        <p class="text-xs font-bold text-slate-800 truncate"><%= currentUser.displayName %></p>
-        <p class="text-xs text-slate-400 truncate">@<%= currentUser.username %></p>
-        <div class="flex items-center gap-1.5 mt-0.5">
-          <span class="text-xs <%= _isOnline ? 'text-emerald-500' : 'text-slate-400' %> font-medium">
-            <%= _isOnline ? '● Online' : '○ Offline' %>
-          </span>
-          <% if (_expStr) { %>
-            <span class="text-slate-300 text-xs">·</span>
-            <span class="text-xs text-slate-400"><%= _expStr %></span>
-          <% } %>
+        <!-- Avatar + online dot -->
+        <div class="relative flex-shrink-0">
+          <% if (currentUser.profilePicture) { %>
+            <img src="<%= currentUser.profilePicture %>" alt="Avatar"
+              class="w-9 h-9 rounded-full object-cover border border-slate-200">
+            <% } else { %>
+              <div
+                class="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 text-sm font-bold">
+                <%= currentUser.displayName[0].toUpperCase() %>
+              </div>
+              <% } %>
+                <span
+                  class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-50 <%= _isOnline ? 'bg-emerald-400' : 'bg-slate-300' %>"></span>
         </div>
+
+        <!-- Name, username, online status + exp -->
+        <div class="min-w-0">
+          <p class="text-xs font-bold text-slate-800 truncate">
+            <%= currentUser.displayName %>
+          </p>
+          <p class="text-xs text-slate-400 truncate">@<%= currentUser.username %>
+          </p>
+          <div class="flex items-center gap-1.5 mt-0.5">
+            <span class="text-xs <%= _isOnline ? 'text-emerald-500' : 'text-slate-400' %> font-medium">
+              <%= _isOnline ? '● Online' : '○ Offline' %>
+            </span>
+            <% if (_expStr) { %>
+              <span class="text-slate-300 text-xs">·</span>
+              <span class="text-xs text-slate-400">
+                <%= _expStr %>
+              </span>
+              <% } %>
+          </div>
+        </div>
+
       </div>
+      <% } %>
 
-    </div>
-  <% } %>
+        <!-- Admin link (admins only) -->
+        <% if (typeof currentUser !=='undefined' && currentUser && currentUser.role==='admin' ) { %>
+          <a href="/admin" onclick="toggleMenu()"
+            class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= isAdminPage ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-100' %>">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+              stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
+            </svg>
+            Admin Panel
+          </a>
+          <% } %>
 
-  <!-- Nav links -->
-  <a href="/reports" onclick="toggleMenu()"
-    class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= mobileNavClass('Dashboard') %>">
-    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-      <path stroke-linecap="round" stroke-linejoin="round"
-        d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
-    </svg>
-    Dashboard
-  </a>
+            <!-- Nav links -->
+            <% if (typeof currentUser !=='undefined' && currentUser && currentUser.role==='teacher' ) { %>
+              <a href="/reports" onclick="toggleMenu()"
+                class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= mobileNavClass('Dashboard') %>">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                  stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
+                </svg>
+                Dashboard
+              </a>
+              <% } %>
 
-  <a href="/score-calculator" onclick="toggleMenu()"
-    class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= mobileNavClass('Calculator') %>">
-    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-      <path stroke-linecap="round" stroke-linejoin="round"
-        d="M15.75 15.75V18m-7.5-6.75h.008v.008H8.25v-.008Zm0 2.25h.008v.008H8.25V13.5Zm0 2.25h.008v.008H8.25v-.008Zm2.498-2.25h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V13.5Zm0 2.25h.008v.008h-.008v-.008Zm2.504-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V13.5Zm0 2.25h.008v.008h-.008v-.008Zm.75-5.25h.008v.008h-.008v-.008Zm-7.5 0h.008v.008H8.25v-.008ZM12 6v.008M3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Z" />
-    </svg>
-    Calculator
-  </a>
 
-  <!-- <a href="/reports/new" onclick="toggleMenu()"
-    class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 transition">
-    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-    </svg>
-    Add Report
-  </a> -->
+                <a href="/score-calculator" onclick="toggleMenu()"
+                  class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= mobileNavClass('Calculator') %>">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                    stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M15.75 15.75V18m-7.5-6.75h.008v.008H8.25v-.008Zm0 2.25h.008v.008H8.25V13.5Zm0 2.25h.008v.008H8.25v-.008Zm2.498-2.25h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V13.5Zm0 2.25h.008v.008h-.008v-.008Zm2.504-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V13.5Zm0 2.25h.008v.008h-.008v-.008Zm.75-5.25h.008v.008h-.008v-.008Zm-7.5 0h.008v.008H8.25v-.008ZM12 6v.008M3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Z" />
+                  </svg>
+                  Calculator
+                </a>
 
-  <!-- Profile actions -->
-  <% if (typeof currentUser !== 'undefined' && currentUser) { %>
-    <div class="pt-2 border-t border-slate-100 mt-2">
-      <a href="/profile/edit" onclick="toggleMenu()"
-        class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 transition">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
-        </svg>
-        Edit Profile
-      </a>
-      <form action="/auth/logout" method="POST">
-        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-        <button type="submit"
-          class="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 transition">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round"
-              d="M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h6a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 16.5 21h-6a2.25 2.25 0 0 1-2.25-2.25V15m-3 0-3-3m0 0 3-3m-3 3H15" />
-          </svg>
-          Sign Out
-        </button>
-      </form>
-    </div>
-  <% } %>
+                <!-- Profile actions -->
+                <% if (typeof currentUser !=='undefined' && currentUser) { %>
+                  <div class="pt-2 border-t border-slate-100 mt-2">
+                    <a href="/profile/edit" onclick="toggleMenu()"
+                      class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 transition">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                          d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                      </svg>
+                      Edit Profile
+                    </a>
+                    <form action="/auth/logout" method="POST">
+                      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                      <button type="submit"
+                        class="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
+                          stroke="currentColor" stroke-width="2">
+                          <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h6a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 16.5 21h-6a2.25 2.25 0 0 1-2.25-2.25V15m-3 0-3-3m0 0 3-3m-3 3H15" />
+                        </svg>
+                        Sign Out
+                      </button>
+                    </form>
+                  </div>
+                  <% } %>
 
-</div>
+  </div>

@@ -10,9 +10,10 @@ const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 
 const csrfProtection = require('./middleware/csrf');
-const reportRoutes = require('./routes/reports');
-const authRoutes = require('./routes/auth');
+const reportRoutes  = require('./routes/reports');
+const authRoutes    = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
+const adminRoutes   = require('./routes/admin');
 const { requireAuth } = require('./middleware/auth');
 
 const app = express();
@@ -144,9 +145,10 @@ app.use(async (req, res, next) => {
   next();
 });
 
-app.use('/auth', authRoutes);
+app.use('/auth',    authRoutes);
 app.use('/reports', requireAuth, reportRoutes);
 app.use('/profile', requireAuth, profileRoutes);
+app.use('/admin',   adminRoutes);
 app.get('/score-calculator', requireAuth, (req, res) => res.render('score-calculator'));
 app.get('/', (req, res) => res.redirect('/reports'));
 

@@ -1,0 +1,229 @@
+<%- include('../../partials/header', { title: 'Admin — Reports' }) %>
+
+<%
+  function filterUrl(overrides) {
+    var p = Object.assign({}, {
+      month:        selectedMonthStr,
+      teacher_id:   selectedTeacher,
+      teaching_type: selectedType,
+      session_mode:  selectedMode,
+      session_type:  selectedSessionType,
+    }, overrides);
+    var parts = [];
+    if (p.month)         parts.push('month='         + encodeURIComponent(p.month));
+    if (p.teacher_id)    parts.push('teacher_id='    + encodeURIComponent(p.teacher_id));
+    if (p.teaching_type) parts.push('teaching_type=' + encodeURIComponent(p.teaching_type));
+    if (p.session_mode)  parts.push('session_mode='  + encodeURIComponent(p.session_mode));
+    if (p.session_type)  parts.push('session_type='  + encodeURIComponent(p.session_type));
+    return '/admin/reports?' + parts.join('&');
+  }
+  var activeBase   = 'px-3 py-1.5 rounded-full text-xs font-semibold transition whitespace-nowrap';
+  var inactiveBase = activeBase + ' bg-slate-100 text-slate-500 hover:bg-slate-200';
+%>
+
+<!-- Header -->
+<div class="mb-6 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <a href="/admin" class="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+      </svg>
+    </a>
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">All Reports</h1>
+      <p class="text-slate-500 text-sm mt-0.5"><%= reports.length %> report(s) — <%= monthLabel %></p>
+    </div>
+  </div>
+</div>
+
+<!-- Month Nav -->
+<div class="flex items-center justify-between mb-4">
+  <div class="flex items-center gap-2">
+    <a href="<%= filterUrl({ month: prevMonth }) %>"
+      class="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 transition shadow-sm">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
+    </a>
+    <span class="text-sm font-semibold text-slate-700 min-w-[130px] text-center"><%= monthLabel %></span>
+    <% if (!isCurrentMonth) { %>
+      <a href="<%= filterUrl({ month: nextMonth }) %>"
+        class="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 transition shadow-sm">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+      </a>
+    <% } else { %>
+      <span class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 border border-slate-100 text-slate-300 cursor-not-allowed">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+      </span>
+    <% } %>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm px-4 sm:px-5 py-3.5 mb-5 flex flex-wrap items-center gap-x-4 gap-y-2.5">
+
+  <!-- Teacher -->
+  <div class="flex items-center gap-1.5 flex-wrap">
+    <span class="text-xs font-bold text-slate-300 uppercase tracking-wider mr-0.5">Teacher</span>
+    <a href="<%= filterUrl({ teacher_id: '' }) %>"
+      class="<%= !selectedTeacher ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">All</a>
+    <% teachers.forEach(function(t) { %>
+      <a href="<%= filterUrl({ teacher_id: String(t._id) }) %>"
+        class="<%= selectedTeacher === String(t._id) ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">
+        <%= t.displayName %>
+      </a>
+    <% }); %>
+  </div>
+
+  <span class="self-stretch w-px bg-slate-100 hidden sm:block"></span>
+
+  <!-- Type -->
+  <div class="flex items-center gap-1.5 flex-wrap">
+    <span class="text-xs font-bold text-slate-300 uppercase tracking-wider mr-0.5">Type</span>
+    <a href="<%= filterUrl({ teaching_type: '' }) %>"
+      class="<%= !selectedType ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">All</a>
+    <% teachingTypes.forEach(function(type) { %>
+      <a href="<%= filterUrl({ teaching_type: type }) %>"
+        class="<%= selectedType === type ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>"><%= type %></a>
+    <% }); %>
+  </div>
+
+  <span class="self-stretch w-px bg-slate-100 hidden sm:block"></span>
+
+  <!-- Mode -->
+  <div class="flex items-center gap-1.5">
+    <span class="text-xs font-bold text-slate-300 uppercase tracking-wider mr-0.5">Mode</span>
+    <a href="<%= filterUrl({ session_mode: '' }) %>"
+      class="<%= !selectedMode ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">All</a>
+    <a href="<%= filterUrl({ session_mode: 'online' }) %>"
+      class="<%= selectedMode === 'online' ? activeBase + ' bg-blue-600 text-white' : inactiveBase %>">Online</a>
+    <a href="<%= filterUrl({ session_mode: 'offline' }) %>"
+      class="<%= selectedMode === 'offline' ? activeBase + ' bg-slate-600 text-white' : inactiveBase %>">Offline</a>
+  </div>
+
+  <span class="self-stretch w-px bg-slate-100 hidden sm:block"></span>
+
+  <!-- Session -->
+  <div class="flex items-center gap-1.5">
+    <span class="text-xs font-bold text-slate-300 uppercase tracking-wider mr-0.5">Session</span>
+    <a href="<%= filterUrl({ session_type: '' }) %>"
+      class="<%= !selectedSessionType ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">All</a>
+    <a href="<%= filterUrl({ session_type: 'group' }) %>"
+      class="<%= selectedSessionType === 'group' ? activeBase + ' bg-brand-600 text-white' : inactiveBase %>">Group</a>
+    <a href="<%= filterUrl({ session_type: 'private' }) %>"
+      class="<%= selectedSessionType === 'private' ? activeBase + ' bg-purple-600 text-white' : inactiveBase %>">Private</a>
+  </div>
+
+</div>
+
+<!-- Table -->
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+  <% if (!reports.length) { %>
+    <div class="py-16 text-center">
+      <p class="text-slate-400 text-sm font-medium">No reports found for <%= monthLabel %>.</p>
+    </div>
+  <% } else { %>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs font-semibold text-slate-400 uppercase tracking-wider bg-slate-50">
+            <th class="px-5 py-3.5 text-left">Teacher</th>
+            <th class="px-5 py-3.5 text-left">Class</th>
+            <th class="px-5 py-3.5 text-left hidden sm:table-cell">Type</th>
+            <th class="px-5 py-3.5 text-left hidden md:table-cell">Date</th>
+            <th class="px-5 py-3.5 text-left hidden lg:table-cell">Duration</th>
+            <th class="px-5 py-3.5 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-50">
+          <% reports.forEach(function(r) { %>
+            <tr class="hover:bg-slate-50 transition group <%= r.session_mode === 'online' ? 'bg-blue-50/30' : '' %>">
+              <td class="px-5 py-3.5 font-semibold text-slate-800 whitespace-nowrap">
+                <%= r.teacher ? r.teacher.displayName : '—' %>
+              </td>
+              <td class="px-5 py-3.5 text-slate-600">
+                <span class="inline-flex items-center gap-1">
+                  <%= r.class_name %>
+                  <% if (r.session_mode === 'online') { %>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z" /></svg>
+                  <% } %>
+                  <% if (r.session_type === 'private') { %>
+                    <span class="text-xs font-bold text-purple-400">Private</span>
+                  <% } %>
+                </span>
+              </td>
+              <td class="px-5 py-3.5 hidden sm:table-cell">
+                <span class="badge-<%= typeBadgeColor[r.teaching_type] || 'slate' %> text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap">
+                  <%= r.teaching_type %>
+                </span>
+              </td>
+              <td class="px-5 py-3.5 font-mono text-xs text-slate-400 hidden md:table-cell whitespace-nowrap">
+                <%= r.date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) %>
+              </td>
+              <td class="px-5 py-3.5 font-mono text-xs text-slate-500 hidden lg:table-cell whitespace-nowrap">
+                <%= r.durationFormatted %>
+              </td>
+              <td class="px-5 py-3.5">
+                <div class="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition">
+                  <a href="/admin/reports/<%= r._id %>/edit"
+                    class="p-1.5 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-50 transition" title="Edit">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                  </a>
+                  <button
+                    data-delete-url="/admin/reports/<%= r._id %>"
+                    class="js-delete-report p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition" title="Delete">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<script>
+  function getCsrfToken() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.getAttribute('content') : '';
+  }
+
+  document.querySelectorAll('.js-delete-report').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var url = btn.dataset.deleteUrl;
+      Swal.fire({
+        title: 'Delete this report?',
+        text: 'This action cannot be undone.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444', cancelButtonColor: '#64748b',
+        confirmButtonText: 'Yes, delete it!', cancelButtonText: 'Cancel',
+        reverseButtons: true, focusCancel: true,
+        customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl', cancelButton: 'rounded-xl' },
+      }).then(function(result) {
+        if (!result.isConfirmed) return;
+        Swal.fire({ title: 'Deleting…', allowOutsideClick: false, allowEscapeKey: false,
+          showConfirmButton: false, didOpen: function() { Swal.showLoading(); } });
+        fetch(url, {
+          method: 'DELETE',
+          headers: { 'X-Requested-With': 'XMLHttpRequest', 'x-csrf-token': getCsrfToken() },
+        }).then(function(res) {
+          if (res.ok) {
+            Swal.fire({ title: 'Deleted!', icon: 'success', confirmButtonColor: '#16a34a',
+              customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+              timer: 1500, showConfirmButton: false,
+            }).then(function() { window.location.reload(); });
+          } else {
+            Swal.fire({ title: 'Error', text: 'Failed to delete.', icon: 'error',
+              confirmButtonColor: '#ef4444', customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' } });
+          }
+        }).catch(function() {
+          Swal.fire({ title: 'Network Error', text: 'Could not reach the server.', icon: 'error',
+            confirmButtonColor: '#ef4444', customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' } });
+        });
+      });
+    });
+  });
+</script>
+
+<%- include('../../partials/footer') %>

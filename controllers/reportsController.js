@@ -53,6 +53,11 @@ function formatIDR(n) {
 // GET / — Dashboard
 exports.index = async (req, res) => {
   try {
+    // Admins have their own panel
+    if (req.session.user && req.session.user.role === 'admin') {
+      return res.redirect('/admin');
+    }
+
     const { teaching_type, session_mode, session_type } = req.query;
 
     let selectedYear, selectedMonth;
@@ -209,7 +214,7 @@ exports.create = async (req, res) => {
     req.session.flash = 'Report has been created!';
     res.redirect('/reports');
   } catch (err) {
-    const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['Something is wrong. Try again later.'];
+    const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['Terjadi kesalahan. Silakan coba lagi.'];
     res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors, formData: req.body });
   }
 };
@@ -268,7 +273,7 @@ exports.update = async (req, res) => {
     req.session.flash = 'Report has been updated!';
     res.redirect('/reports');
   } catch (err) {
-    const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['Something is wrong to update.'];
+    const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['Terjadi kesalahan saat memperbarui.'];
     const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
     res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors });
   }
