@@ -22,6 +22,11 @@
       <table class="w-full text-sm">
         <thead>
           <tr class="text-xs font-semibold text-slate-400 uppercase tracking-wider bg-slate-50">
+            <!-- 🟢 Select-all checkbox -->
+            <th class="px-4 py-3.5 text-center w-10">
+              <input type="checkbox" id="select-all"
+                class="w-4 h-4 rounded border-slate-300 text-brand-600 cursor-pointer focus:ring-brand-200">
+            </th>
             <th class="px-6 py-3.5 text-left">User</th>
             <th class="px-6 py-3.5 text-center">Status</th>
             <th class="px-6 py-3.5 text-center hidden sm:table-cell">Role</th>
@@ -37,6 +42,16 @@
                              String(currentUser._id) === String(user._id);
           %>
             <tr class="hover:bg-slate-50 transition group">
+
+              <!-- 🟢 Row checkbox (disabled for self) -->
+              <td class="px-4 py-4 text-center">
+                <% if (!isSelf) { %>
+                  <input type="checkbox" class="row-checkbox w-4 h-4 rounded border-slate-300 text-brand-600 cursor-pointer focus:ring-brand-200"
+                    value="<%= user._id %>">
+                <% } else { %>
+                  <span class="w-4 h-4 inline-block"></span>
+                <% } %>
+              </td>
 
               <!-- User info -->
               <td class="px-6 py-4">
@@ -90,7 +105,7 @@
                 <% } %>
               </td>
 
-              <!-- Reports count — links to filtered report list -->
+              <!-- Reports count -->
               <td class="px-6 py-4 text-center hidden md:table-cell">
                 <a href="/admin/reports?teacher_id=<%= user._id %>"
                   class="text-sm font-bold text-slate-700 hover:text-brand-600 transition">
@@ -139,67 +154,141 @@
   <% } %>
 </div>
 
+<!-- 🟢 Floating bulk action bar -->
+<div id="bulk-bar"
+  class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white rounded-2xl shadow-2xl px-5 py-3 flex items-center gap-4">
+  <span class="text-sm font-semibold whitespace-nowrap"><span id="bulk-count">0</span> selected</span>
+  <button id="bulk-delete-btn"
+    class="bg-red-500 hover:bg-red-600 active:scale-95 text-white text-sm font-semibold px-4 py-1.5 rounded-xl transition whitespace-nowrap">
+    Delete Selected
+  </button>
+  <button onclick="clearSelection()"
+    class="text-sm text-slate-400 hover:text-white transition whitespace-nowrap">Cancel</button>
+</div>
+
 <script>
   function getCsrfToken() {
     var m = document.querySelector('meta[name="csrf-token"]');
     return m ? m.getAttribute('content') : '';
   }
 
+  // ── Single delete ──────────────────────────────────────────
   document.querySelectorAll('.js-delete-user').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var url  = btn.dataset.deleteUrl;
       var name = btn.dataset.name;
-
       Swal.fire({
         title: 'Delete ' + name + '?',
         html: '<p class="text-sm text-slate-500">This will permanently delete the user and <strong>all their reports</strong>. This cannot be undone.</p>',
         icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#ef4444',
-        cancelButtonColor: '#64748b',
-        confirmButtonText: 'Yes, delete',
-        cancelButtonText: 'Cancel',
-        reverseButtons: true,
-        focusCancel: true,
+        showCancelButton: true, confirmButtonColor: '#ef4444', cancelButtonColor: '#64748b',
+        confirmButtonText: 'Yes, delete', cancelButtonText: 'Cancel',
+        reverseButtons: true, focusCancel: true,
         customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl', cancelButton: 'rounded-xl' },
       }).then(function(result) {
         if (!result.isConfirmed) return;
-
-        Swal.fire({
-          title: 'Deleting…',
-          allowOutsideClick: false, allowEscapeKey: false, showConfirmButton: false,
-          didOpen: function() { Swal.showLoading(); },
-        });
-
+        Swal.fire({ title: 'Deleting…', allowOutsideClick: false, allowEscapeKey: false,
+          showConfirmButton: false, didOpen: function() { Swal.showLoading(); } });
         fetch(url, {
           method: 'DELETE',
           headers: { 'X-Requested-With': 'XMLHttpRequest', 'x-csrf-token': getCsrfToken() },
         }).then(function(res) {
           if (res.ok) {
-            Swal.fire({
-              title: 'Deleted!',
-              text: name + ' has been removed.',
-              icon: 'success',
+            Swal.fire({ title: 'Deleted!', text: name + ' has been removed.', icon: 'success',
               confirmButtonColor: '#16a34a',
               customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
               timer: 1500, showConfirmButton: false,
             }).then(function() { window.location.reload(); });
           } else {
             res.json().then(function(data) {
-              Swal.fire({
-                title: 'Error', text: data.error || 'Failed to delete.',
+              Swal.fire({ title: 'Error', text: data.error || 'Failed to delete.',
                 icon: 'error', confirmButtonColor: '#ef4444',
-                customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
-              });
+                customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' } });
             });
           }
         }).catch(function() {
-          Swal.fire({
-            title: 'Network Error', text: 'Could not reach the server.',
+          Swal.fire({ title: 'Network Error', text: 'Could not reach the server.',
             icon: 'error', confirmButtonColor: '#ef4444',
-            customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
-          });
+            customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' } });
         });
+      });
+    });
+  });
+
+  // ── 🟢 Bulk delete logic ───────────────────────────────────
+  var selectAll = document.getElementById('select-all');
+  var bulkBar   = document.getElementById('bulk-bar');
+  var bulkCount = document.getElementById('bulk-count');
+
+  function getChecked() {
+    return Array.from(document.querySelectorAll('.row-checkbox:checked')).map(function(cb) { return cb.value; });
+  }
+
+  function updateBulkBar() {
+    var ids = getChecked();
+    bulkCount.textContent = ids.length;
+    if (ids.length > 0) bulkBar.classList.remove('hidden');
+    else                bulkBar.classList.add('hidden');
+    if (selectAll) {
+      var all = document.querySelectorAll('.row-checkbox');
+      selectAll.indeterminate = ids.length > 0 && ids.length < all.length;
+      selectAll.checked       = all.length > 0 && ids.length === all.length;
+    }
+  }
+
+  function clearSelection() {
+    document.querySelectorAll('.row-checkbox').forEach(function(cb) { cb.checked = false; });
+    if (selectAll) selectAll.checked = false;
+    updateBulkBar();
+  }
+
+  document.querySelectorAll('.row-checkbox').forEach(function(cb) {
+    cb.addEventListener('change', updateBulkBar);
+  });
+
+  if (selectAll) {
+    selectAll.addEventListener('change', function() {
+      document.querySelectorAll('.row-checkbox').forEach(function(cb) { cb.checked = selectAll.checked; });
+      updateBulkBar();
+    });
+  }
+
+  document.getElementById('bulk-delete-btn').addEventListener('click', function() {
+    var ids = getChecked();
+    if (!ids.length) return;
+    Swal.fire({
+      title: 'Delete ' + ids.length + ' user(s)?',
+      html: '<p class="text-sm text-slate-500">This will also delete <strong>all their reports</strong>. This cannot be undone.</p>',
+      icon: 'warning',
+      showCancelButton: true, confirmButtonColor: '#ef4444', cancelButtonColor: '#64748b',
+      confirmButtonText: 'Yes, delete all!', cancelButtonText: 'Cancel',
+      reverseButtons: true, focusCancel: true,
+      customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl', cancelButton: 'rounded-xl' },
+    }).then(function(result) {
+      if (!result.isConfirmed) return;
+      Swal.fire({ title: 'Deleting…', allowOutsideClick: false, allowEscapeKey: false,
+        showConfirmButton: false, didOpen: function() { Swal.showLoading(); } });
+      fetch('/admin/users/bulk', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'x-csrf-token': getCsrfToken(),
+        },
+        body: JSON.stringify({ ids: ids }),
+      }).then(function(res) { return res.json(); }).then(function(data) {
+        if (data.ok) {
+          Swal.fire({ title: 'Deleted!', text: data.deleted + ' user(s) removed.', icon: 'success',
+            confirmButtonColor: '#16a34a', timer: 1500, showConfirmButton: false,
+            customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+          }).then(function() { window.location.reload(); });
+        } else {
+          Swal.fire({ title: 'Error', text: data.error || 'Failed to delete.', icon: 'error',
+            confirmButtonColor: '#ef4444', customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' } });
+        }
+      }).catch(function() {
+        Swal.fire({ title: 'Network Error', text: 'Could not reach the server.', icon: 'error',
+          confirmButtonColor: '#ef4444', customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' } });
       });
     });
   });

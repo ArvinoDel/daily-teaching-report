@@ -38,7 +38,7 @@
     </div>
   <% } %>
 
-  <form action="/admin/users/<%= user._id %>" method="POST" class="space-y-6">
+  <form id="edit-user-form" action="/admin/users/<%= user._id %>" method="POST" class="space-y-6">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
 
     <!-- Account Info -->
@@ -118,8 +118,8 @@
       </div>
     </div>
 
-    <!-- Commission Prices -->
-    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-5">
+    <!-- 🟢 Commission Prices — id added for #anchor from commission page -->
+    <div id="commission-section" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-5 scroll-mt-6">
       <div>
         <h2 class="text-sm font-bold text-slate-700 uppercase tracking-wider">Commission per Session</h2>
         <p class="text-xs text-slate-400 mt-1">Set this teacher's earnings per session type (IDR).</p>
@@ -164,7 +164,7 @@
 
     <!-- Submit -->
     <div class="flex gap-3">
-      <a href="/admin/users"
+      <a href="/admin/users" id="cancel-btn"
         class="flex-1 text-center py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
         Cancel
       </a>
@@ -176,5 +176,50 @@
   </form>
 
 </div>
+
+<!-- 🟢 Auto-scroll to commission section if linked via #anchor -->
+<script>
+  if (window.location.hash === '#commission-section') {
+    var el = document.getElementById('commission-section');
+    if (el) setTimeout(function() {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el.classList.add('ring-2', 'ring-amber-300', 'ring-offset-2');
+      setTimeout(function() { el.classList.remove('ring-2', 'ring-amber-300', 'ring-offset-2'); }, 2000);
+    }, 150);
+  }
+</script>
+
+<!-- 🟠 Unsaved changes warning -->
+<script>
+  (function () {
+    var form  = document.getElementById('edit-user-form');
+    var dirty = false;
+
+    form.addEventListener('input',  function () { dirty = true; });
+    form.addEventListener('change', function () { dirty = true; });
+    form.addEventListener('submit', function () { dirty = false; });
+
+    document.getElementById('cancel-btn').addEventListener('click', function (e) {
+      if (!dirty) return;
+      e.preventDefault();
+      Swal.fire({
+        title: 'Unsaved changes',
+        text: 'You have unsaved changes. Leave anyway?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444', cancelButtonColor: '#64748b',
+        confirmButtonText: 'Leave', cancelButtonText: 'Stay',
+        reverseButtons: true, focusCancel: true,
+        customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl', cancelButton: 'rounded-xl' },
+      }).then(function (result) {
+        if (result.isConfirmed) window.location.href = '/admin/users';
+      });
+    });
+
+    window.addEventListener('beforeunload', function (e) {
+      if (dirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+  })();
+</script>
 
 <%- include('../../partials/footer') %>

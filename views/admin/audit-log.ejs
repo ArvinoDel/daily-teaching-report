@@ -1,0 +1,166 @@
+<%- include('../partials/header', { title: 'Admin — Audit Log' }) %>
+
+<%
+  function auditUrl(overrides) {
+    var p = Object.assign({}, {
+      action:     selectedAction,
+      targetType: selectedType,
+      page:       1,
+    }, overrides);
+    var parts = [];
+    if (p.action)     parts.push('action='     + encodeURIComponent(p.action));
+    if (p.targetType) parts.push('targetType=' + encodeURIComponent(p.targetType));
+    if (p.page && p.page > 1) parts.push('page=' + p.page);
+    return '/admin/audit-log' + (parts.length ? '?' + parts.join('&') : '');
+  }
+
+  var activeBase   = 'px-3 py-1.5 rounded-full text-xs font-semibold transition whitespace-nowrap';
+  var inactiveBase = activeBase + ' bg-slate-100 text-slate-500 hover:bg-slate-200';
+%>
+
+<!-- Header -->
+<div class="mb-6 flex items-center gap-3">
+  <a href="/admin" class="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+    </svg>
+  </a>
+  <div>
+    <h1 class="text-2xl font-bold text-slate-900">Audit Log</h1>
+    <p class="text-slate-500 text-sm mt-0.5"><%= totalCount %> record(s) found</p>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm px-4 sm:px-5 py-3.5 mb-5 flex flex-wrap items-center gap-x-4 gap-y-2.5">
+  <div class="flex items-center gap-1.5">
+    <span class="text-xs font-bold text-slate-300 uppercase tracking-wider mr-0.5">Action</span>
+    <a href="<%= auditUrl({ action: '' }) %>"
+      class="<%= !selectedAction ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">All</a>
+    <a href="<%= auditUrl({ action: 'update' }) %>"
+      class="<%= selectedAction === 'update' ? activeBase + ' bg-amber-500 text-white' : inactiveBase %>">Update</a>
+    <a href="<%= auditUrl({ action: 'delete' }) %>"
+      class="<%= selectedAction === 'delete' ? activeBase + ' bg-red-500 text-white' : inactiveBase %>">Delete</a>
+  </div>
+  <span class="self-stretch w-px bg-slate-100 hidden sm:block"></span>
+  <div class="flex items-center gap-1.5">
+    <span class="text-xs font-bold text-slate-300 uppercase tracking-wider mr-0.5">Target</span>
+    <a href="<%= auditUrl({ targetType: '' }) %>"
+      class="<%= !selectedType ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">All</a>
+    <a href="<%= auditUrl({ targetType: 'report' }) %>"
+      class="<%= selectedType === 'report' ? activeBase + ' bg-sky-500 text-white' : inactiveBase %>">Report</a>
+    <a href="<%= auditUrl({ targetType: 'user' }) %>"
+      class="<%= selectedType === 'user' ? activeBase + ' bg-brand-600 text-white' : inactiveBase %>">User</a>
+  </div>
+</div>
+
+<!-- Log Table -->
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
+  <% if (!logs.length) { %>
+    <div class="py-16 text-center">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-slate-200 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 0 1-2.25 2.25M16.5 7.5V18a2.25 2.25 0 0 0 2.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 0 0 2.25 2.25h13.5M6 7.5h3v3H6v-3Z" />
+      </svg>
+      <p class="text-slate-400 text-sm font-medium">No audit records found.</p>
+    </div>
+  <% } else { %>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs font-semibold text-slate-400 uppercase tracking-wider bg-slate-50">
+            <th class="px-5 py-3.5 text-left">Admin</th>
+            <th class="px-5 py-3.5 text-left">Action</th>
+            <th class="px-5 py-3.5 text-left">Target</th>
+            <th class="px-5 py-3.5 text-left hidden md:table-cell">Label</th>
+            <th class="px-5 py-3.5 text-right">Time</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-50">
+          <% logs.forEach(function(log) { %>
+            <tr class="hover:bg-slate-50 transition">
+              <!-- Admin -->
+              <td class="px-5 py-3.5">
+                <div class="flex items-center gap-2">
+                  <div class="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center text-red-700 text-xs font-bold flex-shrink-0">
+                    <%= log.adminName[0].toUpperCase() %>
+                  </div>
+                  <span class="font-semibold text-slate-700 text-xs"><%= log.adminName %></span>
+                </div>
+              </td>
+              <!-- Action badge -->
+              <td class="px-5 py-3.5">
+                <% if (log.action === 'delete') { %>
+                  <span class="inline-flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                    Delete
+                  </span>
+                <% } else { %>
+                  <span class="inline-flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                    Update
+                  </span>
+                <% } %>
+              </td>
+              <!-- Target type -->
+              <td class="px-5 py-3.5">
+                <% if (log.targetType === 'report') { %>
+                  <span class="text-xs font-semibold text-sky-600 bg-sky-50 px-2.5 py-1 rounded-full">Report</span>
+                <% } else { %>
+                  <span class="text-xs font-semibold text-brand-600 bg-brand-50 px-2.5 py-1 rounded-full">User</span>
+                <% } %>
+              </td>
+              <!-- Label -->
+              <td class="px-5 py-3.5 hidden md:table-cell text-slate-500 text-xs max-w-xs truncate">
+                <%= log.targetLabel || '—' %>
+              </td>
+              <!-- Timestamp -->
+              <td class="px-5 py-3.5 text-right font-mono text-xs text-slate-400 whitespace-nowrap">
+                <%= log.createdAt.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) %>
+                <span class="text-slate-300 ml-1">
+                  <%= log.createdAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) %>
+                </span>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<!-- Pagination -->
+<% if (totalPages > 1) { %>
+  <div class="flex items-center justify-center gap-1.5">
+    <% if (currentPage > 1) { %>
+      <a href="<%= auditUrl({ page: currentPage - 1 }) %>"
+        class="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 transition shadow-sm text-xs font-semibold">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
+      </a>
+    <% } %>
+
+    <%
+      var startPage = Math.max(1, currentPage - 2);
+      var endPage   = Math.min(totalPages, currentPage + 2);
+    %>
+    <% for (var p = startPage; p <= endPage; p++) { %>
+      <a href="<%= auditUrl({ page: p }) %>"
+        class="w-8 h-8 flex items-center justify-center rounded-lg text-xs font-semibold transition shadow-sm
+          <%= p === currentPage
+            ? 'bg-brand-600 text-white border border-brand-600'
+            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50' %>">
+        <%= p %>
+      </a>
+    <% } %>
+
+    <% if (currentPage < totalPages) { %>
+      <a href="<%= auditUrl({ page: currentPage + 1 }) %>"
+        class="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 transition shadow-sm text-xs font-semibold">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+      </a>
+    <% } %>
+
+    <span class="text-xs text-slate-400 ml-2">Page <%= currentPage %> of <%= totalPages %></span>
+  </div>
+<% } %>
+
+<%- include('../partials/footer') %>

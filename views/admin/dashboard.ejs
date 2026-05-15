@@ -38,8 +38,8 @@
   </div>
 </div>
 
-<!-- Quick Nav Cards -->
-<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+<!-- Quick Nav Cards — 4 cards (added Audit Log) -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
 
   <a href="/admin/users"
     class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:border-brand-300 hover:shadow-md transition group flex items-center gap-4">
@@ -82,6 +82,48 @@
     </div>
     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-300 group-hover:text-amber-400 transition ml-auto flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
   </a>
+
+  <!-- 🟢 Audit Log nav card -->
+  <a href="/admin/audit-log"
+    class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:border-violet-200 hover:shadow-md transition group flex items-center gap-4">
+    <div class="w-11 h-11 bg-violet-100 rounded-xl flex items-center justify-center flex-shrink-0">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 0 1-2.25 2.25M16.5 7.5V18a2.25 2.25 0 0 0 2.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 0 0 2.25 2.25h13.5M6 7.5h3v3H6v-3Z" />
+      </svg>
+    </div>
+    <div>
+      <p class="text-sm font-bold text-slate-800 group-hover:text-violet-700 transition">Audit Log</p>
+      <p class="text-xs text-slate-400 mt-0.5">Admin activity history</p>
+    </div>
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-300 group-hover:text-violet-400 transition ml-auto flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+  </a>
+
+</div>
+
+<!-- 🟢 Charts Section -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+
+  <!-- Bar chart: reports per teacher -->
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+    <h2 class="text-sm font-bold text-slate-700 mb-1">Reports per Teacher
+      <span class="font-normal text-slate-400 ml-1"><%= monthLabel %></span>
+    </h2>
+    <div class="relative" style="height:220px;">
+      <canvas id="chartTeachers"></canvas>
+      <p id="chartTeachersEmpty" class="hidden absolute inset-0 flex items-center justify-center text-slate-400 text-sm">No reports this month.</p>
+    </div>
+  </div>
+
+  <!-- Line chart: daily trend -->
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+    <h2 class="text-sm font-bold text-slate-700 mb-1">Daily Trend
+      <span class="font-normal text-slate-400 ml-1"><%= monthLabel %></span>
+    </h2>
+    <div class="relative" style="height:220px;">
+      <canvas id="chartDailyTrend"></canvas>
+      <p id="chartTrendEmpty" class="hidden absolute inset-0 flex items-center justify-center text-slate-400 text-sm">No reports this month.</p>
+    </div>
+  </div>
 
 </div>
 
@@ -136,5 +178,74 @@
     </div>
   <% } %>
 </div>
+
+<!-- 🟢 Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script id="chartTeachersData" type="application/json"><%- chartTeachersJson %></script>
+<script id="dailyTrendData" type="application/json"><%- dailyTrendJson %></script>
+<script>
+  var chartTeachers = JSON.parse(document.getElementById('chartTeachersData').textContent);
+  var dailyTrend    = JSON.parse(document.getElementById('dailyTrendData').textContent);
+
+  var chartDefaults = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { cornerRadius: 8 } },
+  };
+
+  // Bar chart — reports per teacher
+  if (chartTeachers.length === 0) {
+    document.getElementById('chartTeachersEmpty').classList.remove('hidden');
+  } else {
+    new Chart(document.getElementById('chartTeachers'), {
+      type: 'bar',
+      data: {
+        labels: chartTeachers.map(function(t) { return t.name; }),
+        datasets: [{
+          data: chartTeachers.map(function(t) { return t.count; }),
+          backgroundColor: 'rgba(99,102,241,0.15)',
+          borderColor: 'rgba(99,102,241,0.7)',
+          borderWidth: 2,
+          borderRadius: 6,
+          borderSkipped: false,
+        }],
+      },
+      options: Object.assign({}, chartDefaults, {
+        scales: {
+          y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 11 } }, grid: { color: 'rgba(148,163,184,0.12)' } },
+          x: { ticks: { font: { size: 11 } }, grid: { display: false } },
+        },
+      }),
+    });
+  }
+
+  // Line chart — daily trend
+  if (dailyTrend.length === 0) {
+    document.getElementById('chartTrendEmpty').classList.remove('hidden');
+  } else {
+    new Chart(document.getElementById('chartDailyTrend'), {
+      type: 'line',
+      data: {
+        labels: dailyTrend.map(function(d) { return d.date.substring(8); }), // day number
+        datasets: [{
+          data: dailyTrend.map(function(d) { return d.count; }),
+          borderColor: 'rgba(16,185,129,0.8)',
+          backgroundColor: 'rgba(16,185,129,0.08)',
+          borderWidth: 2.5,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          tension: 0.3,
+          fill: true,
+        }],
+      },
+      options: Object.assign({}, chartDefaults, {
+        scales: {
+          y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 11 } }, grid: { color: 'rgba(148,163,184,0.12)' } },
+          x: { ticks: { font: { size: 11 } }, grid: { display: false } },
+        },
+      }),
+    });
+  }
+</script>
 
 <%- include('../partials/footer') %>

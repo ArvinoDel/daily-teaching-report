@@ -1,5 +1,6 @@
-const User   = require('../models/User');
-const Report = require('../models/Report');
+const User     = require('../models/User');
+const Report   = require('../models/Report');
+const AuditLog = require('../models/AuditLog'); // 🟢 Audit log
 
 const TEACHING_TYPES = [
   'Prime Teacher (Full)',
@@ -24,13 +25,17 @@ function parseStudentList(raw) {
   return raw.split(',').map(s => s.trim()).filter(Boolean);
 }
 
+// 🟠 Orange: consistent English messages + stricter integer check (rejects "60.5", "60.0")
 function validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type }) {
   const errors = [];
   if (!date || isNaN(new Date(date).getTime())) errors.push('Invalid date.');
   if (!class_name || class_name.trim().length === 0)  errors.push('Class name is required.');
   if (class_name && class_name.trim().length > 50)    errors.push('Class name max 50 characters.');
-  const dur = Number(duration);
-  if (!duration || isNaN(dur) || dur < 1 || !Number.isInteger(dur)) errors.push('Duration must be a whole number, min 1 minute.');
+  const durStr = String(duration || '').trim();
+  const dur    = Number(durStr);
+  if (!durStr || !/^\d+$/.test(durStr) || isNaN(dur) || dur < 1) {
+    errors.push('Duration must be a whole number, min 1 minute.');
+  }
   if (!teaching_type || !TEACHING_TYPES.includes(teaching_type))   errors.push('Invalid teaching type.');
   if (notes && notes.length > 1000)                                 errors.push('Notes max 1000 characters.');
   if (ac_students     && ac_students.some(s => s.length > 50))     errors.push('AC student name max 50 characters.');
@@ -38,6 +43,13 @@ function validateReportInput({ date, class_name, duration, teaching_type, notes,
   if (session_mode && !['online', 'offline'].includes(session_mode)) errors.push('Invalid class mode.');
   if (session_type && !['group', 'private'].includes(session_type))  errors.push('Invalid session type.');
   return errors;
+}
+
+function safeJson(data) {
+  return JSON.stringify(data)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
 }
 
 function toMonthStr(d) {
@@ -64,6 +76,23 @@ function getMonthRange(query) {
   return { monthStart, monthEnd, prevMonth, nextMonth, isCurrentMonth, monthLabel, selectedMonthStr };
 }
 
+// 🟢 Audit log helper
+async function logAudit(req, action, targetType, targetId, targetLabel, meta = {}) {
+  try {
+    await AuditLog.create({
+      admin:       req.session.user._id,
+      adminName:   req.session.user.displayName || req.session.user.username,
+      action,
+      targetType,
+      targetId,
+      targetLabel: String(targetLabel || ''),
+      meta,
+    });
+  } catch (e) {
+    console.error('Audit log error:', e);
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════════
    Dashboard
 ════════════════════════════════════════════════════════════════ */
@@ -86,10 +115,38 @@ exports.dashboard = async (req, res) => {
       .limit(8)
       .populate('teacher', 'displayName username');
 
+    // 🟢 Chart: reports per teacher this month
+    const rawByTeacher = await Report.aggregate([
+      { $match: { date: { $gte: monthStart, $lte: monthEnd } } },
+      { $group: { _id: '$teacher', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 10 },
+    ]);
+    const teacherDocs = await User.find({ _id: { $in: rawByTeacher.map(r => r._id) } }).select('displayName');
+    const teacherMap  = {};
+    teacherDocs.forEach(t => { teacherMap[String(t._id)] = t.displayName; });
+    const chartTeachers = rawByTeacher.map(r => ({
+      name:  teacherMap[String(r._id)] || 'Unknown',
+      count: r.count,
+    }));
+
+    // 🟢 Chart: daily trend this month
+    const rawDailyTrend = await Report.aggregate([
+      { $match: { date: { $gte: monthStart, $lte: monthEnd } } },
+      { $group: {
+        _id:   { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
+        count: { $sum: 1 },
+      }},
+      { $sort: { _id: 1 } },
+    ]);
+    const dailyTrend = rawDailyTrend.map(r => ({ date: r._id, count: r.count }));
+
     res.render('admin/dashboard', {
       totalUsers, onlineCount, totalReports, monthlyReports,
       recentReports, typeBadgeColor,
-      monthLabel: now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      monthLabel:         now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      chartTeachersJson:  safeJson(chartTeachers),
+      dailyTrendJson:     safeJson(dailyTrend),
     });
   } catch (err) {
     console.error(err);
@@ -157,7 +214,6 @@ exports.userUpdate = async (req, res) => {
       if (existing) errors.push('Username already taken.');
     }
 
-    // Prevent self-role demotion
     if (String(user._id) === String(req.session.user._id) && role !== 'admin') {
       errors.push('You cannot change your own role.');
     }
@@ -188,6 +244,7 @@ exports.userUpdate = async (req, res) => {
       return res.render('admin/users/edit', { user, errors, success: null, currentYear });
     }
 
+    const oldLabel = `${user.displayName} (@${user.username})`;
     user.username    = username.toLowerCase().trim();
     user.displayName = displayName.trim();
     if (String(user._id) !== String(req.session.user._id)) {
@@ -203,6 +260,7 @@ exports.userUpdate = async (req, res) => {
     if (password && password.length >= 6) user.password = password;
 
     await user.save();
+    await logAudit(req, 'update', 'user', user._id, oldLabel); // 🟢 log
     return res.render('admin/users/edit', { user, errors: [], success: 'User updated successfully!', currentYear });
   } catch (err) {
     console.error(err);
@@ -218,8 +276,10 @@ exports.userDelete = async (req, res) => {
     if (String(user._id) === String(req.session.user._id)) {
       return res.status(400).json({ error: 'Cannot delete your own account.' });
     }
+    const label = `${user.displayName} (@${user.username})`;
     await Report.deleteMany({ teacher: user._id });
     await user.deleteOne();
+    await logAudit(req, 'delete', 'user', user._id, label); // 🟢 log
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
       return res.status(200).json({ ok: true });
     }
@@ -227,6 +287,28 @@ exports.userDelete = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to delete user.' });
+  }
+};
+
+// 🟢 Bulk delete users
+exports.usersBulkDelete = async (req, res) => {
+  try {
+    let ids = req.body.ids;
+    if (!ids) return res.status(400).json({ error: 'No users selected.' });
+    if (!Array.isArray(ids)) ids = [ids];
+    if (ids.length === 0) return res.status(400).json({ error: 'No users selected.' });
+
+    const selfId = String(req.session.user._id);
+    ids = ids.filter(id => id !== selfId);
+    if (ids.length === 0) return res.status(400).json({ error: 'Cannot delete your own account.' });
+
+    await Report.deleteMany({ teacher: { $in: ids } });
+    const result = await User.deleteMany({ _id: { $in: ids } });
+    await logAudit(req, 'delete', 'user', ids[0], `Bulk delete — ${result.deletedCount} user(s)`);
+    return res.status(200).json({ ok: true, deleted: result.deletedCount });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to bulk delete users.' });
   }
 };
 
@@ -250,6 +332,10 @@ exports.reportsList = async (req, res) => {
       User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),
     ]);
 
+    // 🟡 Flash message support (from reportUpdate redirect)
+    const successMessage = req.session.flash || null;
+    delete req.session.flash;
+
     res.render('admin/reports/index', {
       reports, teachers, teachingTypes: TEACHING_TYPES, typeBadgeColor,
       selectedTeacher:     teacher_id    || '',
@@ -257,6 +343,7 @@ exports.reportsList = async (req, res) => {
       selectedMode:        session_mode  || '',
       selectedSessionType: session_type  || '',
       monthLabel, prevMonth, nextMonth, isCurrentMonth, selectedMonthStr,
+      successMessage,
     });
   } catch (err) {
     console.error(err);
@@ -305,6 +392,7 @@ exports.reportUpdate = async (req, res) => {
     );
 
     if (!report) return res.render('error', { message: 'Report not found.' });
+    await logAudit(req, 'update', 'report', report._id, `${report.class_name} — ${report.date.toISOString().substring(0, 10)}`); // 🟢 log
     req.session.flash = 'Report updated by admin.';
     res.redirect('/admin/reports');
   } catch (err) {
@@ -318,7 +406,9 @@ exports.reportDelete = async (req, res) => {
   try {
     const report = await Report.findById(req.params.id);
     if (!report) return res.status(404).json({ error: 'Report not found.' });
+    const label = `${report.class_name} — ${report.date.toISOString().substring(0, 10)}`;
     await report.deleteOne();
+    await logAudit(req, 'delete', 'report', report._id, label); // 🟢 log
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
       return res.status(200).json({ ok: true });
     }
@@ -329,8 +419,25 @@ exports.reportDelete = async (req, res) => {
   }
 };
 
+// 🟢 Bulk delete reports
+exports.reportsBulkDelete = async (req, res) => {
+  try {
+    let ids = req.body.ids;
+    if (!ids) return res.status(400).json({ error: 'No reports selected.' });
+    if (!Array.isArray(ids)) ids = [ids];
+    if (ids.length === 0) return res.status(400).json({ error: 'No reports selected.' });
+
+    const result = await Report.deleteMany({ _id: { $in: ids } });
+    await logAudit(req, 'delete', 'report', ids[0], `Bulk delete — ${result.deletedCount} report(s)`);
+    return res.status(200).json({ ok: true, deleted: result.deletedCount });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to bulk delete reports.' });
+  }
+};
+
 /* ═══════════════════════════════════════════════════════════════
-   Commission
+   Commission  — 🟡 Fixed N+1 query (single aggregate)
 ════════════════════════════════════════════════════════════════ */
 exports.commissionIndex = async (req, res) => {
   try {
@@ -339,12 +446,25 @@ exports.commissionIndex = async (req, res) => {
 
     const teachers = await User.find({ role: 'teacher' }).sort({ displayName: 1 });
 
-    const commissionData = await Promise.all(teachers.map(async (teacher) => {
-      const reports = await Report.find({
-        teacher: teacher._id,
-        date: { $gte: monthStart, $lte: monthEnd },
-      });
+    // Single aggregate instead of N individual Report.find() calls
+    const reportAgg = await Report.aggregate([
+      { $match: { date: { $gte: monthStart, $lte: monthEnd } } },
+      { $group: {
+        _id:      { teacher: '$teacher', teaching_type: '$teaching_type' },
+        sessions: { $sum: 1 },
+      }},
+    ]);
 
+    // Build lookup: teacherId → { typeName → count }
+    const aggMap = {};
+    for (const row of reportAgg) {
+      const tid  = String(row._id.teacher);
+      const type = row._id.teaching_type;
+      if (!aggMap[tid]) aggMap[tid] = {};
+      aggMap[tid][type] = row.sessions;
+    }
+
+    const commissionData = teachers.map((teacher) => {
       const comm = teacher.commission || {};
       const commMap = {
         'Prime Teacher (Full)':     comm.primeFull     || 0,
@@ -352,9 +472,10 @@ exports.commissionIndex = async (req, res) => {
         '1/2 Prime Teacher':        comm.halfPrime     || 0,
         'Assistant Teacher':        comm.assistant     || 0,
       };
+      const tid = String(teacher._id);
 
       const breakdown = TEACHING_TYPES.map(type => {
-        const sessions = reports.filter(r => r.teaching_type === type).length;
+        const sessions = (aggMap[tid] && aggMap[tid][type]) || 0;
         const price    = commMap[type];
         const total    = sessions * price;
         return { type, sessions, price, total, priceFormatted: formatIDR(price), totalFormatted: formatIDR(total) };
@@ -372,7 +493,7 @@ exports.commissionIndex = async (req, res) => {
         totalCommissionFormatted: formatIDR(totalCommission),
         hasCommission,
       };
-    }));
+    });
 
     const grandTotal          = commissionData.reduce((s, d) => s + d.totalCommission, 0);
     const grandTotalFormatted = formatIDR(grandTotal);
@@ -384,5 +505,36 @@ exports.commissionIndex = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.render('error', { message: 'Failed to load commission data.' });
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   Audit Log  🟢
+════════════════════════════════════════════════════════════════ */
+exports.auditLogIndex = async (req, res) => {
+  try {
+    const page  = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = 30;
+    const skip  = (page - 1) * limit;
+
+    const filter = {};
+    if (req.query.action     && ['update', 'delete'].includes(req.query.action))   filter.action     = req.query.action;
+    if (req.query.targetType && ['report', 'user'].includes(req.query.targetType)) filter.targetType = req.query.targetType;
+
+    const [logs, totalCount] = await Promise.all([
+      AuditLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      AuditLog.countDocuments(filter),
+    ]);
+
+    const totalPages = Math.ceil(totalCount / limit);
+
+    res.render('admin/audit-log', {
+      logs, totalCount, currentPage: page, totalPages,
+      selectedAction: req.query.action     || '',
+      selectedType:   req.query.targetType || '',
+    });
+  } catch (err) {
+    console.error(err);
+    res.render('error', { message: 'Failed to load audit log.' });
   }
 };
