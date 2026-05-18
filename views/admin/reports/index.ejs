@@ -1,292 +1,229 @@
-<%- include('../../partials/header', { title: 'Admin — Edit Report' }) %>
+<%- include('../../partials/header', { title: 'Admin — Reports' }) %>
 
-<div class="max-w-2xl mx-auto">
-  <a href="/admin/reports" id="back-link" class="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-brand-600 mb-6 transition font-medium">
-    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
-    </svg>
-    Back to All Reports
-  </a>
+<%
+  function filterUrl(overrides) {
+    var p = Object.assign({}, {
+      month:        selectedMonthStr,
+      teacher_id:   selectedTeacher,
+      teaching_type: selectedType,
+      session_mode:  selectedMode,
+      session_type:  selectedSessionType,
+    }, overrides);
+    var parts = [];
+    if (p.month)         parts.push('month='         + encodeURIComponent(p.month));
+    if (p.teacher_id)    parts.push('teacher_id='    + encodeURIComponent(p.teacher_id));
+    if (p.teaching_type) parts.push('teaching_type=' + encodeURIComponent(p.teaching_type));
+    if (p.session_mode)  parts.push('session_mode='  + encodeURIComponent(p.session_mode));
+    if (p.session_type)  parts.push('session_type='  + encodeURIComponent(p.session_type));
+    return '/admin/reports?' + parts.join('&');
+  }
+  var activeBase   = 'px-3 py-1.5 rounded-full text-xs font-semibold transition whitespace-nowrap';
+  var inactiveBase = activeBase + ' bg-slate-100 text-slate-500 hover:bg-slate-200';
+%>
 
-  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-    <!-- Header -->
-    <div class="px-8 pt-7 pb-6 border-b border-slate-100 flex items-center gap-3">
-      <div class="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center shadow-sm">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" />
-        </svg>
-      </div>
-      <div>
-        <div class="flex items-center gap-2">
-          <h1 class="text-lg font-bold text-slate-900">Edit Report</h1>
-          <span class="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg>
-            Admin
-          </span>
-        </div>
-        <p class="text-slate-400 text-xs mt-0.5 font-mono">ID: <%= report._id %></p>
-      </div>
-    </div>
-
-    <!-- Teacher banner -->
-    <div class="mx-8 mt-6 flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+<!-- Header -->
+<div class="mb-6 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <a href="/admin" class="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
       </svg>
-      <div>
-        <p class="text-xs text-slate-400">Teacher</p>
-        <p class="text-sm font-semibold text-slate-700">
-          <%= report.teacher ? report.teacher.displayName : '—' %>
-          <span class="font-normal text-slate-400">(@<%= report.teacher ? report.teacher.username : '—' %>)</span>
-        </p>
-      </div>
+    </a>
+    <div>
+      <h1 class="text-2xl font-bold text-slate-900">All Reports</h1>
+      <p class="text-slate-500 text-sm mt-0.5"><%= reports.length %> report(s) — <%= monthLabel %></p>
     </div>
-
-    <% if (errors && errors.length > 0) { %>
-      <div class="mx-8 mt-6 bg-red-50 border border-red-200 rounded-xl p-4">
-        <ul class="text-sm text-red-700 space-y-0.5">
-          <% errors.forEach(err => { %><li>• <%= err %></li><% }) %>
-        </ul>
-      </div>
-    <% } %>
-
-    <form id="edit-report-form" action="/admin/reports/<%= report._id %>" method="POST" class="px-8 py-7 space-y-6"
-      data-session-type="<%= report.session_type || 'group' %>"
-      data-session-mode="<%= report.session_mode || 'offline' %>"
-      data-uses-personal-internet="<%= report.uses_personal_internet %>">
-      <input type="hidden" name="_csrf"   value="<%= csrfToken %>">
-      <input type="hidden" name="_method" value="PUT">
-
-      <!-- Row 1: Date & Class -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <div class="space-y-1.5">
-          <label for="date" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Teaching Date <span class="text-red-500">*</span></label>
-          <input type="date" id="date" name="date" value="<%= report.dateInputFormat %>" required
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
-        </div>
-        <div class="space-y-1.5">
-          <label for="class_name" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Class Name <span class="text-red-500">*</span></label>
-          <input type="text" id="class_name" name="class_name" value="<%= report.class_name %>" required
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
-        </div>
-      </div>
-
-      <!-- Row 2: Session Type & Class Mode -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <div class="space-y-2">
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Session Type</label>
-          <div class="flex gap-2">
-            <button type="button" id="btn-group"   class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setSessionType('group')">Group</button>
-            <button type="button" id="btn-private" class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setSessionType('private')">Private</button>
-          </div>
-          <input type="hidden" name="session_type" id="session_type_input" value="<%= report.session_type || 'group' %>">
-        </div>
-        <div class="space-y-2">
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Class Mode</label>
-          <div class="flex gap-2">
-            <button type="button" id="btn-offline" class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setMode('offline')">Offline</button>
-            <button type="button" id="btn-online"  class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setMode('online')">Online</button>
-          </div>
-          <input type="hidden" name="session_mode" id="session_mode_input" value="<%= report.session_mode || 'offline' %>">
-          <div id="personal-internet-wrapper" class="hidden">
-            <label class="flex items-center gap-3 cursor-pointer bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mt-1">
-              <input type="checkbox" name="uses_personal_internet" value="true" id="personal_internet_check"
-                class="w-4 h-4 rounded border-blue-300 text-blue-600 focus:ring-blue-200 flex-shrink-0"
-                <%= report.uses_personal_internet ? 'checked' : '' %>>
-              <div>
-                <p class="text-sm font-semibold text-blue-700">Personal Internet</p>
-                <p class="text-xs text-blue-400 mt-0.5">Using own data / wifi</p>
-              </div>
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <!-- Material -->
-      <div class="space-y-1.5">
-        <label for="subject" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
-          Material <span class="ml-1 font-normal normal-case text-slate-400">— optional</span>
-        </label>
-        <input type="text" id="subject" name="subject" value="<%= report.subject %>"
-          class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
-      </div>
-
-      <!-- Teaching Type & Duration -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <div class="space-y-1.5">
-          <label for="teaching_type" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Type <span class="text-red-500">*</span></label>
-          <div class="relative">
-            <select id="teaching_type" name="teaching_type" required
-              class="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition cursor-pointer pr-10">
-              <% teachingTypes.forEach(type => { %>
-                <option value="<%= type %>" <%= report.teaching_type === type ? 'selected' : '' %>><%= type %></option>
-              <% }) %>
-            </select>
-            <div class="pointer-events-none absolute inset-y-0 right-3 flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" /></svg>
-            </div>
-          </div>
-        </div>
-        <div class="space-y-1.5">
-          <label for="duration" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Duration <span class="text-red-500">*</span></label>
-          <div class="relative">
-            <input type="number" id="duration" name="duration" value="<%= report.duration %>" min="1" step="1" required
-              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 pr-16 text-sm font-mono focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
-            <span class="absolute inset-y-0 right-4 flex items-center text-xs text-slate-400 pointer-events-none">minute(s)</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Notes -->
-      <div class="space-y-1.5">
-        <label for="notes" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Notes</label>
-        <textarea id="notes" name="notes" rows="4"
-          class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition resize-none"><%= report.notes %></textarea>
-      </div>
-
-      <div class="border-t border-slate-100"></div>
-
-      <!-- AC & Absent -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <div class="space-y-1.5">
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Achievement Card (AC)</label>
-          <p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd> to add</p>
-          <div id="ac-tag-box" class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition" onclick="document.getElementById('ac-input').focus()"></div>
-          <input type="text" id="ac-input" placeholder="e.g: Darren" autocomplete="off"
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm placeholder-slate-300 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition" />
-          <input type="hidden" name="ac_students" id="ac-hidden" value="<%= (report.ac_students || []).join(',') %>" />
-          <p class="text-xs text-slate-400"><span id="ac-count">0</span> student(s)</p>
-        </div>
-        <div class="space-y-1.5">
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Absent</label>
-          <p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd> to add</p>
-          <div id="absent-tag-box" class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition" onclick="document.getElementById('absent-input').focus()"></div>
-          <input type="text" id="absent-input" placeholder="e.g: Michael" autocomplete="off"
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm placeholder-slate-300 focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition" />
-          <input type="hidden" name="absent_students" id="absent-hidden" value="<%= (report.absent_students || []).join(',') %>" />
-          <p class="text-xs text-slate-400"><span id="absent-count">0</span> student(s)</p>
-        </div>
-      </div>
-
-      <div class="flex items-center justify-between pt-2">
-        <a href="/admin/reports" id="cancel-btn" class="text-sm font-semibold text-slate-400 hover:text-slate-600 transition">Cancel</a>
-        <button type="submit"
-          class="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 active:scale-95 text-white font-semibold text-sm px-6 py-2.5 rounded-xl shadow transition">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
-          Save Changes
-        </button>
-      </div>
-    </form>
   </div>
 </div>
 
+<!-- Month Nav -->
+<div class="flex items-center justify-between mb-4">
+  <div class="flex items-center gap-2">
+    <a href="<%= filterUrl({ month: prevMonth }) %>"
+      class="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 transition shadow-sm">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
+    </a>
+    <span class="text-sm font-semibold text-slate-700 min-w-[130px] text-center"><%= monthLabel %></span>
+    <% if (!isCurrentMonth) { %>
+      <a href="<%= filterUrl({ month: nextMonth }) %>"
+        class="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 transition shadow-sm">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+      </a>
+    <% } else { %>
+      <span class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 border border-slate-100 text-slate-300 cursor-not-allowed">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+      </span>
+    <% } %>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm px-4 sm:px-5 py-3.5 mb-5 flex flex-wrap items-center gap-x-4 gap-y-2.5">
+
+  <!-- Teacher -->
+  <div class="flex items-center gap-1.5 flex-wrap">
+    <span class="text-xs font-bold text-slate-300 uppercase tracking-wider mr-0.5">Teacher</span>
+    <a href="<%= filterUrl({ teacher_id: '' }) %>"
+      class="<%= !selectedTeacher ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">All</a>
+    <% teachers.forEach(function(t) { %>
+      <a href="<%= filterUrl({ teacher_id: String(t._id) }) %>"
+        class="<%= selectedTeacher === String(t._id) ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">
+        <%= t.displayName %>
+      </a>
+    <% }); %>
+  </div>
+
+  <span class="self-stretch w-px bg-slate-100 hidden sm:block"></span>
+
+  <!-- Type -->
+  <div class="flex items-center gap-1.5 flex-wrap">
+    <span class="text-xs font-bold text-slate-300 uppercase tracking-wider mr-0.5">Type</span>
+    <a href="<%= filterUrl({ teaching_type: '' }) %>"
+      class="<%= !selectedType ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">All</a>
+    <% teachingTypes.forEach(function(type) { %>
+      <a href="<%= filterUrl({ teaching_type: type }) %>"
+        class="<%= selectedType === type ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>"><%= type %></a>
+    <% }); %>
+  </div>
+
+  <span class="self-stretch w-px bg-slate-100 hidden sm:block"></span>
+
+  <!-- Mode -->
+  <div class="flex items-center gap-1.5">
+    <span class="text-xs font-bold text-slate-300 uppercase tracking-wider mr-0.5">Mode</span>
+    <a href="<%= filterUrl({ session_mode: '' }) %>"
+      class="<%= !selectedMode ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">All</a>
+    <a href="<%= filterUrl({ session_mode: 'online' }) %>"
+      class="<%= selectedMode === 'online' ? activeBase + ' bg-blue-600 text-white' : inactiveBase %>">Online</a>
+    <a href="<%= filterUrl({ session_mode: 'offline' }) %>"
+      class="<%= selectedMode === 'offline' ? activeBase + ' bg-slate-600 text-white' : inactiveBase %>">Offline</a>
+  </div>
+
+  <span class="self-stretch w-px bg-slate-100 hidden sm:block"></span>
+
+  <!-- Session -->
+  <div class="flex items-center gap-1.5">
+    <span class="text-xs font-bold text-slate-300 uppercase tracking-wider mr-0.5">Session</span>
+    <a href="<%= filterUrl({ session_type: '' }) %>"
+      class="<%= !selectedSessionType ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">All</a>
+    <a href="<%= filterUrl({ session_type: 'group' }) %>"
+      class="<%= selectedSessionType === 'group' ? activeBase + ' bg-brand-600 text-white' : inactiveBase %>">Group</a>
+    <a href="<%= filterUrl({ session_type: 'private' }) %>"
+      class="<%= selectedSessionType === 'private' ? activeBase + ' bg-purple-600 text-white' : inactiveBase %>">Private</a>
+  </div>
+
+</div>
+
+<!-- Table -->
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+  <% if (!reports.length) { %>
+    <div class="py-16 text-center">
+      <p class="text-slate-400 text-sm font-medium">No reports found for <%= monthLabel %>.</p>
+    </div>
+  <% } else { %>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs font-semibold text-slate-400 uppercase tracking-wider bg-slate-50">
+            <th class="px-5 py-3.5 text-left">Teacher</th>
+            <th class="px-5 py-3.5 text-left">Class</th>
+            <th class="px-5 py-3.5 text-left hidden sm:table-cell">Type</th>
+            <th class="px-5 py-3.5 text-left hidden md:table-cell">Date</th>
+            <th class="px-5 py-3.5 text-left hidden lg:table-cell">Duration</th>
+            <th class="px-5 py-3.5 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-50">
+          <% reports.forEach(function(r) { %>
+            <tr class="hover:bg-slate-50 transition group <%= r.session_mode === 'online' ? 'bg-blue-50/30' : '' %>">
+              <td class="px-5 py-3.5 font-semibold text-slate-800 whitespace-nowrap">
+                <%= r.teacher ? r.teacher.displayName : '—' %>
+              </td>
+              <td class="px-5 py-3.5 text-slate-600">
+                <span class="inline-flex items-center gap-1">
+                  <%= r.class_name %>
+                  <% if (r.session_mode === 'online') { %>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z" /></svg>
+                  <% } %>
+                  <% if (r.session_type === 'private') { %>
+                    <span class="text-xs font-bold text-purple-400">Private</span>
+                  <% } %>
+                </span>
+              </td>
+              <td class="px-5 py-3.5 hidden sm:table-cell">
+                <span class="badge-<%= typeBadgeColor[r.teaching_type] || 'slate' %> text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap">
+                  <%= r.teaching_type %>
+                </span>
+              </td>
+              <td class="px-5 py-3.5 font-mono text-xs text-slate-400 hidden md:table-cell whitespace-nowrap">
+                <%= r.date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) %>
+              </td>
+              <td class="px-5 py-3.5 font-mono text-xs text-slate-500 hidden lg:table-cell whitespace-nowrap">
+                <%= r.durationFormatted %>
+              </td>
+              <td class="px-5 py-3.5">
+                <div class="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition">
+                  <a href="/admin/reports/<%= r._id %>/edit"
+                    class="p-1.5 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-50 transition" title="Edit">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                  </a>
+                  <button
+                    data-delete-url="/admin/reports/<%= r._id %>"
+                    class="js-delete-report p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition" title="Delete">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
 <script>
-  // ── Session type / mode toggles (unchanged) ──────────────────
-  function setSessionType(type) {
-    document.getElementById('session_type_input').value = type;
-    var g = document.getElementById('btn-group'), p = document.getElementById('btn-private');
-    if (type === 'group') {
-      g.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-brand-500 bg-brand-50 text-brand-700';
-      p.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
-    } else {
-      g.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
-      p.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-purple-400 bg-purple-50 text-purple-700';
-    }
+  function getCsrfToken() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.getAttribute('content') : '';
   }
-  function setMode(mode) {
-    document.getElementById('session_mode_input').value = mode;
-    var off = document.getElementById('btn-offline'), on = document.getElementById('btn-online');
-    var piW = document.getElementById('personal-internet-wrapper');
-    if (mode === 'online') {
-      on.className  = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-blue-500 bg-blue-50 text-blue-700';
-      off.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
-      piW.classList.remove('hidden');
-    } else {
-      off.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-700 bg-slate-700 text-white';
-      on.className  = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
-      piW.classList.add('hidden');
-      document.getElementById('personal_internet_check').checked = false;
-    }
-  }
-  var formEl = document.getElementById('edit-report-form');
-  setSessionType(formEl.dataset.sessionType);
-  setMode(formEl.dataset.sessionMode);
-  if (formEl.dataset.usesPersonalInternet === 'true') document.getElementById('personal_internet_check').checked = true;
 
-  // ── Tag inputs (unchanged) ───────────────────────────────────
-  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  function initTagInput({ inputId, boxId, hiddenId, countId, tagCls }) {
-    var input = document.getElementById(inputId), box = document.getElementById(boxId);
-    var hidden = document.getElementById(hiddenId), countEl = document.getElementById(countId);
-    var tags = hidden.value ? hidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [];
-    function render() {
-      box.innerHTML = '';
-      tags.forEach(function(tag, i) {
-        var pill = document.createElement('span');
-        pill.className = 'inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ' + tagCls;
-        pill.innerHTML = escHtml(tag) + ' <button type="button" class="ml-0.5 leading-none opacity-60 hover:opacity-100 transition text-sm" data-i="' + i + '">×</button>';
-        pill.querySelector('button').addEventListener('click', function() { tags.splice(i, 1); render(); });
-        box.appendChild(pill);
-      });
-      countEl.textContent = tags.length; hidden.value = tags.join(',');
-    }
-    function tryAdd() { var v = input.value.replace(/,/g,'').trim(); if (v && !tags.includes(v)) tags.push(v); input.value=''; render(); }
-    input.addEventListener('keydown', function(e) {
-      if (e.key==='Enter') { e.preventDefault(); tryAdd(); }
-      else if (e.key===',') { e.preventDefault(); tryAdd(); }
-      else if (e.key==='Backspace' && input.value==='' && tags.length) { tags.pop(); render(); }
-    });
-    input.addEventListener('blur', function() { if (input.value.trim()) tryAdd(); });
-    render();
-  }
-  initTagInput({ inputId:'ac-input', boxId:'ac-tag-box', hiddenId:'ac-hidden', countId:'ac-count', tagCls:'bg-emerald-100 text-emerald-700' });
-  initTagInput({ inputId:'absent-input', boxId:'absent-tag-box', hiddenId:'absent-hidden', countId:'absent-count', tagCls:'bg-red-100 text-red-600' });
-</script>
-
-<!-- 🟠 Unsaved changes warning -->
-<script>
-  (function () {
-    var form  = document.getElementById('edit-report-form');
-    var dirty = false;
-
-    // Mark dirty on any native input/change — tag inputs update hidden fields
-    form.addEventListener('input',  function () { dirty = true; });
-    form.addEventListener('change', function () { dirty = true; });
-
-    // Button clicks (session type / mode toggles) also dirty the form
-    form.querySelectorAll('button[type="button"]').forEach(function (btn) {
-      btn.addEventListener('click', function () { dirty = true; });
-    });
-
-    form.addEventListener('submit', function () { dirty = false; });
-
-    var cancelBtn = document.getElementById('cancel-btn');
-    var backLink  = document.getElementById('back-link');
-
-    function guardNav(e, href) {
-      if (!dirty) return;
-      e.preventDefault();
+  document.querySelectorAll('.js-delete-report').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var url = btn.dataset.deleteUrl;
       Swal.fire({
-        title: 'Unsaved changes',
-        text: 'You have unsaved changes. Leave anyway?',
+        title: 'Delete this report?',
+        text: 'This action cannot be undone.',
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#ef4444', cancelButtonColor: '#64748b',
-        confirmButtonText: 'Leave', cancelButtonText: 'Stay',
+        confirmButtonText: 'Yes, delete it!', cancelButtonText: 'Cancel',
         reverseButtons: true, focusCancel: true,
         customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl', cancelButton: 'rounded-xl' },
-      }).then(function (result) {
-        if (result.isConfirmed) window.location.href = href;
+      }).then(function(result) {
+        if (!result.isConfirmed) return;
+        Swal.fire({ title: 'Deleting…', allowOutsideClick: false, allowEscapeKey: false,
+          showConfirmButton: false, didOpen: function() { Swal.showLoading(); } });
+        fetch(url, {
+          method: 'DELETE',
+          headers: { 'X-Requested-With': 'XMLHttpRequest', 'x-csrf-token': getCsrfToken() },
+        }).then(function(res) {
+          if (res.ok) {
+            Swal.fire({ title: 'Deleted!', icon: 'success', confirmButtonColor: '#16a34a',
+              customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+              timer: 1500, showConfirmButton: false,
+            }).then(function() { window.location.reload(); });
+          } else {
+            Swal.fire({ title: 'Error', text: 'Failed to delete.', icon: 'error',
+              confirmButtonColor: '#ef4444', customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' } });
+          }
+        }).catch(function() {
+          Swal.fire({ title: 'Network Error', text: 'Could not reach the server.', icon: 'error',
+            confirmButtonColor: '#ef4444', customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' } });
+        });
       });
-    }
-
-    if (cancelBtn) cancelBtn.addEventListener('click', function (e) { guardNav(e, '/admin/reports'); });
-    if (backLink)  backLink.addEventListener('click',  function (e) { guardNav(e, '/admin/reports'); });
-
-    window.addEventListener('beforeunload', function (e) {
-      if (dirty) { e.preventDefault(); e.returnValue = ''; }
     });
-  })();
+  });
 </script>
 
 <%- include('../../partials/footer') %>

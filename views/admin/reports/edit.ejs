@@ -1,7 +1,7 @@
 <%- include('../../partials/header', { title: 'Admin — Edit Report' }) %>
 
 <div class="max-w-2xl mx-auto">
-  <a href="/admin/reports" class="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-brand-600 mb-6 transition font-medium">
+  <a href="/admin/reports" id="back-link" class="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-brand-600 mb-6 transition font-medium">
     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
       <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
     </svg>
@@ -50,8 +50,7 @@
       </div>
     <% } %>
 
-    <form action="/admin/reports/<%= report._id %>" method="POST" class="px-8 py-7 space-y-6"
-      id="report-form"
+    <form id="edit-report-form" action="/admin/reports/<%= report._id %>" method="POST" class="px-8 py-7 space-y-6"
       data-session-type="<%= report.session_type || 'group' %>"
       data-session-mode="<%= report.session_mode || 'offline' %>"
       data-uses-personal-internet="<%= report.uses_personal_internet %>">
@@ -131,7 +130,7 @@
         <div class="space-y-1.5">
           <label for="duration" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Duration <span class="text-red-500">*</span></label>
           <div class="relative">
-            <input type="number" id="duration" name="duration" value="<%= report.duration %>" min="1" required
+            <input type="number" id="duration" name="duration" value="<%= report.duration %>" min="1" step="1" required
               class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 pr-16 text-sm font-mono focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
             <span class="absolute inset-y-0 right-4 flex items-center text-xs text-slate-400 pointer-events-none">minute(s)</span>
           </div>
@@ -170,7 +169,7 @@
       </div>
 
       <div class="flex items-center justify-between pt-2">
-        <a href="/admin/reports" class="text-sm font-semibold text-slate-400 hover:text-slate-600 transition">Cancel</a>
+        <a href="/admin/reports" id="cancel-btn" class="text-sm font-semibold text-slate-400 hover:text-slate-600 transition">Cancel</a>
         <button type="submit"
           class="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 active:scale-95 text-white font-semibold text-sm px-6 py-2.5 rounded-xl shadow transition">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>
@@ -182,6 +181,7 @@
 </div>
 
 <script>
+  // ── Session type / mode toggles (unchanged) ──────────────────
   function setSessionType(type) {
     document.getElementById('session_type_input').value = type;
     var g = document.getElementById('btn-group'), p = document.getElementById('btn-private');
@@ -208,11 +208,12 @@
       document.getElementById('personal_internet_check').checked = false;
     }
   }
-  var formEl = document.getElementById('report-form');
+  var formEl = document.getElementById('edit-report-form');
   setSessionType(formEl.dataset.sessionType);
   setMode(formEl.dataset.sessionMode);
   if (formEl.dataset.usesPersonalInternet === 'true') document.getElementById('personal_internet_check').checked = true;
 
+  // ── Tag inputs (unchanged) ───────────────────────────────────
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function initTagInput({ inputId, boxId, hiddenId, countId, tagCls }) {
     var input = document.getElementById(inputId), box = document.getElementById(boxId);
@@ -240,6 +241,52 @@
   }
   initTagInput({ inputId:'ac-input', boxId:'ac-tag-box', hiddenId:'ac-hidden', countId:'ac-count', tagCls:'bg-emerald-100 text-emerald-700' });
   initTagInput({ inputId:'absent-input', boxId:'absent-tag-box', hiddenId:'absent-hidden', countId:'absent-count', tagCls:'bg-red-100 text-red-600' });
+</script>
+
+<!-- 🟠 Unsaved changes warning -->
+<script>
+  (function () {
+    var form  = document.getElementById('edit-report-form');
+    var dirty = false;
+
+    // Mark dirty on any native input/change — tag inputs update hidden fields
+    form.addEventListener('input',  function () { dirty = true; });
+    form.addEventListener('change', function () { dirty = true; });
+
+    // Button clicks (session type / mode toggles) also dirty the form
+    form.querySelectorAll('button[type="button"]').forEach(function (btn) {
+      btn.addEventListener('click', function () { dirty = true; });
+    });
+
+    form.addEventListener('submit', function () { dirty = false; });
+
+    var cancelBtn = document.getElementById('cancel-btn');
+    var backLink  = document.getElementById('back-link');
+
+    function guardNav(e, href) {
+      if (!dirty) return;
+      e.preventDefault();
+      Swal.fire({
+        title: 'Unsaved changes',
+        text: 'You have unsaved changes. Leave anyway?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444', cancelButtonColor: '#64748b',
+        confirmButtonText: 'Leave', cancelButtonText: 'Stay',
+        reverseButtons: true, focusCancel: true,
+        customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl', cancelButton: 'rounded-xl' },
+      }).then(function (result) {
+        if (result.isConfirmed) window.location.href = href;
+      });
+    }
+
+    if (cancelBtn) cancelBtn.addEventListener('click', function (e) { guardNav(e, '/admin/reports'); });
+    if (backLink)  backLink.addEventListener('click',  function (e) { guardNav(e, '/admin/reports'); });
+
+    window.addEventListener('beforeunload', function (e) {
+      if (dirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+  })();
 </script>
 
 <%- include('../../partials/footer') %>
