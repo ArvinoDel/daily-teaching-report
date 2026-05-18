@@ -538,3 +538,49 @@ exports.auditLogIndex = async (req, res) => {
     res.render('error', { message: 'Failed to load audit log.' });
   }
 };
+
+/* ═══════════════════════════════════════════════════════════════
+   Reports Summary  🟢
+   Add this export to the bottom of controllers/adminController.js
+════════════════════════════════════════════════════════════════ */
+exports.reportsSummaryIndex = async (req, res) => {
+  try {
+    const {
+      monthStart, monthEnd,
+      prevMonth, nextMonth,
+      isCurrentMonth, monthLabel, selectedMonthStr,
+    } = getMonthRange(req.query);
+
+    const reports = await Report.find({ date: { $gte: monthStart, $lte: monthEnd } })
+      .sort({ date: -1, createdAt: -1 })
+      .populate('teacher', 'displayName username');
+
+    // Group by calendar date (YYYY-MM-DD) — already sorted desc so day order is preserved
+    const byDate = {};
+    for (const r of reports) {
+      const key = r.date.toISOString().substring(0, 10);
+      if (!byDate[key]) {
+        byDate[key] = {
+          dateKey:   key,
+          dateLabel: r.date.toLocaleDateString('id-ID', {
+            weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+          }),
+          reports: [],
+        };
+      }
+      byDate[key].reports.push(r);
+    }
+
+    const days = Object.values(byDate); // descending date order
+
+    res.render('admin/reports/summary', {
+      days,
+      totalReports: reports.length,
+      monthLabel, prevMonth, nextMonth, isCurrentMonth, selectedMonthStr,
+      typeBadgeColor,
+    });
+  } catch (err) {
+    console.error(err);
+    res.render('error', { message: 'Failed to load reports summary.' });
+  }
+};

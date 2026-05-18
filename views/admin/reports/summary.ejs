@@ -1,0 +1,406 @@
+<%- include('../../partials/header', { title: 'Admin — Reports Summary' }) %>
+
+<%
+  const commBadge = {
+    'Prime Teacher (Full)':     'badge-emerald',
+    'Prime Teacher (Assisted)': 'badge-purple',
+    'Assistant Teacher':        'badge-sky',
+    '1/2 Prime Teacher':        'badge-amber',
+  };
+%>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<div class="mb-6 flex items-center gap-3">
+  <a href="/admin" class="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+    </svg>
+  </a>
+  <div>
+    <h1 class="text-2xl font-bold text-slate-900">Reports Summary</h1>
+    <p class="text-slate-500 text-sm mt-0.5">Achievement cards &amp; absences, grouped by day.</p>
+  </div>
+</div>
+
+<!-- ── Month Nav ───────────────────────────────────────────────── -->
+<div class="flex items-center justify-between mb-6">
+  <div class="flex items-center gap-2">
+    <a href="/admin/reports/summary?month=<%= prevMonth %>"
+      class="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 transition shadow-sm">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+      </svg>
+    </a>
+    <span class="text-sm font-semibold text-slate-700 min-w-[130px] text-center"><%= monthLabel %></span>
+    <% if (!isCurrentMonth) { %>
+      <a href="/admin/reports/summary?month=<%= nextMonth %>"
+        class="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 transition shadow-sm">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+        </svg>
+      </a>
+    <% } else { %>
+      <span class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 border border-slate-100 text-slate-300 cursor-not-allowed">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+        </svg>
+      </span>
+    <% } %>
+  </div>
+
+  <!-- Summary badge -->
+  <div class="flex items-center gap-2.5">
+    <div class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-right">
+      <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total</p>
+      <p class="text-lg font-bold text-slate-800"><%= totalReports %> <span class="text-sm font-semibold text-slate-400">reports</span></p>
+    </div>
+    <div class="bg-teal-50 border border-teal-200 rounded-xl px-4 py-2 text-right">
+      <p class="text-xs font-semibold text-teal-500 uppercase tracking-wider">Days</p>
+      <p class="text-lg font-bold text-teal-700"><%= days.length %></p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Day list ────────────────────────────────────────────────── -->
+<% if (!days.length) { %>
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm py-20 text-center">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-slate-200 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+    </svg>
+    <p class="text-slate-400 text-sm font-medium">No reports found for this month.</p>
+  </div>
+<% } else { %>
+
+  <div class="space-y-3" id="day-list">
+    <% days.forEach(function(day, dayIdx) {
+      const isFirst = dayIdx === 0;
+    %>
+
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden" id="day-card-<%= dayIdx %>">
+
+      <!-- Day header / toggle button -->
+      <button type="button"
+        onclick="toggleDay('<%= dayIdx %>')"
+        class="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition text-left group">
+
+        <div class="flex items-center gap-3 min-w-0">
+          <!-- Chevron icon -->
+          <svg id="chevron-<%= dayIdx %>"
+            xmlns="http://www.w3.org/2000/svg"
+            class="w-4 h-4 text-slate-400 flex-shrink-0 transition-transform duration-200 <%= isFirst ? 'rotate-180' : '' %>"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+          </svg>
+
+          <!-- Date label -->
+          <span class="font-bold text-slate-800 text-sm capitalize"><%= day.dateLabel %></span>
+
+          <!-- Quick stats pills -->
+          <%
+            const totalAC     = day.reports.reduce(function(s, r){ return s + (r.ac_students||[]).length; }, 0);
+            const totalAbsent = day.reports.reduce(function(s, r){ return s + (r.absent_students||[]).length; }, 0);
+            const allComplete = totalAbsent === 0;
+          %>
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full whitespace-nowrap">
+              <%= day.reports.length %> class<%= day.reports.length !== 1 ? 'es' : '' %>
+            </span>
+            <% if (totalAC > 0) { %>
+              <span class="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full whitespace-nowrap">
+                ★ <%= totalAC %> AC
+              </span>
+            <% } %>
+            <% if (allComplete) { %>
+              <span class="text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-full whitespace-nowrap">
+                ✓ All Complete
+              </span>
+            <% } else if (totalAbsent > 0) { %>
+              <span class="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 px-2.5 py-0.5 rounded-full whitespace-nowrap">
+                <%= totalAbsent %> absent
+              </span>
+            <% } %>
+          </div>
+        </div>
+
+        <!-- Expand hint -->
+        <span class="text-xs text-slate-300 group-hover:text-slate-400 transition flex-shrink-0 ml-2">
+          <%= isFirst ? 'collapse' : 'expand' %>
+        </span>
+      </button>
+
+      <!-- Day body -->
+      <div id="day-body-<%= dayIdx %>" class="<%= isFirst ? '' : 'hidden' %>">
+        <div class="border-t border-slate-100">
+
+          <% day.reports.forEach(function(report, rIdx) {
+            const acList      = report.ac_students     || [];
+            const absentList  = report.absent_students || [];
+            const isComplete  = absentList.length === 0;
+            const isLastRow   = rIdx === day.reports.length - 1;
+          %>
+
+          <div class="px-5 py-4 <%= isLastRow ? '' : 'border-b border-slate-50' %> hover:bg-slate-50/60 transition group/row" id="report-row-<%= report._id %>">
+
+            <div class="flex flex-col sm:flex-row sm:items-start gap-3">
+
+              <!-- Left: class info -->
+              <div class="flex-1 min-w-0 space-y-2.5">
+
+                <!-- Class name + type badge + teacher -->
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-bold text-slate-800 text-sm"><%= report.class_name %></span>
+                  <span class="<%= commBadge[report.teaching_type] || 'badge-slate' %> text-xs font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap">
+                    <%= report.teaching_type %>
+                  </span>
+                  <% if (report.session_type === 'private') { %>
+                    <span class="text-xs font-semibold text-purple-600 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">Private</span>
+                  <% } %>
+                  <% if (report.session_mode === 'online') { %>
+                    <span class="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">Online</span>
+                  <% } %>
+                </div>
+
+                <!-- Teacher -->
+                <div class="flex items-center gap-1.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                  </svg>
+                  <span class="text-xs font-semibold text-slate-600">
+                    <%= report.teacher ? report.teacher.displayName : '—' %>
+                  </span>
+                  <% if (report.teacher) { %>
+                    <span class="text-xs text-slate-400">(@<%= report.teacher.username %>)</span>
+                  <% } %>
+                  <span class="text-slate-200 mx-0.5">·</span>
+                  <span class="text-xs text-slate-400 font-mono"><%= report.durationFormatted %></span>
+                </div>
+
+                <!-- AC Students row -->
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="text-xs font-bold text-slate-400 uppercase tracking-wider mr-0.5 flex-shrink-0">AC</span>
+                  <% if (acList.length === 0) { %>
+                    <span class="text-xs text-slate-300">—</span>
+                  <% } else { %>
+                    <% acList.forEach(function(name) { %>
+                      <span class="inline-flex items-center gap-0.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-2.5 h-2.5" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 0 0 .95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 0 0-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 0 0-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 0 0-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 0 0 .951-.69l1.07-3.292Z" />
+                        </svg>
+                        <%= name %>
+                      </span>
+                    <% }) %>
+                    <span class="text-xs text-slate-400">(<%= acList.length %>)</span>
+                  <% } %>
+                </div>
+
+                <!-- Absent Students row -->
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="text-xs font-bold text-slate-400 uppercase tracking-wider mr-0.5 flex-shrink-0">Absent</span>
+                  <% if (isComplete) { %>
+                    <span class="inline-flex items-center gap-1 text-xs font-bold text-teal-600 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-full">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                      </svg>
+                      Complete
+                    </span>
+                  <% } else { %>
+                    <% absentList.forEach(function(name) { %>
+                      <span class="inline-flex items-center text-xs font-semibold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+                        <%= name %>
+                      </span>
+                    <% }) %>
+                    <span class="text-xs text-slate-400">(<%= absentList.length %>)</span>
+                  <% } %>
+                </div>
+
+                <!-- Notes (collapsible inline, only if present) -->
+                <% if (report.notes && report.notes.trim()) { %>
+                  <details class="group/notes">
+                    <summary class="cursor-pointer text-xs text-slate-400 hover:text-slate-600 transition select-none list-none flex items-center gap-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 transition-transform group-open/notes:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                      </svg>
+                      Notes
+                    </summary>
+                    <p class="mt-1.5 text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2 leading-relaxed"><%= report.notes %></p>
+                  </details>
+                <% } %>
+
+              </div>
+
+              <!-- Right: actions -->
+              <div class="flex sm:flex-col items-center sm:items-end gap-2 flex-shrink-0 sm:pt-0.5">
+                <!-- Edit -->
+                <a href="/admin/reports/<%= report._id %>/edit"
+                  title="Edit report"
+                  class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-amber-600 bg-slate-100 hover:bg-amber-50 border border-transparent hover:border-amber-200 px-3 py-1.5 rounded-lg transition whitespace-nowrap">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" />
+                  </svg>
+                  Edit
+                </a>
+
+                <!-- View full report (links to teacher-side show, admin edit serves as detail) -->
+                <a href="/admin/reports/<%= report._id %>/edit"
+                  title="View details"
+                  class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-sky-600 bg-slate-100 hover:bg-sky-50 border border-transparent hover:border-sky-200 px-3 py-1.5 rounded-lg transition whitespace-nowrap">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.964-7.178Z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                  </svg>
+                  View
+                </a>
+
+                <!-- Delete -->
+                <button type="button"
+                  data-delete-url="/admin/reports/<%= report._id %>"
+                  data-label="<%= report.class_name %>"
+                  data-row="report-row-<%= report._id %>"
+                  onclick="deleteReport(this)"
+                  title="Delete report"
+                  class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-red-600 bg-slate-100 hover:bg-red-50 border border-transparent hover:border-red-200 px-3 py-1.5 rounded-lg transition whitespace-nowrap">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                  </svg>
+                  Delete
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+          <% }) /* end reports.forEach */ %>
+
+        </div>
+      </div><!-- /day-body -->
+
+    </div><!-- /day-card -->
+
+    <% }) /* end days.forEach */ %>
+  </div><!-- /day-list -->
+
+<% } /* end if days.length */ %>
+
+
+<script>
+  /* ── Day toggle ─────────────────────────────────────────────── */
+  function toggleDay(idx) {
+    var body    = document.getElementById('day-body-'   + idx);
+    var chevron = document.getElementById('chevron-'    + idx);
+    var btn     = chevron.closest('button');
+    var hint    = btn.querySelector('span.flex-shrink-0');
+    var isOpen  = !body.classList.contains('hidden');
+
+    body.classList.toggle('hidden', isOpen);
+    chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+    if (hint) hint.textContent = isOpen ? 'expand' : 'collapse';
+  }
+
+  /* ── Expand / Collapse All ───────────────────────────────────── */
+  // (Optional convenience — hook up if you add buttons later)
+  function expandAll() {
+    document.querySelectorAll('[id^="day-body-"]').forEach(function(b, i) {
+      b.classList.remove('hidden');
+      var ch = document.getElementById('chevron-' + i);
+      if (ch) ch.style.transform = 'rotate(180deg)';
+    });
+  }
+  function collapseAll() {
+    document.querySelectorAll('[id^="day-body-"]').forEach(function(b, i) {
+      b.classList.add('hidden');
+      var ch = document.getElementById('chevron-' + i);
+      if (ch) ch.style.transform = '';
+    });
+  }
+
+  /* ── CSRF helper ─────────────────────────────────────────────── */
+  function getCsrfToken() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.getAttribute('content') : '';
+  }
+
+  /* ── Delete report ───────────────────────────────────────────── */
+  function deleteReport(btn) {
+    var url   = btn.dataset.deleteUrl;
+    var label = btn.dataset.label;
+    var rowId = btn.dataset.row;
+
+    Swal.fire({
+      title: 'Delete report?',
+      html: '<p class="text-sm text-slate-500">Class <strong>' + label + '</strong> will be permanently removed. This cannot be undone.</p>',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'Yes, delete',
+      cancelButtonText: 'Cancel',
+      reverseButtons: true,
+      focusCancel: true,
+      customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl', cancelButton: 'rounded-xl' },
+    }).then(function (result) {
+      if (!result.isConfirmed) return;
+
+      Swal.fire({
+        title: 'Deleting…',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: function () { Swal.showLoading(); },
+      });
+
+      fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'x-csrf-token': getCsrfToken(),
+        },
+      }).then(function (res) {
+        if (res.ok) {
+          // Remove the row from the DOM without a full reload
+          var row = document.getElementById(rowId);
+          if (row) {
+            row.style.transition = 'opacity 0.2s, max-height 0.3s';
+            row.style.opacity = '0';
+            row.style.overflow = 'hidden';
+            setTimeout(function () {
+              row.style.maxHeight = row.offsetHeight + 'px';
+              setTimeout(function () {
+                row.style.maxHeight = '0';
+                row.style.padding   = '0';
+                setTimeout(function () { row.remove(); }, 300);
+              }, 20);
+            }, 200);
+          }
+          Swal.fire({
+            title: 'Deleted!',
+            text: 'Report for ' + label + ' has been removed.',
+            icon: 'success',
+            timer: 1400,
+            showConfirmButton: false,
+            customClass: { popup: 'rounded-2xl' },
+          });
+        } else {
+          res.json().then(function (data) {
+            Swal.fire({
+              title: 'Error',
+              text: data.error || 'Failed to delete report.',
+              icon: 'error',
+              confirmButtonColor: '#ef4444',
+              customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+            });
+          });
+        }
+      }).catch(function () {
+        Swal.fire({
+          title: 'Network Error',
+          text: 'Could not reach the server.',
+          icon: 'error',
+          confirmButtonColor: '#ef4444',
+          customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+        });
+      });
+    });
+  }
+</script>
+
+<%- include('../../partials/footer') %>

@@ -25,6 +25,7 @@ router.get('/reports',            ctrl.reportsList);
 router.get('/reports/:id/edit',   ctrl.reportEditForm);
 router.put('/reports/:id',        ctrl.reportUpdate);
 router.delete('/reports/:id',     ctrl.reportDelete);
+router.get('/reports/summary', ctrl.reportsSummaryIndex);
 
 // Commission
 router.get('/commission', ctrl.commissionIndex);
