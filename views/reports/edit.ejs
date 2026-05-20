@@ -495,8 +495,8 @@ function renderRoster() {
         (state === 'absent' ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Absent</span>' : '') +
       '</div>' +
       '<div class="flex gap-1.5">' +
-        '<button type="button" class="'+acCls+'"  onclick="toggleStudent('+JSON.stringify(student)+',\'ac\')">AC</button>' +
-        '<button type="button" class="'+absCls+'" onclick="toggleStudent('+JSON.stringify(student)+',\'absent\')">Absent</button>' +
+        '<button type="button" class="'+acCls+'" data-student="'+escHtml(student)+'" data-role="ac">AC</button>' +
+        '<button type="button" class="'+absCls+'" data-student="'+escHtml(student)+'" data-role="absent">Absent</button>' +
       '</div>' +
     '</div>';
   }).join('');
@@ -570,6 +570,20 @@ absentCtrl = initTagInput({ inputId:'absent-input', boxId:'absent-tag-box', hidd
   }
   // If no match: manual inputs already show with existing tag values.
 })();
+
+// Event delegation for student roster buttons
+var rosterStudentsEl = document.getElementById('roster-students');
+if (rosterStudentsEl) {
+  rosterStudentsEl.addEventListener('click', function(e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    var student = btn.getAttribute('data-student');
+    var role = btn.getAttribute('data-role');
+    if (student && role) {
+      toggleStudent(student, role);
+    }
+  });
+}
 </script>
 
 <%- include('../partials/footer') %>
