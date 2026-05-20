@@ -124,8 +124,8 @@ exports.dashboard = async (req, res) => {
     const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
     const [totalUsers, onlineCount, totalReports, monthlyReports] = await Promise.all([
-      User.countDocuments({ role: { $ne: 'admin' } }),
-      User.countDocuments({ lastActiveAt: { $gte: fiveMinAgo }, role: { $ne: 'admin' } }),
+      User.countDocuments({ role: 'teacher' }),
+      User.countDocuments({ lastActiveAt: { $gte: fiveMinAgo }, role: 'teacher' }),
       Report.countDocuments(),
       Report.countDocuments({ date: { $gte: monthStart, $lte: monthEnd } }),
     ]);
@@ -234,7 +234,7 @@ exports.userUpdate = async (req, res) => {
       if (existing) errors.push('Username already taken.');
     }
 
-    if (String(user._id) === String(req.session.user._id) && role !== 'admin') {
+    if (String(user._id) === String(req.session.user._id) && role !== user.role) {
       errors.push('You cannot change your own role.');
     }
 
@@ -268,7 +268,7 @@ exports.userUpdate = async (req, res) => {
     user.username    = username.toLowerCase().trim();
     user.displayName = displayName.trim();
     if (String(user._id) !== String(req.session.user._id)) {
-      user.role = ['teacher', 'admin'].includes(role) ? role : 'teacher';
+      user.role = ['teacher', 'admin', 'superadmin'].includes(role) ? role : 'teacher';
     }
     user.joinDate   = parsedJoinDate;
     user.commission = {

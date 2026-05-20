@@ -24,7 +24,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['teacher', 'admin'],
+    enum: ['teacher', 'admin', 'superadmin'],
     default: 'teacher',
   },
   // When the teacher started working (month + year stored as Date day=1)

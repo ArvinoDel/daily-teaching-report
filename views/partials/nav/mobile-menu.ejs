@@ -47,7 +47,7 @@
       <% } %>
 
         <!-- Admin link (admins only) -->
-        <% if (typeof currentUser !=='undefined' && currentUser && currentUser.role==='admin' ) { %>
+        <% if (typeof currentUser !=='undefined' && currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin')) { %>
           <a href="/admin" onclick="toggleMenu()"
             class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= isAdminPage ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-100' %>">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"

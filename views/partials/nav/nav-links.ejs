@@ -10,7 +10,7 @@
 %>
 <div class="hidden sm:flex items-center gap-1 bg-slate-100 rounded-xl p-1">
 
-  <% if (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'admin') { %>
+  <% if (typeof currentUser !== 'undefined' && currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin')) { %>
     <!-- Admin sees an Admin link that highlights on all /admin/* pages -->
     <a href="/admin"
       class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition

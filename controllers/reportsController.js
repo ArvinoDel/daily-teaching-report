@@ -68,7 +68,7 @@ async function getGroupsJson() {
 // GET / — Dashboard
 exports.index = async (req, res) => {
   try {
-    if (req.session.user && req.session.user.role === 'admin') {
+    if (req.session.user && (req.session.user.role === 'admin' || req.session.user.role === 'superadmin')) {
       return res.redirect('/admin');
     }
 
