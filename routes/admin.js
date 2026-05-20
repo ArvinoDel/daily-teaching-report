@@ -2,8 +2,9 @@ const express    = require('express');
 const router     = express.Router();
 const ctrl       = require('../controllers/adminController');
 const groupCtrl  = require('../controllers/adminGroupController');
+const feedbackCtrl = require('../controllers/feedbackController');
 const { requireAuth }  = require('../middleware/auth');
-const { requireAdmin } = require('../middleware/adminAuth');
+const { requireAdmin, requireSuperAdmin } = require('../middleware/adminAuth');
 
 router.use(requireAuth, requireAdmin);
 
@@ -39,5 +40,10 @@ router.delete('/groups/:id',      groupCtrl.groupDelete);
 
 // Commission
 router.get('/commission', ctrl.commissionIndex);
+
+// Feedbacks
+router.get('/feedbacks',              requireSuperAdmin, feedbackCtrl.adminList);
+router.post('/feedbacks/:id/status',  requireSuperAdmin, feedbackCtrl.adminUpdateStatus);
+router.delete('/feedbacks/:id',       requireSuperAdmin, feedbackCtrl.adminDelete);
 
 module.exports = router;

@@ -6,7 +6,8 @@
   }
 
   // Treat any Admin* page title as active admin tab, except specific tabs like Summary or Groups
-  const isAdminPage = typeof title !== 'undefined' && title.startsWith('Admin') && !title.includes('Summary') && !title.includes('Group');
+  // Treat any Admin* page title as active admin tab, except specific tabs like Summary, Groups, or Feedbacks
+  const isAdminPage = typeof title !== 'undefined' && title.startsWith('Admin') && !title.includes('Summary') && !title.includes('Group') && !title.includes('Feedback');
 %>
 <div class="hidden sm:flex items-center gap-1 bg-slate-100 rounded-xl p-1">
 
@@ -36,6 +37,16 @@
       </svg>
       Groups
     </a>
+    <% if (currentUser.role === 'superadmin') { %>
+    <a href="/admin/feedbacks"
+      class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition
+        <%= (typeof title !== 'undefined' && title.includes('Feedback')) ? 'bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-white/60' %>">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a.75.75 0 0 1-1.074-.765 6.002 6.002 0 0 1 1.086-3.896C4.534 14.942 4 13.522 4 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
+      </svg>
+      Feedbacks
+    </a>
+    <% } %>
   <% } %>
 
             <% if (typeof currentUser !=='undefined' && currentUser && currentUser.role==='teacher' ) { %>

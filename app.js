@@ -14,6 +14,7 @@ const reportRoutes  = require('./routes/reports');
 const authRoutes    = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
 const adminRoutes   = require('./routes/admin');
+const feedbackRoutes = require('./routes/feedback');
 const { requireAuth } = require('./middleware/auth');
 
 const app = express();
@@ -149,6 +150,7 @@ app.use('/auth',    authRoutes);
 app.use('/reports', requireAuth, reportRoutes);
 app.use('/profile', requireAuth, profileRoutes);
 app.use('/admin',   adminRoutes);
+app.use('/feedback', feedbackRoutes);
 app.get('/score-calculator', requireAuth, (req, res) => res.render('score-calculator'));
 app.get('/', (req, res) => res.redirect('/reports'));
 

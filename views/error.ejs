@@ -1,27 +1,189 @@
 <%- include('./partials/header', { title: 'Error' }) %>
 
-<div class="max-w-md mx-auto text-center py-20">
+<div class="max-w-md mx-auto text-center py-16">
   <div class="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-5">
     <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
       <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
     </svg>
   </div>
-  <h1 class="text-2xl font-bold text-slate-800 mb-2">There is something wrong</h1>
-  <p class="text-slate-500 mb-6"><%= message || 'There is something wrong. Try again later.' %></p>
-  <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+  <h1 class="text-2xl font-bold text-slate-800 mb-2">Terjadi kesalahan</h1>
+  <p class="text-slate-500 mb-6"><%= message || 'Terjadi kesalahan. Coba lagi nanti.' %></p>
+  <div class="flex flex-col sm:flex-row items-center justify-center gap-3 mb-8">
     <a href="/reports" class="inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm px-5 py-2.5 rounded-xl shadow transition w-full sm:w-auto">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+        <path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
       </svg>
-      Back to Dashboard
-    </a>
-    <a href="https://wa.me/6281224964214?text=Hi%2C%20I%20found%20an%20error%20on%20the%20Daily%20Teaching%20Report%20App" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#1ebd5a] text-white font-semibold text-sm px-5 py-2.5 rounded-xl shadow transition w-full sm:w-auto">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-whatsapp" viewBox="0 0 16 16">
-        <path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232"/>
-      </svg>
-      Find any errors? Contact me
+      Kembali ke Dashboard
     </a>
   </div>
+
+  <!-- Report Error Toggle -->
+  <div class="text-center mb-4">
+    <button id="toggleFeedbackBtn" type="button"
+      class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-brand-600 transition">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+      </svg>
+      Laporkan error ini
+    </button>
+  </div>
+
+  <!-- Feedback Form -->
+  <div id="feedbackPanel" class="hidden text-left bg-white border border-slate-100 rounded-2xl shadow-sm p-5">
+    <!-- Success state -->
+    <div id="feedbackSuccess" class="hidden text-center py-6">
+      <div class="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-3">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+        </svg>
+      </div>
+      <p class="font-semibold text-slate-700 text-sm">Laporan terkirim!</p>
+      <p class="text-slate-400 text-xs mt-1">Terima kasih, kami akan segera menindaklanjuti.</p>
+    </div>
+
+    <!-- Form state -->
+    <div id="feedbackForm">
+      <h2 class="text-sm font-bold text-slate-700 mb-4">Laporkan Error</h2>
+
+      <!-- Error messages -->
+      <div id="feedbackErrors" class="hidden mb-4 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+        <ul id="feedbackErrorList" class="text-xs text-red-600 space-y-0.5 list-disc list-inside"></ul>
+      </div>
+
+      <!-- Name + Email (only for non-logged-in users) -->
+      <% if (!currentUser) { %>
+        <div class="mb-3">
+          <label class="block text-xs font-semibold text-slate-600 mb-1">
+            Nama <span class="text-red-400">*</span>
+          </label>
+          <input id="fb_name" type="text" maxlength="100" placeholder="Nama kamu"
+            class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-300 transition" />
+        </div>
+        <div class="mb-3">
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Email (opsional)</label>
+          <input id="fb_email" type="email" maxlength="200" placeholder="email@contoh.com"
+            class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-300 transition" />
+        </div>
+      <% } %>
+
+      <!-- Description -->
+      <div class="mb-3">
+        <label class="block text-xs font-semibold text-slate-600 mb-1">
+          Deskripsi error <span class="text-red-400">*</span>
+        </label>
+        <textarea id="fb_description" rows="4" maxlength="2000"
+          placeholder="Jelaskan apa yang terjadi, apa yang kamu lakukan sebelum error muncul..."
+          class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-300 transition resize-none"></textarea>
+        <p class="text-right text-xs text-slate-300 mt-1"><span id="fb_charCount">0</span>/2000</p>
+      </div>
+
+      <!-- Screenshot -->
+      <div class="mb-4">
+        <label class="block text-xs font-semibold text-slate-600 mb-1">Screenshot (opsional, maks 5 MB)</label>
+        <input id="fb_screenshot" type="file" accept="image/jpeg,image/png,image/webp"
+          class="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-600 hover:file:bg-slate-200 transition" />
+        <!-- Preview -->
+        <div id="fb_preview" class="hidden mt-2">
+          <img id="fb_previewImg" src="" alt="preview" class="max-h-32 rounded-xl border border-slate-100 object-cover" />
+        </div>
+      </div>
+
+      <button id="fb_submitBtn" type="button"
+        class="w-full bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold py-2.5 rounded-xl shadow transition flex items-center justify-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+        </svg>
+        Kirim Laporan
+      </button>
+    </div>
+  </div>
 </div>
+
+<script>
+(function () {
+  var CSRF_TOKEN = '<%= csrfToken %>';
+
+  // Toggle panel
+  document.getElementById('toggleFeedbackBtn').addEventListener('click', function () {
+    var panel = document.getElementById('feedbackPanel');
+    panel.classList.toggle('hidden');
+  });
+
+  // Character counter
+  document.getElementById('fb_description').addEventListener('input', function () {
+    document.getElementById('fb_charCount').textContent = this.value.length;
+  });
+
+  // Screenshot preview
+  document.getElementById('fb_screenshot').addEventListener('change', function () {
+    var file = this.files[0];
+    var preview = document.getElementById('fb_preview');
+    var img = document.getElementById('fb_previewImg');
+    if (file) {
+      img.src = URL.createObjectURL(file);
+      preview.classList.remove('hidden');
+    } else {
+      preview.classList.add('hidden');
+    }
+  });
+
+  // Submit
+  document.getElementById('fb_submitBtn').addEventListener('click', function () {
+    var btn = this;
+    var errBox  = document.getElementById('feedbackErrors');
+    var errList = document.getElementById('feedbackErrorList');
+    errBox.classList.add('hidden');
+    errList.innerHTML = '';
+
+    var description = document.getElementById('fb_description').value;
+    var screenshot  = document.getElementById('fb_screenshot').files[0];
+
+    // Safely check for inputs in the DOM without inserting EJS control tags inside JavaScript block
+    var nameEl  = document.getElementById('fb_name');
+    var emailEl = document.getElementById('fb_email');
+    var name  = nameEl ? nameEl.value : '';
+    var email = emailEl ? emailEl.value : '';
+
+    var fd = new FormData();
+    fd.append('_csrf', CSRF_TOKEN);
+    fd.append('description', description);
+    fd.append('pageUrl', window.location.href);
+    if (nameEl)  fd.append('submitterName',  name);
+    if (emailEl) fd.append('submitterEmail', email);
+    if (screenshot) fd.append('screenshot', screenshot);
+
+    btn.disabled = true;
+    var originalHtml = btn.innerHTML;
+    btn.innerHTML = '<svg class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Mengirim...';
+
+    fetch('/feedback', { method: 'POST', body: fd })
+      .then(function (res) {
+        return res.json();
+      })
+      .then(function (data) {
+        if (data.ok) {
+          document.getElementById('feedbackForm').classList.add('hidden');
+          document.getElementById('feedbackSuccess').classList.remove('hidden');
+        } else {
+          var msgs = data.errors || ['Terjadi kesalahan.'];
+          msgs.forEach(function (m) {
+            var li = document.createElement('li');
+            li.textContent = m;
+            errList.appendChild(li);
+          });
+          errBox.classList.remove('hidden');
+        }
+      })
+      .catch(function (e) {
+        errList.innerHTML = '<li>Gagal mengirim. Periksa koneksi internet kamu.</li>';
+        errBox.classList.remove('hidden');
+      })
+      .finally(function () {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      });
+  });
+})();
+</script>
 
 <%- include('./partials/footer') %>
