@@ -1,6 +1,7 @@
 const User     = require('../models/User');
 const Report   = require('../models/Report');
 const AuditLog = require('../models/AuditLog'); // 🟢 Audit log
+const Group    = require('../models/Group');
 
 const TEACHING_TYPES = [
   'Prime Teacher (Full)',
@@ -50,6 +51,25 @@ function safeJson(data) {
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026');
+}
+
+// 🟢 Fetch groups as safe JSON for embedding in views
+async function getGroupsJson() {
+  try {
+    const groups = await Group.find()
+      .sort({ group_name: 1 })
+      .select('group_name type level students');
+    return safeJson(groups.map(g => ({
+      _id:        String(g._id),
+      group_name: g.group_name,
+      type:       g.type,
+      level:      g.level || '',
+      students:   g.students,
+    })));
+  } catch (e) {
+    console.error('getGroupsJson error:', e);
+    return '[]';
+  }
 }
 
 function toMonthStr(d) {
@@ -353,9 +373,12 @@ exports.reportsList = async (req, res) => {
 
 exports.reportEditForm = async (req, res) => {
   try {
-    const report = await Report.findById(req.params.id).populate('teacher', 'displayName username');
+    const [report, groupsJson] = await Promise.all([
+      Report.findById(req.params.id).populate('teacher', 'displayName username'),
+      getGroupsJson(),
+    ]);
     if (!report) return res.render('error', { message: 'Report not found.' });
-    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [] });
+    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [], groupsJson });
   } catch (err) {
     res.render('error', { message: 'Report not found.' });
   }
@@ -370,8 +393,11 @@ exports.reportUpdate = async (req, res) => {
 
     const validationErrors = validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type });
     if (validationErrors.length > 0) {
-      const report = await Report.findById(req.params.id).populate('teacher', 'displayName username');
-      return res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors });
+      const [report, groupsJson] = await Promise.all([
+        Report.findById(req.params.id).populate('teacher', 'displayName username'),
+        getGroupsJson(),
+      ]);
+      return res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors, groupsJson });
     }
 
     const report = await Report.findByIdAndUpdate(
@@ -397,8 +423,11 @@ exports.reportUpdate = async (req, res) => {
     res.redirect('/admin/reports');
   } catch (err) {
     console.error(err);
-    const report = await Report.findById(req.params.id).populate('teacher', 'displayName username').catch(() => null);
-    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: ['Something went wrong.'] });
+    const [report, groupsJson] = await Promise.all([
+      Report.findById(req.params.id).populate('teacher', 'displayName username').catch(() => null),
+      getGroupsJson(),
+    ]);
+    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: ['Something went wrong.'], groupsJson });
   }
 };
 
