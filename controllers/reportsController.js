@@ -1,5 +1,6 @@
 const Report = require('../models/Report');
 const User   = require('../models/User');
+const Group  = require('../models/Group'); // 🟢 Added for autocomplete
 
 const TEACHING_TYPES = ['Prime Teacher (Full)', 'Assistant Teacher', '1/2 Prime Teacher', 'Prime Teacher (Assisted)'];
 
@@ -10,10 +11,6 @@ const typeBadgeColor = {
   'Prime Teacher (Assisted)': 'purple',
 };
 
-/**
- * Safely serialize data as JSON for embedding in an HTML <script> block.
- * Escapes <, >, & to prevent XSS breakout from </script> or similar.
- */
 function safeJsonForHtml(data) {
   return JSON.stringify(data)
     .replace(/</g, '\\u003c')
@@ -29,7 +26,6 @@ function parseStudentList(raw) {
 function validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type }) {
   const errors = [];
   if (!date || isNaN(new Date(date).getTime())) errors.push('Tanggal tidak valid.');
-  // subject is now optional
   if (subject && subject.trim().length > 100) errors.push('Mata pelajaran maksimal 100 karakter.');
   if (!class_name || class_name.trim().length === 0) errors.push('Nama kelas wajib diisi.');
   if (class_name && class_name.trim().length > 50) errors.push('Nama kelas maksimal 50 karakter.');
@@ -50,10 +46,28 @@ function formatIDR(n) {
   return 'Rp\u00a0' + n.toLocaleString('id-ID');
 }
 
+// 🟢 Fetch groups as safe JSON for embedding in views
+async function getGroupsJson() {
+  try {
+    const groups = await Group.find()
+      .sort({ group_name: 1 })
+      .select('group_name type level students');
+    return safeJsonForHtml(groups.map(g => ({
+      _id:        String(g._id),
+      group_name: g.group_name,
+      type:       g.type,
+      level:      g.level || '',
+      students:   g.students,
+    })));
+  } catch (e) {
+    console.error('getGroupsJson error:', e);
+    return '[]';
+  }
+}
+
 // GET / — Dashboard
 exports.index = async (req, res) => {
   try {
-    // Admins have their own panel
     if (req.session.user && req.session.user.role === 'admin') {
       return res.redirect('/admin');
     }
@@ -112,14 +126,12 @@ exports.index = async (req, res) => {
     }
     const dailySummary = Object.values(dailyMap).sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // Build list filter with all active filters
     const listFilter = { teacher: req.session.user._id };
     if (teaching_type && TEACHING_TYPES.includes(teaching_type)) listFilter.teaching_type = teaching_type;
     if (session_mode && ['online', 'offline'].includes(session_mode)) listFilter.session_mode = session_mode;
     if (session_type && ['group', 'private'].includes(session_type)) listFilter.session_type = session_type;
     const reports = await Report.find(listFilter).sort({ date: -1 });
 
-    // ── Commission table ─────────────────────────────────────────
     const currentUser = await User.findById(req.session.user._id).select('commission');
     const comm = currentUser?.commission || {};
     const commMap = {
@@ -139,7 +151,6 @@ exports.index = async (req, res) => {
     const commissionTotal          = commissionTable.reduce((sum, r) => sum + r.total, 0);
     const commissionTotalFormatted = formatIDR(commissionTotal);
     const totalSessions            = commissionTable.reduce((sum, r) => sum + r.sessions, 0);
-    // ─────────────────────────────────────────────────────────────
 
     const successMessage = req.session.flash || null;
     delete req.session.flash;
@@ -159,7 +170,6 @@ exports.index = async (req, res) => {
       monthLabel, prevMonth, nextMonth, isCurrentMonth,
       selectedMonthStr: toMonthStr(new Date(selectedYear, selectedMonth, 1)),
       dailySummary, successMessage,
-      // Pre-serialized JSON for safe embedding in <script> tags
       dailySummaryJson: safeJsonForHtml(dailySummary.map(day => ({
         dateLabel: new Date(day.date).toLocaleDateString('id-ID', {
           weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
@@ -180,8 +190,14 @@ exports.index = async (req, res) => {
   }
 };
 
-exports.newForm = (req, res) => {
-  res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {} });
+// 🟢 Now async — fetches groups for autocomplete
+exports.newForm = async (req, res) => {
+  try {
+    const groupsJson = await getGroupsJson();
+    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson });
+  } catch (err) {
+    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson: '[]' });
+  }
 };
 
 exports.create = async (req, res) => {
@@ -193,7 +209,8 @@ exports.create = async (req, res) => {
 
     const validationErrors = validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type });
     if (validationErrors.length > 0) {
-      return res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: validationErrors, formData: req.body });
+      const groupsJson = await getGroupsJson(); // 🟢 keep autocomplete on error
+      return res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: validationErrors, formData: req.body, groupsJson });
     }
 
     const report = new Report({
@@ -215,7 +232,8 @@ exports.create = async (req, res) => {
     res.redirect('/reports');
   } catch (err) {
     const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['Terjadi kesalahan. Silakan coba lagi.'];
-    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors, formData: req.body });
+    const groupsJson = await getGroupsJson();
+    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors, formData: req.body, groupsJson });
   }
 };
 
@@ -229,11 +247,15 @@ exports.show = async (req, res) => {
   }
 };
 
+// 🟢 Now fetches groups for autocomplete + pre-selection
 exports.editForm = async (req, res) => {
   try {
-    const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
+    const [report, groupsJson] = await Promise.all([
+      Report.findOne({ _id: req.params.id, teacher: req.session.user._id }),
+      getGroupsJson(),
+    ]);
     if (!report) return res.render('error', { message: 'Report not found.' });
-    res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [] });
+    res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [], groupsJson });
   } catch (err) {
     res.render('error', { message: 'Report not found.' });
   }
@@ -248,8 +270,11 @@ exports.update = async (req, res) => {
 
     const validationErrors = validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type });
     if (validationErrors.length > 0) {
-      const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
-      return res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors });
+      const [report, groupsJson] = await Promise.all([
+        Report.findOne({ _id: req.params.id, teacher: req.session.user._id }),
+        getGroupsJson(), // 🟢 keep autocomplete on error
+      ]);
+      return res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors, groupsJson });
     }
 
     const report = await Report.findOneAndUpdate(
@@ -274,8 +299,11 @@ exports.update = async (req, res) => {
     res.redirect('/reports');
   } catch (err) {
     const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['Terjadi kesalahan saat memperbarui.'];
-    const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
-    res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors });
+    const [report, groupsJson] = await Promise.all([
+      Report.findOne({ _id: req.params.id, teacher: req.session.user._id }),
+      getGroupsJson(),
+    ]);
+    res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors, groupsJson });
   }
 };
 

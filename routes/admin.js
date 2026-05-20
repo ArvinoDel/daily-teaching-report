@@ -1,6 +1,7 @@
-const express = require('express');
-const router  = express.Router();
-const ctrl    = require('../controllers/adminController');
+const express    = require('express');
+const router     = express.Router();
+const ctrl       = require('../controllers/adminController');
+const groupCtrl  = require('../controllers/adminGroupController');
 const { requireAuth }  = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/adminAuth');
 
@@ -9,23 +10,32 @@ router.use(requireAuth, requireAdmin);
 // Dashboard
 router.get('/', ctrl.dashboard);
 
-// 🟢 Audit log
+// Audit log
 router.get('/audit-log', ctrl.auditLogIndex);
 
-// Users — bulk route MUST come before /:id to avoid conflict
+// Users — bulk BEFORE /:id to avoid route conflict
 router.delete('/users/bulk',      ctrl.usersBulkDelete);
 router.get('/users',              ctrl.usersList);
 router.get('/users/:id/edit',     ctrl.userEditForm);
 router.post('/users/:id',         ctrl.userUpdate);
 router.delete('/users/:id',       ctrl.userDelete);
 
-// Reports — bulk route MUST come before /:id to avoid conflict
+// Reports — bulk + named routes BEFORE /:id
 router.delete('/reports/bulk',    ctrl.reportsBulkDelete);
 router.get('/reports',            ctrl.reportsList);
+router.get('/reports/summary',    ctrl.reportsSummaryIndex); // 🔧 moved above /:id/edit
 router.get('/reports/:id/edit',   ctrl.reportEditForm);
 router.put('/reports/:id',        ctrl.reportUpdate);
 router.delete('/reports/:id',     ctrl.reportDelete);
-router.get('/reports/summary', ctrl.reportsSummaryIndex);
+
+// Groups — bulk + named routes BEFORE /:id
+router.delete('/groups/bulk',     groupCtrl.groupsBulkDelete);
+router.get('/groups',             groupCtrl.groupsList);
+router.get('/groups/new',         groupCtrl.groupNewForm);
+router.post('/groups',            groupCtrl.groupCreate);
+router.get('/groups/:id/edit',    groupCtrl.groupEditForm);
+router.post('/groups/:id',        groupCtrl.groupUpdate);
+router.delete('/groups/:id',      groupCtrl.groupDelete);
 
 // Commission
 router.get('/commission', ctrl.commissionIndex);

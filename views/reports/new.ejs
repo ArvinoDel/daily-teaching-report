@@ -1,8 +1,10 @@
 <%- include('../partials/header', { title: 'Add Report' }) %>
 
+<!-- Embedded groups data for autocomplete -->
+<script id="groups-json" type="application/json"><%- groupsJson %></script>
+
 <div class="max-w-2xl mx-auto">
 
-  <!-- Back link -->
   <a href="/reports" class="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-brand-600 mb-6 transition font-medium">
     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
       <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
@@ -10,9 +12,7 @@
     Back to Dashboard
   </a>
 
-  <!-- Card -->
   <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-    <!-- Card Header -->
     <div class="px-8 pt-7 pb-6 border-b border-slate-100">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center shadow-md">
@@ -27,7 +27,6 @@
       </div>
     </div>
 
-    <!-- Error Banner -->
     <% if (errors && errors.length > 0) { %>
     <div class="mx-8 mt-6 bg-red-50 border border-red-200 rounded-xl p-4">
       <div class="flex items-start gap-2">
@@ -41,7 +40,6 @@
     </div>
     <% } %>
 
-    <!-- Form -->
     <form action="/reports" method="POST" class="px-8 py-7 space-y-6"
       id="report-form"
       data-session-type="<%= formData.session_type || 'group' %>"
@@ -49,7 +47,7 @@
       data-uses-personal-internet="<%= formData.uses_personal_internet === 'true' %>">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
 
-      <!-- Row 1: Date & Class -->
+      <!-- Row 1: Date & Class Name -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div class="space-y-1.5">
           <label for="date" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -60,57 +58,53 @@
             required
             class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
         </div>
+
+        <!-- ── Group/Class Name with Autocomplete ── -->
         <div class="space-y-1.5">
           <label for="class_name" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Group/Private Name <span class="text-red-500">*</span>
+            Group / Class Name <span class="text-red-500">*</span>
           </label>
-          <input type="text" id="class_name" name="class_name"
-            value="<%= formData.class_name || '' %>"
-            placeholder="e.g: Darren's Group"
-            required
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
+          <div id="group-ac-wrap" class="relative">
+            <input type="text" id="class_name" name="class_name"
+              value="<%= formData.class_name || '' %>"
+              placeholder="Type to search groups…"
+              autocomplete="off" required
+              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
+            <!-- Clear button: shown when a group is selected -->
+            <button type="button" id="btn-clear-group"
+              onclick="clearGroupSelection()"
+              class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition"
+              title="Clear group selection">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <!-- Autocomplete dropdown -->
+            <div id="group-dropdown"
+              class="hidden absolute z-30 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden divide-y divide-slate-50 max-h-56 overflow-y-auto">
+            </div>
+          </div>
+          <p id="group-hint" class="text-xs text-slate-400">Type a name or select from your groups list.</p>
         </div>
       </div>
 
       <!-- Row 2: Session Type & Class Mode -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-
-        <!-- Session Type (Group / Private) -->
         <div class="space-y-2">
           <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Session Type</label>
           <div class="flex gap-2">
-            <button type="button" id="btn-group"
-              class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition"
-              onclick="setSessionType('group')">
-              Group
-            </button>
-            <button type="button" id="btn-private"
-              class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition"
-              onclick="setSessionType('private')">
-              Private
-            </button>
+            <button type="button" id="btn-group"   class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setSessionType('group')">Group</button>
+            <button type="button" id="btn-private" class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setSessionType('private')">Private</button>
           </div>
           <input type="hidden" name="session_type" id="session_type_input" value="<%= formData.session_type || 'group' %>">
         </div>
-
-        <!-- Class Mode (Offline / Online) -->
         <div class="space-y-2">
           <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Class Mode</label>
           <div class="flex gap-2">
-            <button type="button" id="btn-offline"
-              class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition"
-              onclick="setMode('offline')">
-              Offline
-            </button>
-            <button type="button" id="btn-online"
-              class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition"
-              onclick="setMode('online')">
-              Online
-            </button>
+            <button type="button" id="btn-offline" class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setMode('offline')">Offline</button>
+            <button type="button" id="btn-online"  class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setMode('online')">Online</button>
           </div>
           <input type="hidden" name="session_mode" id="session_mode_input" value="<%= formData.session_mode || 'offline' %>">
-
-          <!-- Personal internet — revealed when Online -->
           <div id="personal-internet-wrapper" class="hidden">
             <label class="flex items-center gap-3 cursor-pointer bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 mt-1">
               <input type="checkbox" name="uses_personal_internet" value="true" id="personal_internet_check"
@@ -123,14 +117,12 @@
             </label>
           </div>
         </div>
-
       </div>
 
       <!-- Material (optional) -->
       <div class="space-y-1.5">
         <label for="subject" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
-          Material
-          <span class="ml-1 font-normal normal-case text-slate-400">— optional</span>
+          Material <span class="ml-1 font-normal normal-case text-slate-400">— optional</span>
         </label>
         <input type="text" id="subject" name="subject"
           value="<%= formData.subject || '' %>"
@@ -138,16 +130,14 @@
           class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
       </div>
 
-      <!-- Row: Teaching Type & Duration -->
+      <!-- Teaching Type & Duration -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div class="space-y-1.5">
-          <label for="teaching_type" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Type <span class="text-red-500">*</span>
-          </label>
+          <label for="teaching_type" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Type <span class="text-red-500">*</span></label>
           <div class="relative">
             <select id="teaching_type" name="teaching_type" required
               class="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition cursor-pointer pr-10">
-              <option value="" disabled <%= !formData.teaching_type ? 'selected' : '' %>>— Pilih tipe —</option>
+              <option value="" disabled <%= !formData.teaching_type ? 'selected' : '' %>>— Select type —</option>
               <% teachingTypes.forEach(type => { %>
               <option value="<%= type %>" <%= formData.teaching_type === type ? 'selected' : '' %>><%= type %></option>
               <% }) %>
@@ -158,19 +148,13 @@
               </svg>
             </div>
           </div>
-          <div id="type-preview" class="hidden text-xs font-semibold px-2.5 py-1 rounded-full inline-block mt-1"></div>
         </div>
-
         <div class="space-y-1.5">
-          <label for="duration" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Duration (minute) <span class="text-red-500">*</span>
-          </label>
+          <label for="duration" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Duration (minute) <span class="text-red-500">*</span></label>
           <div class="relative">
             <input type="number" id="duration" name="duration"
               value="<%= formData.duration || '' %>"
-              placeholder="e.g: 60"
-              min="1"
-              required
+              placeholder="e.g: 60" min="1" required
               class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 pr-16 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition font-mono" />
             <span class="absolute inset-y-0 right-4 flex items-center text-xs text-slate-400 font-medium pointer-events-none">menit</span>
           </div>
@@ -180,43 +164,77 @@
 
       <!-- Notes -->
       <div class="space-y-1.5">
-        <label for="notes" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
-          Notes
-        </label>
-        <textarea id="notes" name="notes" rows="4"
+        <label for="notes" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Notes</label>
+        <textarea id="notes" name="notes" rows="3"
           placeholder="Notes for the class or student(s)"
           class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition resize-none"
         ><%= formData.notes || '' %></textarea>
-        <p class="text-xs text-slate-400 text-right"><span id="char-count">0</span>/1000 karakter</p>
+        <p class="text-xs text-slate-400 text-right"><span id="char-count">0</span>/1000</p>
       </div>
 
       <div class="border-t border-slate-100"></div>
 
-      <!-- AC & Absent -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <div class="space-y-1.5">
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Achievement Card (AC)</label>
-          <p class="text-xs text-slate-400 -mt-1">Type name then press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd></p>
-          <div id="ac-tag-box"
-            class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition"
-            onclick="document.getElementById('ac-input').focus()"></div>
-          <input type="text" id="ac-input" placeholder="e.g: Darren" autocomplete="off"
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition" />
-          <input type="hidden" name="ac_students" id="ac-hidden" value="<%= formData.ac_students || '' %>" />
-          <p class="text-xs text-slate-400"><span id="ac-count">0</span> student(s) added</p>
+      <!-- ══ STUDENT ROSTER (shown when a group is selected) ══ -->
+      <div id="student-roster" class="hidden">
+        <div class="rounded-2xl border border-brand-200 bg-brand-50/30 overflow-hidden">
+          <!-- Roster Header -->
+          <div class="px-5 py-3.5 border-b border-brand-100 flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <p class="text-xs font-semibold text-brand-500 uppercase tracking-wider">Students from</p>
+              <h3 id="roster-group-name" class="text-sm font-bold text-slate-800 mt-0.5"></h3>
+            </div>
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span id="roster-summary" class="text-xs text-slate-500 mr-1"></span>
+              <button type="button" onclick="markAll('ac')"
+                class="text-xs font-semibold bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-2.5 py-1.5 rounded-lg transition">
+                All AC
+              </button>
+              <button type="button" onclick="markAll('absent')"
+                class="text-xs font-semibold bg-red-100 hover:bg-red-200 text-red-600 px-2.5 py-1.5 rounded-lg transition">
+                All Absent
+              </button>
+              <button type="button" onclick="markAll('clear')"
+                class="text-xs font-semibold bg-white hover:bg-slate-100 text-slate-500 border border-slate-200 px-2.5 py-1.5 rounded-lg transition">
+                Clear
+              </button>
+            </div>
+          </div>
+          <!-- Student rows -->
+          <div id="roster-students" class="px-4 py-3 space-y-1.5 max-h-72 overflow-y-auto">
+          </div>
         </div>
-        <div class="space-y-1.5">
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Absent</label>
-          <p class="text-xs text-slate-400 -mt-1">Type name then press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd></p>
-          <div id="absent-tag-box"
-            class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition"
-            onclick="document.getElementById('absent-input').focus()"></div>
-          <input type="text" id="absent-input" placeholder="e.g: Michael" autocomplete="off"
-            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition" />
-          <input type="hidden" name="absent_students" id="absent-hidden" value="<%= formData.absent_students || '' %>" />
-          <p class="text-xs text-slate-400"><span id="absent-count">0</span> student(s) added</p>
+        <!-- Hidden inputs are still submitted -->
+      </div>
+
+      <!-- ══ MANUAL INPUT (shown when no group selected) ══ -->
+      <div id="manual-students-section">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Achievement Card (AC)</label>
+            <p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd> to add</p>
+            <div id="ac-tag-box"
+              class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition"
+              onclick="document.getElementById('ac-input').focus()"></div>
+            <input type="text" id="ac-input" placeholder="e.g: Darren" autocomplete="off"
+              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition" />
+            <p class="text-xs text-slate-400"><span id="ac-count">0</span> student(s) added</p>
+          </div>
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Absent</label>
+            <p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd> to add</p>
+            <div id="absent-tag-box"
+              class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition"
+              onclick="document.getElementById('absent-input').focus()"></div>
+            <input type="text" id="absent-input" placeholder="e.g: Michael" autocomplete="off"
+              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition" />
+            <p class="text-xs text-slate-400"><span id="absent-count">0</span> student(s) added</p>
+          </div>
         </div>
       </div>
+
+      <!-- Shared hidden inputs — always submitted -->
+      <input type="hidden" name="ac_students"     id="ac-hidden"     value="<%= formData.ac_students || '' %>">
+      <input type="hidden" name="absent_students" id="absent-hidden" value="<%= formData.absent_students || '' %>">
 
       <!-- Actions -->
       <div class="flex items-center justify-between pt-2">
@@ -229,139 +247,329 @@
           Save Report
         </button>
       </div>
-
     </form>
   </div>
 </div>
 
 <script>
-  /* ── Session Type Toggle ───────────────────────────────────── */
-  function setSessionType(type) {
-    document.getElementById('session_type_input').value = type;
-    var btnGroup   = document.getElementById('btn-group');
-    var btnPrivate = document.getElementById('btn-private');
-    if (type === 'group') {
-      btnGroup.className   = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-brand-500 bg-brand-50 text-brand-700';
-      btnPrivate.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
-    } else {
-      btnGroup.className   = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
-      btnPrivate.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-purple-400 bg-purple-50 text-purple-700';
-    }
+/* ═══════════════════════════════════════════════════════════════
+   Shared helpers
+═══════════════════════════════════════════════════════════════ */
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Session type & mode toggles (unchanged from original)
+═══════════════════════════════════════════════════════════════ */
+function setSessionType(type) {
+  document.getElementById('session_type_input').value = type;
+  var bG = document.getElementById('btn-group'), bP = document.getElementById('btn-private');
+  if (type === 'group') {
+    bG.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-brand-500 bg-brand-50 text-brand-700';
+    bP.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+  } else {
+    bG.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+    bP.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-purple-400 bg-purple-50 text-purple-700';
   }
-
-  /* ── Class Mode Toggle ─────────────────────────────────────── */
-  function setMode(mode) {
-    document.getElementById('session_mode_input').value = mode;
-    var btnOffline = document.getElementById('btn-offline');
-    var btnOnline  = document.getElementById('btn-online');
-    var piWrapper  = document.getElementById('personal-internet-wrapper');
-    if (mode === 'online') {
-      btnOnline.className  = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-blue-500 bg-blue-50 text-blue-700';
-      btnOffline.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
-      piWrapper.classList.remove('hidden');
-    } else {
-      btnOffline.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-700 bg-slate-700 text-white';
-      btnOnline.className  = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
-      piWrapper.classList.add('hidden');
-      document.getElementById('personal_internet_check').checked = false;
-    }
+}
+function setMode(mode) {
+  document.getElementById('session_mode_input').value = mode;
+  var bOff = document.getElementById('btn-offline'), bOn = document.getElementById('btn-online');
+  var piW  = document.getElementById('personal-internet-wrapper');
+  if (mode === 'online') {
+    bOn.className  = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-blue-500 bg-blue-50 text-blue-700';
+    bOff.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+    piW.classList.remove('hidden');
+  } else {
+    bOff.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-700 bg-slate-700 text-white';
+    bOn.className  = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+    piW.classList.add('hidden');
+    document.getElementById('personal_internet_check').checked = false;
   }
+}
+var formEl = document.getElementById('report-form');
+setSessionType(formEl.dataset.sessionType);
+setMode(formEl.dataset.sessionMode);
+if (formEl.dataset.usesPersonalInternet === 'true') document.getElementById('personal_internet_check').checked = true;
 
-  /* ── Init defaults (read from form data attributes) ────────── */
-  var formEl = document.getElementById('report-form');
-  setSessionType(formEl.dataset.sessionType);
-  setMode(formEl.dataset.sessionMode);
-  if (formEl.dataset.usesPersonalInternet === 'true') {
-    document.getElementById('personal_internet_check').checked = true;
-  }
+/* Duration hint */
+document.getElementById('duration').addEventListener('input', function() {
+  var v = parseInt(this.value), h = document.getElementById('duration-hint');
+  if (!isNaN(v) && v > 0) {
+    var hrs = Math.floor(v/60), min = v%60, parts = [];
+    if (hrs > 0) parts.push(hrs + ' hour(s)');
+    if (min > 0) parts.push(min + ' minute(s)');
+    h.textContent = '= ' + parts.join(' ');
+  } else { h.textContent = ''; }
+});
 
-  /* ── Duration hint ─────────────────────────────────────────── */
-  var durationInput = document.getElementById('duration');
-  var durationHint  = document.getElementById('duration-hint');
-  durationInput.addEventListener('input', function () {
-    var val = parseInt(this.value);
-    if (!isNaN(val) && val > 0) {
-      var h = Math.floor(val / 60), m = val % 60;
-      var parts = [];
-      if (h > 0) parts.push(h + ' hour(s)');
-      if (m > 0) parts.push(m + ' minute(s)');
-      durationHint.textContent = '= ' + parts.join(' ');
-    } else {
-      durationHint.textContent = '';
-    }
-  });
+/* Char counter */
+var notesEl = document.getElementById('notes');
+var charCnt = document.getElementById('char-count');
+notesEl.addEventListener('input', function() {
+  charCnt.textContent = this.value.length;
+  charCnt.classList.toggle('text-red-400', this.value.length > 900);
+});
 
-  /* ── Teaching type badge preview ───────────────────────────── */
-  var typeSelect  = document.getElementById('teaching_type');
-  var typePreview = document.getElementById('type-preview');
-  var typeColors  = {
-    'Prime Teacher (Full)':     'badge-emerald',
-    'Prime Teacher (Assisted)': 'badge-violet',
-    'Assistant Teacher':        'badge-sky',
-    '1/2 Prime Teacher':        'badge-amber',
-  };
-  typeSelect.addEventListener('change', function () {
-    var color = typeColors[this.value];
-    if (color) {
-      typePreview.className   = color + ' text-xs font-semibold px-2.5 py-1 rounded-full inline-block mt-1';
-      typePreview.textContent = this.value;
-      typePreview.classList.remove('hidden');
-    } else {
-      typePreview.classList.add('hidden');
-    }
-  });
+/* ═══════════════════════════════════════════════════════════════
+   Tag input — now returns a controller { reset, getTags }
+═══════════════════════════════════════════════════════════════ */
+function initTagInput({ inputId, boxId, hiddenId, countId, tagCls }) {
+  var input   = document.getElementById(inputId);
+  var box     = document.getElementById(boxId);
+  var hidden  = document.getElementById(hiddenId);
+  var countEl = document.getElementById(countId);
+  var tags    = hidden.value ? hidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [];
 
-  /* ── Char counter ──────────────────────────────────────────── */
-  var notes   = document.getElementById('notes');
-  var counter = document.getElementById('char-count');
-  notes.addEventListener('input', function () {
-    counter.textContent = this.value.length;
-    counter.classList.toggle('text-red-400', this.value.length > 900);
-  });
-
-  /* ── Tag Input System ──────────────────────────────────────── */
-  function escHtml(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-
-  function initTagInput({ inputId, boxId, hiddenId, countId, tagCls }) {
-    var input   = document.getElementById(inputId);
-    var box     = document.getElementById(boxId);
-    var hidden  = document.getElementById(hiddenId);
-    var countEl = document.getElementById(countId);
-    var tags    = hidden.value ? hidden.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
-
-    function render() {
-      box.innerHTML = '';
-      tags.forEach(function(tag, i) {
-        var pill = document.createElement('span');
-        pill.className = 'inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ' + tagCls;
-        pill.innerHTML = escHtml(tag) + ' <button type="button" class="ml-0.5 leading-none opacity-60 hover:opacity-100 transition text-sm" data-i="' + i + '">×</button>';
-        pill.querySelector('button').addEventListener('click', function() { tags.splice(i, 1); render(); });
-        box.appendChild(pill);
-      });
-      countEl.textContent = tags.length;
-      hidden.value = tags.join(',');
-    }
-
-    function tryAdd() {
-      var val = input.value.replace(/,/g, '').trim();
-      if (val && !tags.includes(val)) tags.push(val);
-      input.value = '';
-      render();
-    }
-
-    input.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') { e.preventDefault(); tryAdd(); }
-      else if (e.key === ',') { e.preventDefault(); tryAdd(); }
-      else if (e.key === 'Backspace' && input.value === '' && tags.length) { tags.pop(); render(); }
+  function render() {
+    box.innerHTML = '';
+    tags.forEach(function(tag, i) {
+      var pill = document.createElement('span');
+      pill.className = 'inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ' + tagCls;
+      pill.innerHTML = escHtml(tag) + ' <button type="button" class="ml-0.5 leading-none opacity-60 hover:opacity-100 transition text-sm" data-i="'+i+'">×</button>';
+      pill.querySelector('button').addEventListener('click', function() { tags.splice(i, 1); render(); });
+      box.appendChild(pill);
     });
-    input.addEventListener('blur', function() { if (input.value.trim()) tryAdd(); });
-    render();
+    countEl.textContent = tags.length;
+    hidden.value = tags.join(',');
+  }
+  function tryAdd() {
+    var val = input.value.replace(/,/g,'').trim();
+    if (val && !tags.includes(val)) tags.push(val);
+    input.value = ''; render();
+  }
+  input.addEventListener('keydown', function(e) {
+    if (e.key==='Enter')     { e.preventDefault(); tryAdd(); }
+    else if (e.key===',')    { e.preventDefault(); tryAdd(); }
+    else if (e.key==='Backspace' && input.value==='' && tags.length) { tags.pop(); render(); }
+  });
+  input.addEventListener('blur', function() { if (input.value.trim()) tryAdd(); });
+  render();
+
+  return {
+    reset: function(newTags) { tags = newTags.slice(); render(); },
+    getTags: function() { return tags.slice(); }
+  };
+}
+
+var acCtrl, absentCtrl;
+
+/* ═══════════════════════════════════════════════════════════════
+   Groups Autocomplete
+═══════════════════════════════════════════════════════════════ */
+var groupsData    = JSON.parse(document.getElementById('groups-json').textContent);
+var selectedGroup = null;
+var studentStates = {}; // { 'name': 'ac' | 'absent' | null }
+
+var classInput   = document.getElementById('class_name');
+var groupDropdown= document.getElementById('group-dropdown');
+var clearBtn     = document.getElementById('btn-clear-group');
+var groupHint    = document.getElementById('group-hint');
+var rosterPanel  = document.getElementById('student-roster');
+var manualSection= document.getElementById('manual-students-section');
+
+function renderDropdown(groups) {
+  groupDropdown.innerHTML = groups.slice(0, 8).map(function(g) {
+    var tcls  = g.type === 'GROUP' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700';
+    var tlbl  = g.type === 'GROUP' ? 'Group' : 'Private';
+    return '<button type="button" onclick="selectGroup(\''+escHtml(g._id)+'\')" '+
+      'class="w-full text-left px-4 py-3 hover:bg-brand-50 transition flex items-center justify-between gap-3">' +
+      '<div class="flex-1 min-w-0">' +
+        '<p class="text-sm font-semibold text-slate-800 truncate">' + escHtml(g.group_name) + '</p>' +
+        '<div class="flex items-center gap-1.5 mt-0.5">' +
+          '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full '+tcls+'">' + tlbl + '</span>' +
+          (g.level ? '<span class="text-[10px] font-mono text-slate-400">'+escHtml(g.level)+'</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<span class="text-xs text-slate-400 flex-shrink-0">'+g.students.length+' siswa</span>' +
+    '</button>';
+  }).join('');
+  groupDropdown.classList.remove('hidden');
+}
+
+function hideDropdown() { groupDropdown.classList.add('hidden'); }
+
+classInput.addEventListener('focus', function() {
+  var q = this.value.trim().toLowerCase();
+  var list = q ? groupsData.filter(function(g){return g.group_name.toLowerCase().includes(q);}) : groupsData;
+  if (list.length) renderDropdown(list);
+});
+
+classInput.addEventListener('input', function() {
+  var q = this.value.trim().toLowerCase();
+  // If user edits after selecting a group, deselect it
+  if (selectedGroup && this.value !== selectedGroup.group_name) {
+    selectedGroup = null; studentStates = {};
+    hideRoster(); clearBtn.classList.add('hidden');
+    groupHint.textContent = 'Type a name or select from your groups list.';
+    groupHint.className = 'text-xs text-slate-400';
+  }
+  if (!q) { hideDropdown(); return; }
+  var list = groupsData.filter(function(g){return g.group_name.toLowerCase().includes(q);});
+  list.length ? renderDropdown(list) : hideDropdown();
+});
+
+classInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' || e.key === 'Tab') hideDropdown();
+});
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#group-ac-wrap')) hideDropdown();
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   Group Selection
+═══════════════════════════════════════════════════════════════ */
+function selectGroup(id, opts) {
+  selectedGroup = groupsData.find(function(g){return g._id === id;});
+  if (!selectedGroup) return;
+
+  classInput.value = selectedGroup.group_name;
+  hideDropdown();
+
+  // Auto-set session type based on group type
+  setSessionType(selectedGroup.type === 'PRIVATE' ? 'private' : 'group');
+
+  // Build fresh student states
+  studentStates = {};
+  selectedGroup.students.forEach(function(s) { studentStates[s] = null; });
+
+  // Pre-fill states from existing data (edit form use)
+  if (opts && opts.preAc) {
+    opts.preAc.forEach(function(s) {
+      if (Object.prototype.hasOwnProperty.call(studentStates, s)) studentStates[s] = 'ac';
+    });
+  }
+  if (opts && opts.preAbsent) {
+    opts.preAbsent.forEach(function(s) {
+      if (Object.prototype.hasOwnProperty.call(studentStates, s)) studentStates[s] = 'absent';
+    });
   }
 
-  initTagInput({ inputId: 'ac-input', boxId: 'ac-tag-box', hiddenId: 'ac-hidden', countId: 'ac-count', tagCls: 'bg-emerald-100 text-emerald-700' });
-  initTagInput({ inputId: 'absent-input', boxId: 'absent-tag-box', hiddenId: 'absent-hidden', countId: 'absent-count', tagCls: 'bg-red-100 text-red-600' });
+  // Show roster
+  document.getElementById('roster-group-name').textContent = selectedGroup.group_name;
+  renderRoster();
+  rosterPanel.classList.remove('hidden');
+  manualSection.classList.add('hidden');
+  clearBtn.classList.remove('hidden');
+
+  groupHint.innerHTML = '<span class="inline-flex items-center gap-1 text-brand-600 font-semibold">' +
+    '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>' +
+    'Group selected — mark students below</span>';
+  groupHint.className = 'text-xs';
+
+  updateHiddenInputs();
+}
+
+function clearGroupSelection() {
+  selectedGroup = null; studentStates = {};
+  classInput.value = ''; classInput.focus();
+  hideRoster();
+  clearBtn.classList.add('hidden');
+  acCtrl.reset([]); absentCtrl.reset([]);
+  groupHint.textContent = 'Type a name or select from your groups list.';
+  groupHint.className = 'text-xs text-slate-400';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Student Roster
+═══════════════════════════════════════════════════════════════ */
+function showRoster()  { rosterPanel.classList.remove('hidden'); manualSection.classList.add('hidden'); }
+function hideRoster()  { rosterPanel.classList.add('hidden'); manualSection.classList.remove('hidden'); }
+
+function renderRoster() {
+  var container = document.getElementById('roster-students');
+  if (!selectedGroup || selectedGroup.students.length === 0) {
+    container.innerHTML = '<p class="text-sm text-slate-400 italic py-2 text-center">No students in this group.</p>';
+    return;
+  }
+  container.innerHTML = selectedGroup.students.map(function(student) {
+    var state  = studentStates[student];
+    var rowCls = 'flex items-center justify-between py-2.5 px-3 rounded-xl border transition ';
+    rowCls += state === 'ac'     ? 'bg-emerald-50 border-emerald-200' :
+              state === 'absent' ? 'bg-red-50 border-red-200'         :
+              'bg-white border-slate-100 hover:border-slate-200';
+
+    var acCls  = 'text-xs font-semibold px-2.5 py-1.5 rounded-lg transition ' +
+      (state === 'ac'     ? 'bg-emerald-500 text-white shadow-sm' :
+       'bg-white border border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-600');
+    var absCls = 'text-xs font-semibold px-2.5 py-1.5 rounded-lg transition ' +
+      (state === 'absent' ? 'bg-red-500 text-white shadow-sm' :
+       'bg-white border border-slate-200 text-slate-500 hover:border-red-300 hover:text-red-500');
+
+    var nameCls = 'text-sm ' + (state === 'ac' ? 'text-emerald-800 font-medium' : state === 'absent' ? 'text-red-700 font-medium' : 'text-slate-700');
+
+    return '<div class="'+rowCls+'">' +
+      '<div class="flex items-center gap-2">' +
+        '<span class="'+nameCls+'">' + escHtml(student) + '</span>' +
+        (state === 'ac'     ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">AC</span>'     : '') +
+        (state === 'absent' ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Absent</span>' : '') +
+      '</div>' +
+      '<div class="flex gap-1.5">' +
+        '<button type="button" class="'+acCls+'" data-student="'+escHtml(student)+'" data-role="ac">AC</button>' +
+        '<button type="button" class="'+absCls+'" data-student="'+escHtml(student)+'" data-role="absent">Absent</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  updateRosterSummary();
+}
+
+function toggleStudent(name, role) {
+  studentStates[name] = (studentStates[name] === role) ? null : role;
+  renderRoster();
+  updateHiddenInputs();
+}
+
+function markAll(role) {
+  if (!selectedGroup) return;
+  selectedGroup.students.forEach(function(s) { studentStates[s] = (role === 'clear') ? null : role; });
+  renderRoster();
+  updateHiddenInputs();
+}
+
+function updateRosterSummary() {
+  var vals   = Object.values(studentStates);
+  var acCnt  = vals.filter(function(v){return v==='ac';}).length;
+  var absCnt = vals.filter(function(v){return v==='absent';}).length;
+  var el     = document.getElementById('roster-summary');
+  if (!el) return;
+  var parts  = [];
+  if (acCnt  > 0) parts.push('<span class="text-emerald-600 font-semibold">'+acCnt+' AC</span>');
+  if (absCnt > 0) parts.push('<span class="text-red-500 font-semibold">'+absCnt+' Absent</span>');
+  el.innerHTML = parts.length ? parts.join(' · ') : '<span class="text-slate-400">No marks yet</span>';
+}
+
+function updateHiddenInputs() {
+  var acList = [], absList = [];
+  Object.keys(studentStates).forEach(function(s) {
+    if (studentStates[s] === 'ac')     acList.push(s);
+    if (studentStates[s] === 'absent') absList.push(s);
+  });
+  if (acCtrl)     acCtrl.reset(acList);
+  if (absentCtrl) absentCtrl.reset(absList);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Init tag inputs
+═══════════════════════════════════════════════════════════════ */
+acCtrl     = initTagInput({ inputId:'ac-input',     boxId:'ac-tag-box',     hiddenId:'ac-hidden',     countId:'ac-count',     tagCls:'bg-emerald-100 text-emerald-700' });
+absentCtrl = initTagInput({ inputId:'absent-input', boxId:'absent-tag-box', hiddenId:'absent-hidden', countId:'absent-count', tagCls:'bg-red-100 text-red-600' });
+
+// Event delegation for student roster buttons
+var rosterStudentsEl = document.getElementById('roster-students');
+if (rosterStudentsEl) {
+  rosterStudentsEl.addEventListener('click', function(e) {
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    var student = btn.getAttribute('data-student');
+    var role = btn.getAttribute('data-role');
+    if (student && role) {
+      toggleStudent(student, role);
+    }
+  });
+}
 </script>
 
 <%- include('../partials/footer') %>
