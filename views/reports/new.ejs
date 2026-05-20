@@ -59,11 +59,12 @@
             class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
         </div>
 
-        <!-- ── Group/Class Name with Autocomplete ── -->
+        <!-- ── Group/Class Name with Autocomplete (group) / Free-text (private) ── -->
         <div class="space-y-1.5">
-          <label for="class_name" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+          <label id="class-name-label" for="class_name" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Group / Class Name <span class="text-red-500">*</span>
           </label>
+          <!-- Group mode: autocomplete wrapper -->
           <div id="group-ac-wrap" class="relative">
             <input type="text" id="class_name" name="class_name"
               value="<%= formData.class_name || '' %>"
@@ -84,6 +85,11 @@
               class="hidden absolute z-30 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden divide-y divide-slate-50 max-h-56 overflow-y-auto">
             </div>
           </div>
+          <!-- Private mode: plain free-text input (shares the same name="class_name" via JS swap) -->
+          <input type="text" id="private_name_input"
+            placeholder="e.g: John Doe"
+            autocomplete="off"
+            class="hidden w-full rounded-xl border border-purple-200 bg-purple-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition" />
           <p id="group-hint" class="text-xs text-slate-400">Type a name or select from your groups list.</p>
         </div>
       </div>
@@ -265,12 +271,38 @@ function escHtml(s) {
 function setSessionType(type) {
   document.getElementById('session_type_input').value = type;
   var bG = document.getElementById('btn-group'), bP = document.getElementById('btn-private');
+  var classInput      = document.getElementById('class_name');
+  var privateInput    = document.getElementById('private_name_input');
+  var groupAcWrap     = document.getElementById('group-ac-wrap');
+  var groupHint       = document.getElementById('group-hint');
+  var classNameLabel  = document.getElementById('class-name-label');
+
   if (type === 'group') {
     bG.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-brand-500 bg-brand-50 text-brand-700';
     bP.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+    // Show group autocomplete, hide private free-text
+    groupAcWrap.classList.remove('hidden');
+    privateInput.classList.add('hidden');
+    privateInput.removeAttribute('name');
+    classInput.setAttribute('name', 'class_name');
+    classInput.required = true;
+    groupHint.classList.remove('hidden');
+    classNameLabel.innerHTML = 'Group / Class Name <span class="text-red-500">*</span>';
   } else {
     bG.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
     bP.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-purple-400 bg-purple-50 text-purple-700';
+    // Hide group autocomplete, show private free-text
+    // First clear any selected group
+    if (selectedGroup) { clearGroupSelection(); }
+    groupAcWrap.classList.add('hidden');
+    classInput.removeAttribute('name');
+    classInput.required = false;
+    privateInput.classList.remove('hidden');
+    privateInput.setAttribute('name', 'class_name');
+    privateInput.required = true;
+    if (!privateInput.value && classInput.value) privateInput.value = classInput.value;
+    groupHint.classList.add('hidden');
+    classNameLabel.innerHTML = 'Student Name <span class="text-red-500">*</span>';
   }
 }
 function setMode(mode) {
