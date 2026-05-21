@@ -4,7 +4,7 @@ const backupSchema = new mongoose.Schema({
   initiatedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
+    required: false,
   },
   initiatedByName: { type: String, required: true },
   status: {

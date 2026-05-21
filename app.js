@@ -31,7 +31,12 @@ if (!SESSION_SECRET) {
 }
 
 mongoose.connect(MONGO_URI)
-  .then(() => console.log('✅ MongoDB connected'))
+  .then(() => {
+    console.log('✅ MongoDB connected');
+    // Initialize weekly backup scheduler
+    const backupService = require('./services/backupService');
+    backupService.initScheduler();
+  })
   .catch(err => console.error('❌ MongoDB error:', err));
 
 // Security headers via Helmet

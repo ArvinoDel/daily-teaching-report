@@ -1,12 +1,6 @@
-const zlib     = require('zlib');
 const cloudinary = require('cloudinary').v2;
-
-const User     = require('../models/User');
-const Report   = require('../models/Report');
-const Group    = require('../models/Group');
-const AuditLog = require('../models/AuditLog');
-const Feedback = require('../models/Feedback');
 const Backup   = require('../models/Backup');
+const backupService = require('../services/backupService');
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -51,6 +45,7 @@ exports.backupsList = async (req, res) => {
       totalBackups:  backups.length,
       successCount:  successBackups.length,
       lastBackup:    successBackups[0] || null,
+      nextBackupDate: backupService.getNextBackupDate(),
     });
   } catch (err) {
     console.error(err);
@@ -63,70 +58,32 @@ exports.backupsList = async (req, res) => {
 ═══════════════════════════════════════════════ */
 exports.createBackup = async (req, res) => {
   try {
-    // Fetch all collections
-    const [users, reports, groups, auditLogs, feedbacks] = await Promise.all([
-      User.find().lean(),
-      Report.find().lean(),
-      Group.find().lean(),
-      AuditLog.find().lean(),
-      Feedback.find().lean(),
-    ]);
+    const backup = await backupService.performBackup(
+      req.session.user._id,
+      req.session.user.displayName || req.session.user.username
+    );
 
-    const recordCounts = {
-      users:     users.length,
-      reports:   reports.length,
-      groups:    groups.length,
-      auditLogs: auditLogs.length,
-      feedbacks: feedbacks.length,
-    };
-
-    const backupPayload = {
-      exportedAt: new Date().toISOString(),
-      appName:    'daily-teaching-report',
-      recordCounts,
-      collections: { users, reports, groups, auditLogs, feedbacks },
-    };
-
-    // Compress
-    const jsonBuffer = Buffer.from(JSON.stringify(backupPayload), 'utf8');
-    const gzipped    = zlib.gzipSync(jsonBuffer);
-
-    // Upload to Cloudinary as raw file
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-    const publicId  = `daily-teaching-report/backups/backup-${timestamp}`;
-
-    const uploadResult = await new Promise((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(
-        { resource_type: 'raw', public_id: publicId, use_filename: false },
-        (err, result) => (err ? reject(err) : resolve(result))
-      );
-      stream.end(gzipped);
-    });
-
-    await Backup.create({
-      initiatedBy:     req.session.user._id,
-      initiatedByName: req.session.user.displayName || req.session.user.username,
-      status:          'success',
-      fileUrl:         uploadResult.secure_url,
-      cloudinaryId:    uploadResult.public_id,
-      fileSizeBytes:   uploadResult.bytes || gzipped.length,
-      recordCounts,
-    });
-
-    req.session.flash = `Backup created! ${Object.values(recordCounts).reduce((s, n) => s + n, 0)} records exported.`;
+    const totalRecords = Object.values(backup.recordCounts).reduce((s, n) => s + n, 0);
+    req.session.flash = `Backup created! ${totalRecords} records exported.`;
     res.redirect('/admin/backups');
 
   } catch (err) {
     console.error('Backup error:', err);
-    // Record failure
+    // Record failure with sanitized error — never store raw internal messages
+    const safeMessage = (err.message || 'Unknown error')
+      .replace(/mongodb(\+srv)?:\/\/[^\s,]+/gi, '[REDACTED]')
+      .replace(/https?:\/\/[^\s,]+/gi, '[REDACTED]')
+      .replace(/[A-Z]:\\[^\s,]+/gi, '[REDACTED]')
+      .substring(0, 200);
     await Backup.create({
       initiatedBy:     req.session.user._id,
       initiatedByName: req.session.user.displayName || req.session.user.username,
       status:          'failed',
-      errorMessage:    err.message,
+      errorMessage:    safeMessage,
       recordCounts:    {},
     }).catch(() => {});
-    req.session.flash = `Backup failed: ${err.message}`;
+    // Generic flash — do not expose internal error details to the user
+    req.session.flash = 'Backup failed. Please try again or contact the system administrator.';
     res.redirect('/admin/backups');
   }
 };
