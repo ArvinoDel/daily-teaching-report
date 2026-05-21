@@ -49,7 +49,8 @@ router.delete('/feedbacks/:id',       requireSuperAdmin, feedbackCtrl.adminDelet
 const backupCtrl = require('../controllers/adminBackupController');
 
 // Backups — superadmin only
-router.get('/backups',     requireSuperAdmin, backupCtrl.backupsList);
-router.post('/backups',    requireSuperAdmin, backupCtrl.createBackup);
-router.delete('/backups/:id', requireSuperAdmin, backupCtrl.deleteBackup);
+router.get('/backups',              requireSuperAdmin, backupCtrl.backupsList);
+router.post('/backups',             requireSuperAdmin, backupCtrl.createBackup);
+router.get('/backups/:id/download', requireSuperAdmin, backupCtrl.downloadBackup);
+router.delete('/backups/:id',       requireSuperAdmin, backupCtrl.deleteBackup);
 module.exports = router;

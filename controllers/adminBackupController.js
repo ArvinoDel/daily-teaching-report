@@ -117,3 +117,49 @@ exports.deleteBackup = async (req, res) => {
     res.status(500).json({ error: 'Failed to delete backup.' });
   }
 };
+
+/* ═══════════════════════════════════════════════
+   GET /admin/backups/:id/download  — proxy download
+   Streams the file from Cloudinary through the server
+   so the raw URL is never exposed to the browser.
+═══════════════════════════════════════════════ */
+exports.downloadBackup = async (req, res) => {
+  try {
+    const backup = await Backup.findById(req.params.id);
+    if (!backup)    return res.status(404).render('error', { message: 'Backup not found.' });
+    if (!backup.fileUrl) return res.status(404).render('error', { message: 'No file attached to this backup.' });
+
+    // Build a human-friendly filename from the backup date
+    const dateStr = new Date(backup.createdAt)
+      .toISOString().replace(/[:.]/g, '-').substring(0, 19);
+    const filename = `backup-${dateStr}.json.gz`;
+
+    // Fetch the file from Cloudinary server-side
+    const https = require('https');
+    const url   = require('url');
+    const parsed = new URL(backup.fileUrl);
+
+    https.get(parsed, (upstream) => {
+      if (upstream.statusCode !== 200) {
+        upstream.resume(); // drain the response
+        return res.status(502).render('error', { message: 'Failed to fetch backup file from storage.' });
+      }
+
+      // Set download headers
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Type', 'application/gzip');
+      if (upstream.headers['content-length']) {
+        res.setHeader('Content-Length', upstream.headers['content-length']);
+      }
+
+      // Pipe the Cloudinary response straight to the client
+      upstream.pipe(res);
+    }).on('error', (err) => {
+      console.error('Download proxy error:', err);
+      res.status(502).render('error', { message: 'Failed to download backup file.' });
+    });
+  } catch (err) {
+    console.error('Download error:', err);
+    res.status(500).render('error', { message: 'Failed to download backup.' });
+  }
+};
