@@ -1,6 +1,6 @@
 <% function mobileNavClass(pageTitle) { return typeof title !=='undefined' && title===pageTitle
   ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100' ; } const isAdminPage=typeof title !=='undefined'
-  && title.startsWith('Admin') && !title.includes('Feedback'); %>
+  && title.startsWith('Admin') && !title.includes('Feedback') && !title.includes('Backup'); %>
   <div id="mobile-menu"
     class="hidden sm:hidden border-t border-slate-100 bg-white/95 backdrop-blur-md px-4 py-3 space-y-1">
 
@@ -65,6 +65,13 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a.75.75 0 0 1-1.074-.765 6.002 6.002 0 0 1 1.086-3.896C4.534 14.942 4 13.522 4 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
             </svg>
             Error Feedbacks
+          </a>
+          <a href="/admin/backups" onclick="toggleMenu()"
+            class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= typeof title !=='undefined' && title.includes('Backup') ? 'bg-rose-50 text-rose-700' : 'text-slate-600 hover:bg-slate-100' %>">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+            </svg>
+            Database Backups
           </a>
           <% } %>
           <% } %>

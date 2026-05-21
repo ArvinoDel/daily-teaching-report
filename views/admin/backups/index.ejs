@@ -1,0 +1,252 @@
+<%- include('../../partials/header', { title: 'Backups' }) %>
+
+<!-- Page Header -->
+<div class="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+  <div>
+    <div class="flex items-center gap-2 mb-1">
+      <span class="inline-flex items-center gap-1 bg-rose-100 text-rose-700 text-xs font-bold px-2.5 py-1 rounded-full">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
+        </svg>
+        Superadmin Only
+      </span>
+    </div>
+    <h1 class="text-2xl font-bold text-slate-900">Database Backups</h1>
+    <p class="text-slate-500 mt-0.5 text-sm">Export all collections to a compressed JSON file stored on Cloudinary.</p>
+  </div>
+
+  <!-- Create Backup Button -->
+  <form method="POST" action="/admin/backups" id="backupForm">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <button type="submit" id="backupBtn"
+      class="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+      </svg>
+      <span id="backupBtnLabel">Create Backup</span>
+    </button>
+  </form>
+</div>
+
+<!-- Flash Message -->
+<% if (flashMessage) { %>
+  <div class="mb-6 flex items-start gap-3 px-4 py-3 rounded-xl
+    <%= flashMessage.startsWith('Backup failed') ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-emerald-50 border border-emerald-200 text-emerald-700' %>
+    text-sm font-medium">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+    </svg>
+    <%= flashMessage %>
+  </div>
+<% } %>
+
+<!-- Stats -->
+<div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Backups</p>
+    <p class="text-3xl font-bold text-slate-900"><%= totalBackups %></p>
+    <p class="text-xs text-slate-400 mt-1"><%= successCount %> successful</p>
+  </div>
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Size Stored</p>
+    <p class="text-3xl font-bold text-rose-600"><%= totalSize %></p>
+    <p class="text-xs text-slate-400 mt-1">compressed (gzip)</p>
+  </div>
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 col-span-2 md:col-span-1">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Last Backup</p>
+    <% if (lastBackup) { %>
+      <p class="text-base font-bold text-slate-900 mt-1">
+        <%= new Date(lastBackup.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) %>
+      </p>
+      <p class="text-xs text-slate-400 mt-0.5">by <%= lastBackup.initiatedByName %></p>
+    <% } else { %>
+      <p class="text-sm text-slate-400 mt-2">No backups yet.</p>
+    <% } %>
+  </div>
+</div>
+
+<!-- Backup History Table -->
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+  <div class="px-6 py-4 border-b border-slate-100">
+    <h2 class="text-sm font-bold text-slate-800">Backup History</h2>
+    <p class="text-xs text-slate-400 mt-0.5">Most recent 50 records. Download links expire based on your Cloudinary plan.</p>
+  </div>
+
+  <% if (!backups.length) { %>
+    <div class="py-16 text-center text-slate-400">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+      </svg>
+      <p class="text-sm font-medium">No backups yet.</p>
+      <p class="text-xs mt-1">Click "Create Backup" to start.</p>
+    </div>
+  <% } else { %>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs font-semibold text-slate-400 uppercase tracking-wider bg-slate-50">
+            <th class="px-6 py-3 text-left">Date & Time</th>
+            <th class="px-6 py-3 text-left">Initiated By</th>
+            <th class="px-6 py-3 text-left">Status</th>
+            <th class="px-6 py-3 text-left hidden md:table-cell">Records</th>
+            <th class="px-6 py-3 text-left hidden sm:table-cell">Size</th>
+            <th class="px-6 py-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-50">
+          <% backups.forEach(function(b) { %>
+            <tr class="hover:bg-slate-50/60 transition" data-backup-id="<%= b._id %>">
+
+              <!-- Date -->
+              <td class="px-6 py-3.5 whitespace-nowrap">
+                <p class="font-semibold text-slate-800 text-xs">
+                  <%= new Date(b.createdAt).toLocaleDateString('id-ID', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) %>
+                </p>
+                <p class="text-slate-400 text-xs font-mono">
+                  <%= new Date(b.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) %>
+                </p>
+              </td>
+
+              <!-- Initiated By -->
+              <td class="px-6 py-3.5 text-slate-700 font-medium whitespace-nowrap">
+                <%= b.initiatedByName %>
+              </td>
+
+              <!-- Status -->
+              <td class="px-6 py-3.5">
+                <% if (b.status === 'success') { %>
+                  <span class="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 text-xs font-semibold px-2.5 py-1 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                    </svg>
+                    Success
+                  </span>
+                <% } else { %>
+                  <span class="inline-flex items-center gap-1 text-red-700 bg-red-50 border border-red-200 text-xs font-semibold px-2.5 py-1 rounded-full" title="<%= b.errorMessage || '' %>">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                    Failed
+                  </span>
+                <% } %>
+              </td>
+
+              <!-- Records breakdown -->
+              <td class="px-6 py-3.5 hidden md:table-cell">
+                <% if (b.status === 'success' && b.recordCounts && b.totalRecords > 0) { %>
+                  <p class="text-slate-700 font-semibold text-xs"><%= b.totalRecords %> total</p>
+                  <p class="text-slate-400 text-xs leading-relaxed">
+                    <% const rc = b.recordCounts; %>
+                    <%= rc.users || 0 %> users · <%= rc.reports || 0 %> reports · <%= rc.groups || 0 %> groups
+                  </p>
+                <% } else if (b.status === 'failed') { %>
+                  <span class="text-slate-300 text-xs">—</span>
+                <% } else { %>
+                  <span class="text-slate-400 text-xs"><%= b.totalRecords %> records</span>
+                <% } %>
+              </td>
+
+              <!-- Size -->
+              <td class="px-6 py-3.5 hidden sm:table-cell text-slate-500 text-xs font-mono whitespace-nowrap">
+                <% if (b.status === 'success') { %>
+                  <%= b.fileSizeFormatted %>
+                <% } else { %>
+                  —
+                <% } %>
+              </td>
+
+              <!-- Actions -->
+              <td class="px-6 py-3.5 text-right whitespace-nowrap">
+                <div class="inline-flex items-center gap-2">
+                  <!-- Download -->
+                  <% if (b.fileUrl) { %>
+                    <a href="<%= b.fileUrl %>" target="_blank" rel="noopener noreferrer"
+                      title="Download .json.gz"
+                      class="p-1.5 rounded-lg text-slate-300 hover:text-sky-500 hover:bg-sky-50 transition">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                      </svg>
+                    </a>
+                  <% } %>
+
+                  <!-- Delete -->
+                  <button type="button"
+                    class="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition btn-delete-backup"
+                    data-id="<%= b._id %>"
+                    title="Delete this backup record">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                    </svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<!-- Info note -->
+<div class="mt-6 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">
+  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+  </svg>
+  <span>
+    Backup files are <strong>gzip-compressed JSON</strong> stored on Cloudinary.
+    To restore, decompress the file (<code class="font-mono bg-amber-100 px-1 rounded">gunzip backup.json.gz</code>)
+    and re-import each collection using <code class="font-mono bg-amber-100 px-1 rounded">mongoimport</code> or a custom script.
+    Passwords are stored as bcrypt hashes and remain safe.
+  </span>
+</div>
+
+<script>
+  // Disable button + show loading while form submits
+  document.getElementById('backupForm').addEventListener('submit', function (e) {
+    const btn   = document.getElementById('backupBtn');
+    const label = document.getElementById('backupBtnLabel');
+    btn.disabled  = true;
+    label.textContent = 'Creating…';
+  });
+
+  // Delete backup — AJAX with CSRF
+  document.querySelectorAll('.btn-delete-backup').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      const id = this.dataset.id;
+      const confirmed = await Swal.fire({
+        title:              'Delete this backup?',
+        text:               'This will also remove the file from Cloudinary.',
+        icon:               'warning',
+        showCancelButton:   true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor:  '#64748b',
+        confirmButtonText:  'Yes, delete',
+        cancelButtonText:   'Cancel',
+        reverseButtons:     true,
+      });
+      if (!confirmed.isConfirmed) return;
+
+      try {
+        const res = await fetch('/admin/backups/' + id, {
+          method:  'DELETE',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'x-csrf-token':     '<%= csrfToken %>',
+          },
+        });
+        const data = await res.json();
+        if (data.ok) {
+          const row = document.querySelector(`tr[data-backup-id="${id}"]`);
+          if (row) row.remove();
+        } else {
+          Swal.fire('Error', data.error || 'Failed to delete.', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Error', 'Request failed.', 'error');
+      }
+    });
+  });
+</script>
+
+<%- include('../../partials/footer') %>
