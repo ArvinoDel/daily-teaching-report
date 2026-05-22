@@ -63,7 +63,7 @@ app.use(helmet({
           "https://cdn.jsdelivr.net"
         ],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
+        imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
         connectSrc: ["'self'", "https://*.tailwindcss.com"],
       },
     }
