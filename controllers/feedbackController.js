@@ -17,14 +17,14 @@ exports.submitFeedback = async (req, res) => {
     const errors = [];
 
     if (!description || !description.trim()) {
-      errors.push('Deskripsi error wajib diisi.');
+      errors.push('Error description is required.');
     }
 
     const isLoggedIn = !!req.session.user;
     
     // If not logged in, submitterName is required
     if (!isLoggedIn && (!submitterName || !submitterName.trim())) {
-      errors.push('Nama wajib diisi jika kamu tidak masuk.');
+      errors.push('Name is required if you are not logged in.');
     }
 
     if (errors.length > 0) {
@@ -65,7 +65,7 @@ exports.submitFeedback = async (req, res) => {
         console.error('Failed to cleanup file:', e);
       }
     }
-    return res.status(500).json({ ok: false, errors: ['Terjadi kesalahan pada server. Coba lagi nanti.'] });
+    return res.status(500).json({ ok: false, errors: ['Internal server error. Please try again later.'] });
   }
 };
 
