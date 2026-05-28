@@ -159,10 +159,17 @@ app.use('/feedback', feedbackRoutes);
 app.get('/score-calculator', requireAuth, (req, res) => res.render('score-calculator'));
 app.get('/', (req, res) => res.redirect('/reports'));
 
-app.use((req, res) => res.status(404).render('error', { message: 'Page not found.' }));
+app.use((req, res) => {
+  res.locals.currentUser = res.locals.currentUser || null;
+  res.locals.csrfToken = res.locals.csrfToken || (req.session && req.session.csrfToken) || '';
+  res.status(404).render('error', { message: 'Page not found.' });
+});
 
 // Multer file-upload error handler
 app.use((err, req, res, next) => {
+  res.locals.currentUser = res.locals.currentUser || null;
+  res.locals.csrfToken = res.locals.csrfToken || (req.session && req.session.csrfToken) || '';
+
   if (err instanceof multer.MulterError) {
     let message = 'File upload error.';
     if (err.code === 'LIMIT_FILE_SIZE') message = 'File too large. Maximum size is 2MB.';

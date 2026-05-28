@@ -18,7 +18,7 @@ const typeBadgeColor = {
 };
 
 function formatIDR(n) {
-  return 'Rp\u00a0' + n.toLocaleString('id-ID');
+  return 'Rp\u00a0' + n.toLocaleString('en-US');
 }
 
 function parseStudentList(raw) {
@@ -42,7 +42,7 @@ function validateReportInput({ date, class_name, duration, teaching_type, notes,
   if (ac_students     && ac_students.some(s => s.length > 50))     errors.push('AC student name max 50 characters.');
   if (absent_students && absent_students.some(s => s.length > 50)) errors.push('Absent student name max 50 characters.');
   if (session_mode && !['online', 'offline'].includes(session_mode)) errors.push('Invalid class mode.');
-  if (session_type && !['group', 'private'].includes(session_type))  errors.push('Invalid session type.');
+  if (session_type && !['group', 'private', 'competition'].includes(session_type))  errors.push('Invalid session type.');
   return errors;
 }
 
@@ -345,7 +345,7 @@ exports.reportsList = async (req, res) => {
     if (teacher_id) filter.teacher = teacher_id;
     if (teaching_type && TEACHING_TYPES.includes(teaching_type)) filter.teaching_type = teaching_type;
     if (session_mode  && ['online', 'offline'].includes(session_mode)) filter.session_mode = session_mode;
-    if (session_type  && ['group', 'private'].includes(session_type))  filter.session_type = session_type;
+    if (session_type  && ['group', 'private', 'competition'].includes(session_type))  filter.session_type = session_type;
 
     const [reports, teachers] = await Promise.all([
       Report.find(filter).sort({ date: -1 }).populate('teacher', 'displayName username'),
@@ -390,6 +390,7 @@ exports.reportUpdate = async (req, res) => {
     const uses_personal_internet = req.body.uses_personal_internet === 'true';
     const ac_students     = parseStudentList(req.body.ac_students);
     const absent_students = parseStudentList(req.body.absent_students);
+    const competition_groups = session_type === 'competition' ? parseStudentList(req.body.competition_groups) : [];
 
     const validationErrors = validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type });
     if (validationErrors.length > 0) {
@@ -413,6 +414,7 @@ exports.reportUpdate = async (req, res) => {
         session_mode: session_mode || 'offline',
         uses_personal_internet,
         session_type: session_type || 'group',
+        competition_groups,
       },
       { new: true, runValidators: true }
     );
@@ -591,7 +593,7 @@ exports.reportsSummaryIndex = async (req, res) => {
       if (!byDate[key]) {
         byDate[key] = {
           dateKey:   key,
-          dateLabel: r.date.toLocaleDateString('id-ID', {
+          dateLabel: r.date.toLocaleDateString('en-US', {
             weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
           }),
           reports: [],

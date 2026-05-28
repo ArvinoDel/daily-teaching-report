@@ -115,9 +115,9 @@
               </td>
               <!-- Timestamp -->
               <td class="px-5 py-3.5 text-right font-mono text-xs text-slate-400 whitespace-nowrap">
-                <%= log.createdAt.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) %>
+                <%= log.createdAt.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }) %>
                 <span class="text-slate-300 ml-1">
-                  <%= log.createdAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) %>
+                  <%= log.createdAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) %>
                 </span>
               </td>
             </tr>

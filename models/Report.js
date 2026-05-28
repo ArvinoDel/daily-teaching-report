@@ -10,38 +10,38 @@ const reportSchema = new mongoose.Schema(
     },
     date: {
       type: Date,
-      required: [true, 'Teaching date must be filled diisi.'],
+      required: [true, 'Teaching date is required.'],
     },
     subject: {
       type: String,
       trim: true,
-      maxlength: [100, 'Mata pelajaran maksimal 100 karakter.'],
+      maxlength: [100, 'Subject max 100 characters.'],
       default: '',
     },
     class_name: {
       type: String,
-      required: [true, 'Nama kelas wajib diisi.'],
+      required: [true, 'Class name is required.'],
       trim: true,
-      maxlength: [50, 'Nama kelas maksimal 50 karakter.'],
+      maxlength: [50, 'Class name max 50 characters.'],
     },
     duration: {
       type: Number,
-      required: [true, 'Durasi mengajar wajib diisi.'],
-      min: [1, 'Durasi minimal 1 menit.'],
-      comment: 'Durasi dalam menit',
+      required: [true, 'Teaching duration is required.'],
+      min: [1, 'Minimum duration is 1 minute.'],
+      comment: 'Duration in minutes',
     },
     teaching_type: {
       type: String,
-      required: [true, 'Tipe pengajar wajib dipilih.'],
+      required: [true, 'Teaching type is required.'],
       enum: {
         values: ['Prime Teacher (Full)', 'Assistant Teacher', '1/2 Prime Teacher', 'Prime Teacher (Assisted)'],
-        message: '{VALUE} bukan tipe pengajar yang valid.',
+        message: '{VALUE} is not a valid teaching type.',
       },
     },
     notes: {
       type: String,
       trim: true,
-      maxlength: [1000, 'Catatan maksimal 1000 karakter.'],
+      maxlength: [1000, 'Notes max 1000 characters.'],
       default: '',
     },
     ac_students: {
@@ -63,8 +63,12 @@ const reportSchema = new mongoose.Schema(
     },
     session_type: {
       type: String,
-      enum: ['group', 'private'],
+      enum: ['group', 'private', 'competition'],
       default: 'group',
+    },
+    competition_groups: {
+      type: [String],
+      default: [],
     },
   },
   {
@@ -72,7 +76,7 @@ const reportSchema = new mongoose.Schema(
   }
 );
 
-// Virtual: durasi dalam format jam & menit
+// Virtual: duration in hours & minutes format
 reportSchema.virtual('durationFormatted').get(function () {
   const hours = Math.floor(this.duration / 60);
   const minutes = this.duration % 60;
@@ -81,9 +85,9 @@ reportSchema.virtual('durationFormatted').get(function () {
   return `${hours} hour ${minutes} minute(s)`;
 });
 
-// Virtual: tanggal dalam format lokal Indonesia
+// Virtual: date in formatted local string
 reportSchema.virtual('dateFormatted').get(function () {
-  return this.date.toLocaleDateString('id-ID', {
+  return this.date.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',

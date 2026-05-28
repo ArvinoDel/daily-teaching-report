@@ -3,7 +3,7 @@
 <body class="bg-slate-50 min-h-screen text-slate-800">
 
 <%
-  /* Hitung experience string sekali, dipakai di desktop & mobile */
+  /* Compute experience string once, used in desktop & mobile */
   let _expStr = null;
   if (typeof currentUser !== 'undefined' && currentUser && currentUser.joinDate) {
     const _now      = new Date();
@@ -20,7 +20,7 @@
     else                      _expStr = _yrs + ' year(s) and ' + _mos + ' month(s)';
   }
 
-  /* BUG FIX: isOnline dihitung satu kali saja, bukan dua kali terpisah */
+  /* BUG FIX: isOnline is computed once, not twice separately */
   const _isOnline = typeof currentUser !== 'undefined' && currentUser &&
     currentUser.lastActiveAt &&
     (Date.now() - new Date(currentUser.lastActiveAt).getTime()) < 5 * 60 * 1000;

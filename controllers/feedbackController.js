@@ -84,7 +84,7 @@ exports.adminList = async (req, res) => {
     });
   } catch (err) {
     console.error('Error listing feedbacks:', err);
-    res.status(500).render('error', { message: 'Gagal memuat daftar laporan error.' });
+    res.status(500).render('error', { message: 'Failed to load error reports list.' });
   }
 };
 
@@ -104,7 +104,7 @@ exports.adminUpdateStatus = async (req, res) => {
     res.redirect('/admin/feedbacks');
   } catch (err) {
     console.error('Error updating feedback status:', err);
-    res.status(500).render('error', { message: 'Gagal memperbarui status laporan.' });
+    res.status(500).render('error', { message: 'Failed to update report status.' });
   }
 };
 
@@ -117,7 +117,7 @@ exports.adminDelete = async (req, res) => {
     const feedback = await Feedback.findById(id);
 
     if (!feedback) {
-      return res.status(404).render('error', { message: 'Laporan tidak ditemukan.' });
+      return res.status(404).render('error', { message: 'Report not found.' });
     }
 
     // If there is an associated Cloudinary asset, delete it
@@ -133,6 +133,6 @@ exports.adminDelete = async (req, res) => {
     res.redirect('/admin/feedbacks');
   } catch (err) {
     console.error('Error deleting feedback:', err);
-    res.status(500).render('error', { message: 'Gagal menghapus laporan.' });
+    res.status(500).render('error', { message: 'Failed to delete report.' });
   }
 };

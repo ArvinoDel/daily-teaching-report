@@ -36,9 +36,9 @@
             }
           %>
           <% dailySummary.forEach(function(day, idx) { %>
-            <tr class="hover:bg-brand-50 transition cursor-pointer group" onclick="showDayDetail(<%= idx %>)">
+            <tr class="hover:bg-brand-50 transition cursor-pointer group" onclick="showDayDetail('<%= idx %>')">
               <td class="px-4 sm:px-6 py-3.5 font-mono text-xs text-slate-700 whitespace-nowrap font-semibold">
-                <%= new Date(day.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) %>
+                <%= new Date(day.date).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }) %>
               </td>
               <td class="px-3 sm:px-6 py-3.5 text-center"><%- countBadge(day.counts['Prime Teacher (Full)'],     'bg-emerald-100 text-emerald-700') %></td>
               <td class="px-3 sm:px-6 py-3.5 text-center"><%- countBadge(day.counts['Prime Teacher (Assisted)'], 'bg-purple-100 text-purple-700')  %></td>

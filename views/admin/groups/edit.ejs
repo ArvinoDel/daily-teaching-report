@@ -138,13 +138,13 @@
         <div class="flex items-center justify-between text-xs">
           <span class="text-slate-500">Created</span>
           <span class="font-mono text-slate-600">
-            <%= group.createdAt.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) %>
+            <%= group.createdAt.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }) %>
           </span>
         </div>
         <div class="flex items-center justify-between text-xs">
           <span class="text-slate-500">Last updated</span>
           <span class="font-mono text-slate-600">
-            <%= group.updatedAt.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) %>
+            <%= group.updatedAt.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }) %>
           </span>
         </div>
         <div class="flex items-center justify-between text-xs">

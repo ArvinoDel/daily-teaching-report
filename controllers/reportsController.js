@@ -25,25 +25,25 @@ function parseStudentList(raw) {
 
 function validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type }) {
   const errors = [];
-  if (!date || isNaN(new Date(date).getTime())) errors.push('Tanggal tidak valid.');
-  if (subject && subject.trim().length > 100) errors.push('Mata pelajaran maksimal 100 karakter.');
-  if (!class_name || class_name.trim().length === 0) errors.push('Nama kelas wajib diisi.');
-  if (class_name && class_name.trim().length > 50) errors.push('Nama kelas maksimal 50 karakter.');
+  if (!date || isNaN(new Date(date).getTime())) errors.push('Invalid date.');
+  if (subject && subject.trim().length > 100) errors.push('Subject max 100 characters.');
+  if (!class_name || class_name.trim().length === 0) errors.push('Class name is required.');
+  if (class_name && class_name.trim().length > 200) errors.push('Class name max 200 characters.');
   const dur = Number(duration);
-  if (!duration || isNaN(dur) || dur < 1 || !Number.isInteger(dur)) errors.push('Durasi harus berupa bilangan bulat minimal 1 menit.');
-  if (!teaching_type || !TEACHING_TYPES.includes(teaching_type)) errors.push('Tipe pengajar tidak valid.');
-  if (notes && notes.length > 1000) errors.push('Catatan maksimal 1000 karakter.');
-  if (ac_students && ac_students.some(s => s.length > 50)) errors.push('Nama siswa AC maksimal 50 karakter.');
-  if (absent_students && absent_students.some(s => s.length > 50)) errors.push('Nama siswa Absent maksimal 50 karakter.');
-  if (ac_students && ac_students.length > 100) errors.push('Maksimal 100 siswa AC.');
-  if (absent_students && absent_students.length > 100) errors.push('Maksimal 100 siswa Absent.');
-  if (session_mode && !['online', 'offline'].includes(session_mode)) errors.push('Mode kelas tidak valid.');
-  if (session_type && !['group', 'private'].includes(session_type)) errors.push('Tipe sesi tidak valid.');
+  if (!duration || isNaN(dur) || dur < 1 || !Number.isInteger(dur)) errors.push('Duration must be an integer of at least 1 minute.');
+  if (!teaching_type || !TEACHING_TYPES.includes(teaching_type)) errors.push('Invalid teaching type.');
+  if (notes && notes.length > 1000) errors.push('Notes max 1000 characters.');
+  if (ac_students && ac_students.some(s => s.length > 50)) errors.push('AC student name max 50 characters.');
+  if (absent_students && absent_students.some(s => s.length > 50)) errors.push('Absent student name max 50 characters.');
+  if (ac_students && ac_students.length > 500) errors.push('Max 500 AC students.');
+  if (absent_students && absent_students.length > 500) errors.push('Max 500 absent students.');
+  if (session_mode && !['online', 'offline'].includes(session_mode)) errors.push('Invalid class mode.');
+  if (session_type && !['group', 'private', 'competition'].includes(session_type)) errors.push('Invalid session type.');
   return errors;
 }
 
 function formatIDR(n) {
-  return 'Rp\u00a0' + n.toLocaleString('id-ID');
+  return 'Rp\u00a0' + n.toLocaleString('en-US');
 }
 
 // 🟢 Fetch groups as safe JSON for embedding in views
@@ -129,7 +129,7 @@ exports.index = async (req, res) => {
     const listFilter = { teacher: req.session.user._id };
     if (teaching_type && TEACHING_TYPES.includes(teaching_type)) listFilter.teaching_type = teaching_type;
     if (session_mode && ['online', 'offline'].includes(session_mode)) listFilter.session_mode = session_mode;
-    if (session_type && ['group', 'private'].includes(session_type)) listFilter.session_type = session_type;
+    if (session_type && ['group', 'private', 'competition'].includes(session_type)) listFilter.session_type = session_type;
     const reports = await Report.find(listFilter).sort({ date: -1 });
 
     const currentUser = await User.findById(req.session.user._id).select('commission');
@@ -171,7 +171,7 @@ exports.index = async (req, res) => {
       selectedMonthStr: toMonthStr(new Date(selectedYear, selectedMonth, 1)),
       dailySummary, successMessage,
       dailySummaryJson: safeJsonForHtml(dailySummary.map(day => ({
-        dateLabel: new Date(day.date).toLocaleDateString('id-ID', {
+        dateLabel: new Date(day.date).toLocaleDateString('en-US', {
           weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
         }),
         reports: day.reports.map(r => ({
@@ -206,6 +206,7 @@ exports.create = async (req, res) => {
     const uses_personal_internet = req.body.uses_personal_internet === 'true';
     const ac_students     = parseStudentList(req.body.ac_students);
     const absent_students = parseStudentList(req.body.absent_students);
+    const competition_groups = session_type === 'competition' ? parseStudentList(req.body.competition_groups) : [];
 
     const validationErrors = validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type });
     if (validationErrors.length > 0) {
@@ -226,12 +227,13 @@ exports.create = async (req, res) => {
       session_mode: session_mode || 'offline',
       uses_personal_internet,
       session_type: session_type || 'group',
+      competition_groups,
     });
     await report.save();
     req.session.flash = 'Report has been created!';
     res.redirect('/reports');
   } catch (err) {
-    const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['Terjadi kesalahan. Silakan coba lagi.'];
+    const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['An error occurred. Please try again.'];
     const groupsJson = await getGroupsJson();
     res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors, formData: req.body, groupsJson });
   }
@@ -267,6 +269,7 @@ exports.update = async (req, res) => {
     const uses_personal_internet = req.body.uses_personal_internet === 'true';
     const ac_students     = parseStudentList(req.body.ac_students);
     const absent_students = parseStudentList(req.body.absent_students);
+    const competition_groups = session_type === 'competition' ? parseStudentList(req.body.competition_groups) : [];
 
     const validationErrors = validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type });
     if (validationErrors.length > 0) {
@@ -291,6 +294,7 @@ exports.update = async (req, res) => {
         session_mode: session_mode || 'offline',
         uses_personal_internet,
         session_type: session_type || 'group',
+        competition_groups,
       },
       { new: true, runValidators: true }
     );
@@ -298,7 +302,7 @@ exports.update = async (req, res) => {
     req.session.flash = 'Report has been updated!';
     res.redirect('/reports');
   } catch (err) {
-    const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['Terjadi kesalahan saat memperbarui.'];
+    const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['An error occurred while updating.'];
     const [report, groupsJson] = await Promise.all([
       Report.findOne({ _id: req.params.id, teacher: req.session.user._id }),
       getGroupsJson(),

@@ -1,7 +1,7 @@
 <script type="application/json" id="daily-data-json">
   <%- JSON.stringify(dailySummary.map(function (day) {
     return {
-      dateLabel: new Date(day.date).toLocaleDateString('id-ID', {
+      dateLabel: new Date(day.date).toLocaleDateString('en-US', {
         weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
       }),
       reports: day.reports.map(function (r) {

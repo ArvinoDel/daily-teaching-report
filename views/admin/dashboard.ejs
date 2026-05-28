@@ -161,7 +161,7 @@
                 </span>
               </td>
               <td class="px-6 py-3.5 font-mono text-xs text-slate-400 hidden md:table-cell whitespace-nowrap">
-                <%= r.date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) %>
+                <%= r.date.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }) %>
               </td>
               <td class="px-6 py-3.5">
                 <a href="/admin/reports/<%= r._id %>/edit"

@@ -59,7 +59,8 @@
       data-uses-personal-internet="<%= report.uses_personal_internet %>"
       data-class-name="<%= report.class_name %>"
       data-ac-students="<%= (report.ac_students || []).join(',') %>"
-      data-absent-students="<%= (report.absent_students || []).join(',') %>">
+      data-absent-students="<%= (report.absent_students || []).join(',') %>"
+      data-competition-groups="<%= (report.competition_groups || []).join(',') %>">
       <input type="hidden" name="_csrf"   value="<%= csrfToken %>">
       <input type="hidden" name="_method" value="PUT">
 
@@ -99,6 +100,20 @@
             placeholder="e.g: John Doe"
             autocomplete="off"
             class="hidden w-full rounded-xl border border-purple-200 bg-purple-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition" />
+          <!-- Competition mode: multi-group picker -->
+          <div id="competition-group-wrap" class="hidden">
+            <div id="competition-selected-tags" class="flex flex-wrap gap-1.5 mb-2"></div>
+            <div class="relative">
+              <input type="text" id="competition-search"
+                placeholder="Search groups to add…"
+                autocomplete="off"
+                class="w-full rounded-xl border border-orange-200 bg-orange-50 px-4 py-2.5 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition" />
+              <div id="competition-dropdown"
+                class="hidden absolute z-30 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden divide-y divide-slate-50 max-h-56 overflow-y-auto">
+              </div>
+            </div>
+            <p class="text-xs text-slate-400 mt-1"><span id="comp-group-count">0</span> group(s) selected — min 2 for competition</p>
+          </div>
           <p id="group-hint" class="text-xs text-slate-400">Type a name or select from your groups list.</p>
         </div>
       </div>
@@ -108,10 +123,12 @@
         <div class="space-y-2">
           <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Session Type</label>
           <div class="flex gap-2">
-            <button type="button" id="btn-group"   class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setSessionType('group')">Group</button>
-            <button type="button" id="btn-private" class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setSessionType('private')">Private</button>
+            <button type="button" id="btn-group"       class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setSessionType('group')">Group</button>
+            <button type="button" id="btn-private"      class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setSessionType('private')">Private</button>
+            <button type="button" id="btn-competition"   class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setSessionType('competition')">Competition</button>
           </div>
           <input type="hidden" name="session_type" id="session_type_input" value="<%= report.session_type || 'group' %>">
+          <input type="hidden" name="competition_groups" id="competition_groups_hidden" value="<%= (report.competition_groups || []).join(',') %>">
         </div>
         <div class="space-y-2">
           <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Class Mode</label>
@@ -187,7 +204,7 @@
               <p class="text-xs font-semibold text-brand-500 uppercase tracking-wider">Students from</p>
               <h3 id="roster-group-name" class="text-sm font-bold text-slate-800 mt-0.5"></h3>
             </div>
-            <div class="flex items-center gap-1.5 flex-wrap">
+            <div id="global-roster-actions" class="flex items-center gap-1.5 flex-wrap">
               <span id="roster-summary" class="text-xs text-slate-500 mr-1"></span>
               <button type="button" onclick="markAll('ac')"
                 class="text-xs font-semibold bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-2.5 py-1.5 rounded-lg transition">
@@ -261,33 +278,42 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+var MAX_AC_COUNT = 5;
+
 /* ═══════════════════════════════════════════════════════════════
    Session type & mode toggles
 ═══════════════════════════════════════════════════════════════ */
 function setSessionType(type) {
   document.getElementById('session_type_input').value = type;
-  var bG = document.getElementById('btn-group'), bP = document.getElementById('btn-private');
+  var bG = document.getElementById('btn-group'), bP = document.getElementById('btn-private'), bC = document.getElementById('btn-competition');
   var classInput      = document.getElementById('class_name');
   var privateInput    = document.getElementById('private_name_input');
   var groupAcWrap     = document.getElementById('group-ac-wrap');
+  var compWrap        = document.getElementById('competition-group-wrap');
   var groupHint       = document.getElementById('group-hint');
   var classNameLabel  = document.getElementById('class-name-label');
 
+  var inactiveCls = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+
   if (type === 'group') {
     bG.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-brand-500 bg-brand-50 text-brand-700';
-    bP.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+    bP.className = inactiveCls;
+    bC.className = inactiveCls;
     groupAcWrap.classList.remove('hidden');
     privateInput.classList.add('hidden');
+    compWrap.classList.add('hidden');
     privateInput.removeAttribute('name');
     classInput.setAttribute('name', 'class_name');
     classInput.required = true;
     groupHint.classList.remove('hidden');
     classNameLabel.innerHTML = 'Group / Class Name <span class="text-red-500">*</span>';
-  } else {
-    bG.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+  } else if (type === 'private') {
+    bG.className = inactiveCls;
     bP.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-purple-400 bg-purple-50 text-purple-700';
+    bC.className = inactiveCls;
     if (selectedGroup) { clearGroupSelection(); }
     groupAcWrap.classList.add('hidden');
+    compWrap.classList.add('hidden');
     classInput.removeAttribute('name');
     classInput.required = false;
     privateInput.classList.remove('hidden');
@@ -296,6 +322,27 @@ function setSessionType(type) {
     if (!privateInput.value && classInput.value) privateInput.value = classInput.value;
     groupHint.classList.add('hidden');
     classNameLabel.innerHTML = 'Student Name <span class="text-red-500">*</span>';
+    competitionSelectedIds = [];
+    renderCompetitionTags();
+  } else if (type === 'competition') {
+    bG.className = inactiveCls;
+    bP.className = inactiveCls;
+    bC.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-orange-500 bg-orange-50 text-orange-700';
+    if (selectedGroup) { clearGroupSelection(); }
+    groupAcWrap.classList.add('hidden');
+    privateInput.classList.add('hidden');
+    compWrap.classList.remove('hidden');
+    classInput.removeAttribute('name');
+    classInput.required = false;
+    privateInput.removeAttribute('name');
+    privateInput.required = false;
+    groupHint.classList.remove('hidden');
+    classNameLabel.innerHTML = 'Competition Groups <span class="text-red-500">*</span>';
+    groupHint.innerHTML = '<span class="inline-flex items-center gap-1 text-orange-600 font-semibold">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 0 0 2.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 0 1 2.916.52 6.003 6.003 0 0 1-5.395 4.972m0 0a6.726 6.726 0 0 1-2.749 1.35m0 0a6.772 6.772 0 0 1-3.044 0"/></svg>' +
+      'Select 2 or more groups for the competition</span>';
+    groupHint.className = 'text-xs';
+    renderCompetitionRoster();
   }
 }
 function setMode(mode) {
@@ -321,7 +368,7 @@ if (formEl.dataset.usesPersonalInternet === 'true') document.getElementById('per
 /* ═══════════════════════════════════════════════════════════════
    Tag input — returns controller { reset, getTags }
 ═══════════════════════════════════════════════════════════════ */
-function initTagInput({ inputId, boxId, hiddenId, countId, tagCls }) {
+function initTagInput({ inputId, boxId, hiddenId, countId, tagCls, allowDuplicates }) {
   var input   = document.getElementById(inputId);
   var box     = document.getElementById(boxId);
   var hidden  = document.getElementById(hiddenId);
@@ -337,12 +384,14 @@ function initTagInput({ inputId, boxId, hiddenId, countId, tagCls }) {
       pill.querySelector('button').addEventListener('click', function() { tags.splice(i, 1); render(); });
       box.appendChild(pill);
     });
-    countEl.textContent = tags.length;
+    var unique = [];
+    tags.forEach(function(t) { if (unique.indexOf(t) === -1) unique.push(t); });
+    countEl.textContent = unique.length;
     hidden.value = tags.join(',');
   }
   function tryAdd() {
     var val = input.value.replace(/,/g,'').trim();
-    if (val && !tags.includes(val)) tags.push(val);
+    if (val && (allowDuplicates || tags.indexOf(val) === -1)) tags.push(val);
     input.value = ''; render();
   }
   input.addEventListener('keydown', function(e) {
@@ -388,7 +437,7 @@ function renderDropdown(groups) {
           (g.level ? '<span class="text-[10px] font-mono text-slate-400">'+escHtml(g.level)+'</span>' : '') +
         '</div>' +
       '</div>' +
-      '<span class="text-xs text-slate-400 flex-shrink-0">'+g.students.length+' siswa</span>' +
+      '<span class="text-xs text-slate-400 flex-shrink-0">'+g.students.length+' student(s)</span>' +
     '</button>';
   }).join('');
   groupDropdown.classList.remove('hidden');
@@ -396,13 +445,26 @@ function renderDropdown(groups) {
 
 function hideDropdown() { groupDropdown.classList.add('hidden'); }
 
+function setGroupHintDefault() {
+  groupHint.textContent = 'Type a name or select from your groups list.';
+  groupHint.className = 'text-xs text-slate-400';
+}
+function setGroupHintSelected() {
+  groupHint.innerHTML = '<span class="inline-flex items-center gap-1 text-brand-600 font-semibold">' +
+    '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>' +
+    'Group selected — mark students below</span>';
+  groupHint.className = 'text-xs';
+}
+
 classInput.addEventListener('focus', function() {
+  if (document.getElementById('session_type_input').value === 'competition') return;
   var q = this.value.trim().toLowerCase();
   var list = q ? groupsData.filter(function(g){return g.group_name.toLowerCase().includes(q);}) : groupsData;
   if (list.length) renderDropdown(list);
 });
 
 classInput.addEventListener('input', function() {
+  if (document.getElementById('session_type_input').value === 'competition') return;
   var q = this.value.trim().toLowerCase();
   if (selectedGroup && this.value !== selectedGroup.group_name) {
     selectedGroup = null; studentStates = {};
@@ -420,21 +482,14 @@ classInput.addEventListener('keydown', function(e) {
 
 document.addEventListener('click', function(e) {
   if (!e.target.closest('#group-ac-wrap')) hideDropdown();
+  if (!e.target.closest('#competition-group-wrap')) {
+    var cd = document.getElementById('competition-dropdown');
+    if (cd) cd.classList.add('hidden');
+  }
 });
 
-function setGroupHintDefault() {
-  groupHint.textContent = 'Type a name or select from your groups list.';
-  groupHint.className = 'text-xs text-slate-400';
-}
-function setGroupHintSelected() {
-  groupHint.innerHTML = '<span class="inline-flex items-center gap-1 text-brand-600 font-semibold">' +
-    '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>' +
-    'Group selected — mark students below</span>';
-  groupHint.className = 'text-xs';
-}
-
 /* ═══════════════════════════════════════════════════════════════
-   Group Selection
+   Group Selection (single group mode)
 ═══════════════════════════════════════════════════════════════ */
 function selectGroup(id, opts) {
   selectedGroup = groupsData.find(function(g){return g._id === id;});
@@ -447,17 +502,21 @@ function selectGroup(id, opts) {
 
   // Reset states
   studentStates = {};
-  selectedGroup.students.forEach(function(s) { studentStates[s] = null; });
+  selectedGroup.students.forEach(function(s) { studentStates[s] = { state: null, acCount: 0 }; });
 
   // Pre-fill from existing report ac/absent data
   if (opts && opts.preAc) {
-    opts.preAc.forEach(function(s) {
-      if (Object.prototype.hasOwnProperty.call(studentStates, s)) studentStates[s] = 'ac';
+    var acCounts = {};
+    opts.preAc.forEach(function(s) { acCounts[s] = (acCounts[s] || 0) + 1; });
+    Object.keys(acCounts).forEach(function(s) {
+      if (studentStates[s] !== undefined) {
+        studentStates[s] = { state: 'ac', acCount: acCounts[s] };
+      }
     });
   }
   if (opts && opts.preAbsent) {
     opts.preAbsent.forEach(function(s) {
-      if (Object.prototype.hasOwnProperty.call(studentStates, s)) studentStates[s] = 'absent';
+      if (studentStates[s] !== undefined) studentStates[s] = { state: 'absent', acCount: 0 };
     });
   }
 
@@ -480,69 +539,299 @@ function clearGroupSelection() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   Student Roster
+   Competition: Multi-Group Selection
+═══════════════════════════════════════════════════════════════ */
+var competitionSelectedIds = [];
+var competitionSearchInput = document.getElementById('competition-search');
+var competitionDropdown    = document.getElementById('competition-dropdown');
+
+function renderCompetitionDropdown(groups) {
+  var filtered = groups.filter(function(g) {
+    return competitionSelectedIds.indexOf(g._id) === -1;
+  });
+  if (filtered.length === 0) {
+    competitionDropdown.classList.add('hidden');
+    return;
+  }
+  competitionDropdown.innerHTML = filtered.slice(0, 8).map(function(g) {
+    var tcls  = g.type === 'GROUP' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700';
+    var tlbl  = g.type === 'GROUP' ? 'Group' : 'Private';
+    return '<button type="button" onclick="addCompetitionGroup(\''+escHtml(g._id)+'\')" '+
+      'class="w-full text-left px-4 py-3 hover:bg-orange-50 transition flex items-center justify-between gap-3">' +
+      '<div class="flex-1 min-w-0">' +
+        '<p class="text-sm font-semibold text-slate-800 truncate">' + escHtml(g.group_name) + '</p>' +
+        '<div class="flex items-center gap-1.5 mt-0.5">' +
+          '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full '+tcls+'">' + tlbl + '</span>' +
+          (g.level ? '<span class="text-[10px] font-mono text-slate-400">'+escHtml(g.level)+'</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<span class="text-xs text-slate-400 flex-shrink-0">'+g.students.length+' student(s)</span>' +
+    '</button>';
+  }).join('');
+  competitionDropdown.classList.remove('hidden');
+}
+
+competitionSearchInput.addEventListener('focus', function() {
+  var q = this.value.trim().toLowerCase();
+  var list = q ? groupsData.filter(function(g){return g.group_name.toLowerCase().includes(q);}) : groupsData;
+  if (list.length) renderCompetitionDropdown(list);
+});
+
+competitionSearchInput.addEventListener('input', function() {
+  var q = this.value.trim().toLowerCase();
+  if (!q) { competitionDropdown.classList.add('hidden'); return; }
+  var list = groupsData.filter(function(g){return g.group_name.toLowerCase().includes(q);});
+  list.length ? renderCompetitionDropdown(list) : competitionDropdown.classList.add('hidden');
+});
+
+competitionSearchInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' || e.key === 'Tab') competitionDropdown.classList.add('hidden');
+});
+
+function addCompetitionGroup(id) {
+  if (competitionSelectedIds.indexOf(id) === -1) {
+    competitionSelectedIds.push(id);
+  }
+  competitionSearchInput.value = '';
+  competitionDropdown.classList.add('hidden');
+  renderCompetitionTags();
+  renderCompetitionRoster();
+}
+
+function removeCompetitionGroup(id) {
+  competitionSelectedIds = competitionSelectedIds.filter(function(x) { return x !== id; });
+  renderCompetitionTags();
+  renderCompetitionRoster();
+}
+
+function renderCompetitionTags() {
+  var container = document.getElementById('competition-selected-tags');
+  container.innerHTML = competitionSelectedIds.map(function(id) {
+    var g = groupsData.find(function(x) { return x._id === id; });
+    if (!g) return '';
+    return '<span class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-orange-100 text-orange-700">' +
+      escHtml(g.group_name) +
+      ' <button type="button" class="ml-0.5 leading-none opacity-60 hover:opacity-100 transition text-sm" onclick="removeCompetitionGroup(\''+escHtml(id)+'\')">×</button>' +
+    '</span>';
+  }).join('');
+  document.getElementById('comp-group-count').textContent = competitionSelectedIds.length;
+
+  var names = competitionSelectedIds.map(function(id) {
+    var g = groupsData.find(function(x) { return x._id === id; });
+    return g ? g.group_name : '';
+  }).filter(Boolean);
+
+  var hiddenClassName = document.querySelector('input[name="class_name"]');
+  if (!hiddenClassName && competitionSelectedIds.length > 0) {
+    var inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = 'class_name'; inp.id = 'comp-class-name-hidden';
+    formEl.appendChild(inp);
+    hiddenClassName = inp;
+  }
+  if (hiddenClassName) hiddenClassName.value = names.join(', ');
+
+  document.getElementById('competition_groups_hidden').value = names.join(',');
+}
+
+function renderCompetitionRoster() {
+  if (competitionSelectedIds.length === 0) {
+    hideRoster();
+    return;
+  }
+
+  var allStudents = [];
+  var groupLabels = [];
+  competitionSelectedIds.forEach(function(id) {
+    var g = groupsData.find(function(x) { return x._id === id; });
+    if (g) {
+      groupLabels.push(g.group_name);
+      g.students.forEach(function(s) {
+        if (allStudents.indexOf(s) === -1) allStudents.push(s);
+      });
+    }
+  });
+
+  var newStates = {};
+  allStudents.forEach(function(s) {
+    newStates[s] = studentStates[s] || { state: null, acCount: 0 };
+  });
+  studentStates = newStates;
+
+  document.getElementById('roster-group-name').textContent = groupLabels.join(' vs ');
+  selectedGroup = { group_name: groupLabels.join(' vs '), students: allStudents };
+  renderGroupedRoster();
+  rosterPanel.classList.remove('hidden');
+  manualSection.classList.add('hidden');
+  updateHiddenInputs();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Student Roster — helpers
 ═══════════════════════════════════════════════════════════════ */
 function hideRoster()  { rosterPanel.classList.add('hidden'); manualSection.classList.remove('hidden'); }
 
+function renderStudentRow(student) {
+  var stObj  = studentStates[student] || { state: null, acCount: 0 };
+  var state  = stObj.state;
+  var acCount = stObj.acCount || 0;
+  var rowCls = 'flex items-center justify-between py-2.5 px-3 rounded-xl border transition ';
+  rowCls += state === 'ac'     ? 'bg-emerald-50 border-emerald-200' :
+            state === 'absent' ? 'bg-red-50 border-red-200'         :
+            'bg-white border-slate-100 hover:border-slate-200';
+
+  var acCls  = 'text-xs font-semibold px-2.5 py-1.5 rounded-lg transition ' +
+    (state === 'ac'     ? 'bg-emerald-500 text-white shadow-sm' :
+     'bg-white border border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-600');
+  var absCls = 'text-xs font-semibold px-2.5 py-1.5 rounded-lg transition ' +
+    (state === 'absent' ? 'bg-red-500 text-white shadow-sm' :
+     'bg-white border border-slate-200 text-slate-500 hover:border-red-300 hover:text-red-500');
+
+  var nameCls = 'text-sm ' + (state === 'ac' ? 'text-emerald-800 font-medium' : state === 'absent' ? 'text-red-700 font-medium' : 'text-slate-700');
+
+  var acLabel = state === 'ac' && acCount > 1 ? 'AC ×' + acCount : 'AC';
+  var acBadge = '';
+  if (state === 'ac') {
+    acBadge = '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">' +
+      (acCount > 1 ? 'AC ×' + acCount : 'AC') + '</span>';
+  }
+  var absBadge = state === 'absent' ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Absent</span>' : '';
+
+  return '<div class="'+rowCls+'">' +
+    '<div class="flex items-center gap-2">' +
+      '<span class="'+nameCls+'">' + escHtml(student) + '</span>' +
+      acBadge + absBadge +
+    '</div>' +
+    '<div class="flex gap-1.5">' +
+      '<button type="button" class="'+acCls+'" data-student="'+escHtml(student)+'" data-role="ac">' + acLabel + '</button>' +
+      '<button type="button" class="'+absCls+'" data-student="'+escHtml(student)+'" data-role="absent">Absent</button>' +
+    '</div>' +
+  '</div>';
+}
+
+/* ── Single-group roster ──────────────────────────────────── */
 function renderRoster() {
   var container = document.getElementById('roster-students');
+  document.getElementById('global-roster-actions').classList.remove('hidden');
   if (!selectedGroup || selectedGroup.students.length === 0) {
     container.innerHTML = '<p class="text-sm text-slate-400 italic py-2 text-center">No students in this group.</p>';
     return;
   }
-  container.innerHTML = selectedGroup.students.map(function(student) {
-    var state  = studentStates[student];
-    var rowCls = 'flex items-center justify-between py-2.5 px-3 rounded-xl border transition ';
-    rowCls += state === 'ac'     ? 'bg-emerald-50 border-emerald-200' :
-              state === 'absent' ? 'bg-red-50 border-red-200'         :
-              'bg-white border-slate-100 hover:border-slate-200';
-
-    var acCls  = 'text-xs font-semibold px-2.5 py-1.5 rounded-lg transition ' +
-      (state === 'ac'     ? 'bg-emerald-500 text-white shadow-sm' :
-       'bg-white border border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-600');
-    var absCls = 'text-xs font-semibold px-2.5 py-1.5 rounded-lg transition ' +
-      (state === 'absent' ? 'bg-red-500 text-white shadow-sm' :
-       'bg-white border border-slate-200 text-slate-500 hover:border-red-300 hover:text-red-500');
-
-    var nameCls = 'text-sm ' + (state === 'ac' ? 'text-emerald-800 font-medium' : state === 'absent' ? 'text-red-700 font-medium' : 'text-slate-700');
-
-    return '<div class="'+rowCls+'">' +
-      '<div class="flex items-center gap-2">' +
-        '<span class="'+nameCls+'">' + escHtml(student) + '</span>' +
-        (state === 'ac'     ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">AC</span>'     : '') +
-        (state === 'absent' ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Absent</span>' : '') +
-      '</div>' +
-      '<div class="flex gap-1.5">' +
-        '<button type="button" class="'+acCls+'" data-student="'+escHtml(student)+'" data-role="ac">AC</button>' +
-        '<button type="button" class="'+absCls+'" data-student="'+escHtml(student)+'" data-role="absent">Absent</button>' +
-      '</div>' +
-    '</div>';
-  }).join('');
-
+  container.innerHTML = selectedGroup.students.map(renderStudentRow).join('');
   updateRosterSummary();
 }
 
+/* ── Grouped roster (competition mode) ────────────────────── */
+function renderGroupedRoster() {
+  var container = document.getElementById('roster-students');
+  document.getElementById('global-roster-actions').classList.add('hidden');
+  var html = '';
+
+  competitionSelectedIds.forEach(function(id, idx) {
+    var g = groupsData.find(function(x) { return x._id === id; });
+    if (!g) return;
+
+    var gAc = 0, gAbs = 0;
+    g.students.forEach(function(s) {
+      var st = studentStates[s];
+      if (st && st.state === 'ac') gAc++;
+      if (st && st.state === 'absent') gAbs++;
+    });
+    var statsParts = [];
+    if (gAc  > 0) statsParts.push('<span class="text-emerald-600 font-semibold">' + gAc + ' AC</span>');
+    if (gAbs > 0) statsParts.push('<span class="text-red-500 font-semibold">' + gAbs + ' Absent</span>');
+
+    if (idx > 0) {
+      html += '<div class="border-t-2 border-dashed border-orange-200 my-3"></div>';
+    }
+
+    html += '<div class="flex items-center justify-between py-2 px-1 mb-1.5">' +
+      '<div class="flex items-center gap-2 min-w-0">' +
+        '<span class="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-orange-100 text-orange-700 whitespace-nowrap">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z"/></svg>' +
+          escHtml(g.group_name) +
+        '</span>' +
+        '<span class="text-[10px] text-slate-400">' + g.students.length + ' student(s)</span>' +
+        (statsParts.length ? '<span class="text-[10px]">' + statsParts.join(' · ') + '</span>' : '') +
+      '</div>' +
+      '<div class="flex items-center gap-1 flex-shrink-0">' +
+        '<button type="button" onclick="markAllInGroup(\'' + escHtml(id) + '\', \'ac\')" class="text-[10px] font-semibold bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-2 py-1 rounded-md transition">All AC</button>' +
+        '<button type="button" onclick="markAllInGroup(\'' + escHtml(id) + '\', \'absent\')" class="text-[10px] font-semibold bg-red-100 hover:bg-red-200 text-red-600 px-2 py-1 rounded-md transition">All Absent</button>' +
+        '<button type="button" onclick="markAllInGroup(\'' + escHtml(id) + '\', \'clear\')" class="text-[10px] font-semibold bg-white hover:bg-slate-100 text-slate-500 border border-slate-200 px-2 py-1 rounded-md transition">Clear</button>' +
+      '</div>' +
+    '</div>';
+
+    html += '<div class="space-y-1.5">';
+    g.students.forEach(function(student) {
+      html += renderStudentRow(student);
+    });
+    html += '</div>';
+  });
+
+  container.innerHTML = html;
+  updateRosterSummary();
+}
+
+/* ── Detect mode and call the right renderer ──────────────── */
+function rerender() {
+  if (document.getElementById('session_type_input').value === 'competition') {
+    renderGroupedRoster();
+  } else {
+    renderRoster();
+  }
+}
+
 function toggleStudent(name, role) {
-  studentStates[name] = (studentStates[name] === role) ? null : role;
-  renderRoster();
+  var st = studentStates[name] || { state: null, acCount: 0 };
+  if (role === 'ac') {
+    if (st.state === 'ac') {
+      if (st.acCount < MAX_AC_COUNT) { st.acCount++; }
+      else { st.state = null; st.acCount = 0; }
+    } else { st.state = 'ac'; st.acCount = 1; }
+  } else if (role === 'absent') {
+    if (st.state === 'absent') { st.state = null; st.acCount = 0; }
+    else { st.state = 'absent'; st.acCount = 0; }
+  }
+  studentStates[name] = st;
+  rerender();
   updateHiddenInputs();
 }
 
 function markAll(role) {
   if (!selectedGroup) return;
-  selectedGroup.students.forEach(function(s) { studentStates[s] = (role === 'clear') ? null : role; });
-  renderRoster();
+  selectedGroup.students.forEach(function(s) {
+    if (role === 'clear') { studentStates[s] = { state: null, acCount: 0 }; }
+    else if (role === 'ac') { studentStates[s] = { state: 'ac', acCount: 1 }; }
+    else if (role === 'absent') { studentStates[s] = { state: 'absent', acCount: 0 }; }
+  });
+  rerender();
+  updateHiddenInputs();
+}
+
+function markAllInGroup(groupId, role) {
+  var g = groupsData.find(function(x) { return x._id === groupId; });
+  if (!g) return;
+  g.students.forEach(function(s) {
+    if (role === 'clear') { studentStates[s] = { state: null, acCount: 0 }; }
+    else if (role === 'ac') { studentStates[s] = { state: 'ac', acCount: 1 }; }
+    else if (role === 'absent') { studentStates[s] = { state: 'absent', acCount: 0 }; }
+  });
+  rerender();
   updateHiddenInputs();
 }
 
 function updateRosterSummary() {
   var vals   = Object.values(studentStates);
-  var acCnt  = vals.filter(function(v){return v==='ac';}).length;
-  var absCnt = vals.filter(function(v){return v==='absent';}).length;
+  var acCnt  = vals.filter(function(v){return v.state==='ac';}).length;
+  var totalAc = vals.reduce(function(s, v){return s + (v.state==='ac' ? v.acCount : 0);}, 0);
+  var absCnt = vals.filter(function(v){return v.state==='absent';}).length;
   var el     = document.getElementById('roster-summary');
   if (!el) return;
   var parts  = [];
-  if (acCnt  > 0) parts.push('<span class="text-emerald-600 font-semibold">'+acCnt+' AC</span>');
+  if (acCnt > 0) {
+    var acText = acCnt + ' AC';
+    if (totalAc > acCnt) acText += ' (' + totalAc + ' total)';
+    parts.push('<span class="text-emerald-600 font-semibold">' + acText + '</span>');
+  }
   if (absCnt > 0) parts.push('<span class="text-red-500 font-semibold">'+absCnt+' Absent</span>');
   el.innerHTML = parts.length ? parts.join(' · ') : '<span class="text-slate-400">No marks yet</span>';
 }
@@ -550,8 +839,11 @@ function updateRosterSummary() {
 function updateHiddenInputs() {
   var acList = [], absList = [];
   Object.keys(studentStates).forEach(function(s) {
-    if (studentStates[s] === 'ac')     acList.push(s);
-    if (studentStates[s] === 'absent') absList.push(s);
+    var st = studentStates[s];
+    if (st.state === 'ac') {
+      for (var i = 0; i < st.acCount; i++) { acList.push(s); }
+    }
+    if (st.state === 'absent') absList.push(s);
   });
   if (acCtrl)     acCtrl.reset(acList);
   if (absentCtrl) absentCtrl.reset(absList);
@@ -560,20 +852,53 @@ function updateHiddenInputs() {
 /* ═══════════════════════════════════════════════════════════════
    Init tag inputs
 ═══════════════════════════════════════════════════════════════ */
-acCtrl     = initTagInput({ inputId:'ac-input',     boxId:'ac-tag-box',     hiddenId:'ac-hidden',     countId:'ac-count',     tagCls:'bg-emerald-100 text-emerald-700' });
-absentCtrl = initTagInput({ inputId:'absent-input', boxId:'absent-tag-box', hiddenId:'absent-hidden', countId:'absent-count', tagCls:'bg-red-100 text-red-600' });
+acCtrl     = initTagInput({ inputId:'ac-input',     boxId:'ac-tag-box',     hiddenId:'ac-hidden',     countId:'ac-count',     tagCls:'bg-emerald-100 text-emerald-700', allowDuplicates: true });
+absentCtrl = initTagInput({ inputId:'absent-input', boxId:'absent-tag-box', hiddenId:'absent-hidden', countId:'absent-count', tagCls:'bg-red-100 text-red-600', allowDuplicates: false });
 
 /* ═══════════════════════════════════════════════════════════════
    ★ EDIT-ONLY: Auto-detect & pre-select group on page load
-   Matches the report's class_name against group list.
-   Pre-fills roster states from existing ac_students / absent_students.
 ═══════════════════════════════════════════════════════════════ */
 (function autoSelectGroup() {
-  var formEl = document.getElementById('edit-report-form');
-  var initSessionType = formEl.dataset.sessionType || 'group';
-  var initClassName   = formEl.dataset.className || '';
-  var initAc          = formEl.dataset.acStudents ? formEl.dataset.acStudents.split(',').filter(Boolean) : [];
-  var initAbsent      = formEl.dataset.absentStudents ? formEl.dataset.absentStudents.split(',').filter(Boolean) : [];
+  var initSessionType     = formEl.dataset.sessionType || 'group';
+  var initClassName       = formEl.dataset.className || '';
+  var initAc              = formEl.dataset.acStudents ? formEl.dataset.acStudents.split(',').filter(Boolean) : [];
+  var initAbsent          = formEl.dataset.absentStudents ? formEl.dataset.absentStudents.split(',').filter(Boolean) : [];
+  var initCompGroups      = formEl.dataset.competitionGroups ? formEl.dataset.competitionGroups.split(',').map(function(s){return s.trim();}).filter(Boolean) : [];
+
+  if (initSessionType === 'competition') {
+    // Pre-select competition groups
+    initCompGroups.forEach(function(name) {
+      var g = groupsData.find(function(x) { return x.group_name === name; });
+      if (g && competitionSelectedIds.indexOf(g._id) === -1) {
+        competitionSelectedIds.push(g._id);
+      }
+    });
+    renderCompetitionTags();
+
+    // Build merged student states with pre-filled AC counts
+    var allStudents = [];
+    competitionSelectedIds.forEach(function(id) {
+      var g = groupsData.find(function(x) { return x._id === id; });
+      if (g) g.students.forEach(function(s) { if (allStudents.indexOf(s) === -1) allStudents.push(s); });
+    });
+    studentStates = {};
+    allStudents.forEach(function(s) { studentStates[s] = { state: null, acCount: 0 }; });
+
+    // Pre-fill AC counts
+    var acCounts = {};
+    initAc.forEach(function(s) { acCounts[s] = (acCounts[s] || 0) + 1; });
+    Object.keys(acCounts).forEach(function(s) {
+      if (studentStates[s] !== undefined) {
+        studentStates[s] = { state: 'ac', acCount: acCounts[s] };
+      }
+    });
+    initAbsent.forEach(function(s) {
+      if (studentStates[s] !== undefined) studentStates[s] = { state: 'absent', acCount: 0 };
+    });
+
+    renderCompetitionRoster();
+    return;
+  }
 
   if (initSessionType === 'private') {
     var privateInput = document.getElementById('private_name_input');
@@ -585,7 +910,6 @@ absentCtrl = initTagInput({ inputId:'absent-input', boxId:'absent-tag-box', hidd
   if (match) {
     selectGroup(match._id, { preAc: initAc, preAbsent: initAbsent });
   }
-  // If no match: manual inputs already show with existing tag values.
 })();
 
 // Event delegation for student roster buttons

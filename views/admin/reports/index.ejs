@@ -102,7 +102,7 @@
   <span class="self-stretch w-px bg-slate-100 hidden sm:block"></span>
 
   <!-- Session -->
-  <div class="flex items-center gap-1.5">
+  <div class="flex items-center gap-1.5 flex-wrap">
     <span class="text-xs font-bold text-slate-300 uppercase tracking-wider mr-0.5">Session</span>
     <a href="<%= filterUrl({ session_type: '' }) %>"
       class="<%= !selectedSessionType ? activeBase + ' bg-slate-800 text-white' : inactiveBase %>">All</a>
@@ -110,6 +110,8 @@
       class="<%= selectedSessionType === 'group' ? activeBase + ' bg-brand-600 text-white' : inactiveBase %>">Group</a>
     <a href="<%= filterUrl({ session_type: 'private' }) %>"
       class="<%= selectedSessionType === 'private' ? activeBase + ' bg-purple-600 text-white' : inactiveBase %>">Private</a>
+    <a href="<%= filterUrl({ session_type: 'competition' }) %>"
+      class="<%= selectedSessionType === 'competition' ? activeBase + ' bg-orange-600 text-white' : inactiveBase %>">Competition</a>
   </div>
 
 </div>
@@ -147,6 +149,8 @@
                   <% } %>
                   <% if (r.session_type === 'private') { %>
                     <span class="text-xs font-bold text-purple-400">Private</span>
+                  <% } else if (r.session_type === 'competition') { %>
+                    <span class="text-xs font-bold text-orange-500">Competition</span>
                   <% } %>
                 </span>
               </td>
@@ -156,7 +160,7 @@
                 </span>
               </td>
               <td class="px-5 py-3.5 font-mono text-xs text-slate-400 hidden md:table-cell whitespace-nowrap">
-                <%= r.date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) %>
+                <%= r.date.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }) %>
               </td>
               <td class="px-5 py-3.5 font-mono text-xs text-slate-500 hidden lg:table-cell whitespace-nowrap">
                 <%= r.durationFormatted %>

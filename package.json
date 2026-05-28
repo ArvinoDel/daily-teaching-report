@@ -1,7 +1,7 @@
 {
   "name": "daily-teaching-report",
   "version": "1.0.0",
-  "description": "Aplikasi laporan mengajar harian berbasis Node.js, Express, dan MongoDB",
+  "description": "Daily teaching report application based on Node.js, Express, and MongoDB",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
