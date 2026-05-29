@@ -77,6 +77,24 @@
             <span class="text-xs text-slate-400">Cannot change your own role.</span>
           </div>
           <input type="hidden" name="role" value="<%= user.role %>">
+        <% } else if (currentUser && currentUser.role === 'admin') { %>
+          <div class="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50">
+            <% if (user.role === 'superadmin') { %>
+              <span class="inline-flex items-center gap-1 text-xs font-bold text-purple-700 bg-purple-100 px-2.5 py-1 rounded-full">
+                Super Admin
+              </span>
+            <% } else if (user.role === 'admin') { %>
+              <span class="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-100 px-2.5 py-1 rounded-full">
+                Admin
+              </span>
+            <% } else { %>
+              <span class="inline-flex items-center gap-1 text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-full">
+                Teacher
+              </span>
+            <% } %>
+            <span class="text-xs text-slate-400">Admins cannot change other users' roles.</span>
+          </div>
+          <input type="hidden" name="role" value="<%= user.role %>">
         <% } else { %>
           <div class="relative">
             <select id="role" name="role"

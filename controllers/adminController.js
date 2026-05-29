@@ -205,6 +205,12 @@ exports.userEditForm = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.render('error', { message: 'User not found.' });
+
+    // Restrict admins from editing superadmins
+    if (req.session.user.role === 'admin' && user.role === 'superadmin') {
+      return res.status(403).render('error', { message: 'Access denied. Admins cannot edit superadmins.' });
+    }
+
     const currentYear = new Date().getFullYear();
     res.render('admin/users/edit', { user, errors: [], success: null, currentYear });
   } catch (err) {
@@ -217,6 +223,11 @@ exports.userUpdate = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     if (!user) return res.render('error', { message: 'User not found.' });
+
+    // Restrict admins from updating superadmins
+    if (req.session.user.role === 'admin' && user.role === 'superadmin') {
+      return res.status(403).render('error', { message: 'Access denied. Admins cannot edit superadmins.' });
+    }
 
     const { username, displayName, role, password, joinMonth, joinYear } = req.body;
     const errors = [];
@@ -236,6 +247,18 @@ exports.userUpdate = async (req, res) => {
 
     if (String(user._id) === String(req.session.user._id) && role !== user.role) {
       errors.push('You cannot change your own role.');
+    }
+
+    // Admins cannot change other users' roles
+    if (req.session.user.role === 'admin' && String(user._id) !== String(req.session.user._id)) {
+      if (role && role !== user.role) {
+        errors.push('Admins cannot change other users\' roles.');
+      }
+    }
+
+    // Prevent non-superadmins from assigning/changing someone to superadmin
+    if (req.session.user.role !== 'superadmin' && role === 'superadmin' && user.role !== 'superadmin') {
+      errors.push('Only superadmins can assign the superadmin role.');
     }
 
     let parsedJoinDate = user.joinDate || null;
@@ -267,9 +290,14 @@ exports.userUpdate = async (req, res) => {
     const oldLabel = `${user.displayName} (@${user.username})`;
     user.username    = username.toLowerCase().trim();
     user.displayName = displayName.trim();
+    
+    // Only update role if it's allowed: superadmin can change it, or admin is editing self (which is locked by check above anyway)
     if (String(user._id) !== String(req.session.user._id)) {
-      user.role = ['teacher', 'admin', 'superadmin'].includes(role) ? role : 'teacher';
+      if (req.session.user.role === 'superadmin') {
+        user.role = ['teacher', 'admin', 'superadmin'].includes(role) ? role : 'teacher';
+      }
     }
+
     user.joinDate   = parsedJoinDate;
     user.commission = {
       primeFull:     commValues.primeFull     ?? 0,
@@ -296,6 +324,12 @@ exports.userDelete = async (req, res) => {
     if (String(user._id) === String(req.session.user._id)) {
       return res.status(400).json({ error: 'Cannot delete your own account.' });
     }
+
+    // Restrict admins from deleting superadmins
+    if (req.session.user.role === 'admin' && user.role === 'superadmin') {
+      return res.status(403).json({ error: 'Access denied. Admins cannot delete superadmins.' });
+    }
+
     const label = `${user.displayName} (@${user.username})`;
     await Report.deleteMany({ teacher: user._id });
     await user.deleteOne();
@@ -321,6 +355,14 @@ exports.usersBulkDelete = async (req, res) => {
     const selfId = String(req.session.user._id);
     ids = ids.filter(id => id !== selfId);
     if (ids.length === 0) return res.status(400).json({ error: 'Cannot delete your own account.' });
+
+    // Restrict admins from bulk deleting superadmins
+    if (req.session.user.role === 'admin') {
+      const superAdmins = await User.find({ _id: { $in: ids }, role: 'superadmin' });
+      if (superAdmins.length > 0) {
+        return res.status(403).json({ error: 'Access denied. Admins cannot delete superadmins.' });
+      }
+    }
 
     await Report.deleteMany({ teacher: { $in: ids } });
     const result = await User.deleteMany({ _id: { $in: ids } });
