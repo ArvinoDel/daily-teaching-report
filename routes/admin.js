@@ -5,6 +5,7 @@ const groupCtrl  = require('../controllers/adminGroupController');
 const feedbackCtrl = require('../controllers/feedbackController');
 const { requireAuth }  = require('../middleware/auth');
 const { requireAdmin, requireSuperAdmin } = require('../middleware/adminAuth');
+const achievementsCtrl = require('../controllers/adminStudentAchievementsController');
 
 router.use(requireAuth, requireAdmin);
 
@@ -53,4 +54,8 @@ router.get('/backups',              requireSuperAdmin, backupCtrl.backupsList);
 router.post('/backups',             requireSuperAdmin, backupCtrl.createBackup);
 router.get('/backups/:id/download', requireSuperAdmin, backupCtrl.downloadBackup);
 router.delete('/backups/:id',       requireSuperAdmin, backupCtrl.deleteBackup);
+
+// Student Achievements
+router.get('/student-achievements', achievementsCtrl.index);
+
 module.exports = router;
