@@ -64,7 +64,7 @@ app.use(helmet({
         ],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
-        connectSrc: ["'self'", "https://*.tailwindcss.com"],
+        connectSrc: ["'self'", "https://*.tailwindcss.com", "https://cdn.jsdelivr.net"],
       },
     }
     : false,
