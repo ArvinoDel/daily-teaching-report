@@ -258,7 +258,7 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-var MAX_AC_COUNT = 5;
+var MAX_AC_COUNT = 10;
 
 /* ═══════════════════════════════════════════════════════════════
    Session type & mode toggles
@@ -654,35 +654,69 @@ function renderStudentRow(student) {
   var stObj  = studentStates[student] || { state: null, acCount: 0 };
   var state  = stObj.state;
   var acCount = stObj.acCount || 0;
-  var rowCls = 'flex items-center justify-between py-2.5 px-3 rounded-xl border transition ';
-  rowCls += state === 'ac'     ? 'bg-emerald-50 border-emerald-200' :
-            state === 'absent' ? 'bg-red-50 border-red-200'         :
+
+  // Row styling
+  var rowCls = 'flex items-center justify-between py-2.5 px-3 rounded-xl border transition-all duration-200 ';
+  rowCls += state === 'ac'     ? 'bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200 shadow-sm shadow-emerald-100/50' :
+            state === 'absent' ? 'bg-red-50 border-red-200' :
             'bg-white border-slate-100 hover:border-slate-200';
 
-  var acCls  = 'text-xs font-semibold px-2.5 py-1.5 rounded-lg transition ' +
-    (state === 'ac'     ? 'bg-emerald-500 text-white shadow-sm' :
-     'bg-white border border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-emerald-600');
-  var absCls = 'text-xs font-semibold px-2.5 py-1.5 rounded-lg transition ' +
-    (state === 'absent' ? 'bg-red-500 text-white shadow-sm' :
-     'bg-white border border-slate-200 text-slate-500 hover:border-red-300 hover:text-red-500');
+  var nameCls = 'text-sm ' + (state === 'ac' ? 'text-emerald-800 font-semibold' : state === 'absent' ? 'text-red-700 font-medium' : 'text-slate-700');
 
-  var nameCls = 'text-sm ' + (state === 'ac' ? 'text-emerald-800 font-medium' : state === 'absent' ? 'text-red-700 font-medium' : 'text-slate-700');
-
-  var acLabel = state === 'ac' && acCount > 1 ? 'AC ×' + acCount : 'AC';
-  var acBadge = '';
+  // Status icon next to name
+  var statusIcon = '';
   if (state === 'ac') {
-    acBadge = '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">' +
-      (acCount > 1 ? 'AC ×' + acCount : 'AC') + '</span>';
+    statusIcon = '<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500 text-white flex-shrink-0">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z" clip-rule="evenodd"/></svg>' +
+    '</span>';
+  } else if (state === 'absent') {
+    statusIcon = '<span class="flex items-center justify-center w-5 h-5 rounded-full bg-red-100 text-red-500 flex-shrink-0">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>' +
+    '</span>';
+  } else {
+    statusIcon = '<span class="flex items-center justify-center w-5 h-5 rounded-full bg-slate-100 text-slate-400 flex-shrink-0">' +
+      '<span class="w-1.5 h-1.5 rounded-full bg-slate-300"></span>' +
+    '</span>';
   }
-  var absBadge = state === 'absent' ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Absent</span>' : '';
+
+  // AC control section
+  var acHtml = '';
+  if (state === 'ac') {
+    var canRemove = acCount > 1;
+    var canAdd    = acCount < MAX_AC_COUNT;
+    // Pill-shaped stepper
+    acHtml = '<div class="inline-flex items-center rounded-full bg-emerald-500 shadow-sm overflow-hidden">' +
+      '<button type="button" ' + (canRemove ? '' : 'disabled ') +
+        'class="w-7 h-7 flex items-center justify-center text-sm font-bold transition-colors ' +
+        (canRemove ? 'text-white/90 hover:bg-emerald-600 active:bg-emerald-700' : 'text-emerald-300 cursor-not-allowed') +
+        '" data-student="'+escHtml(student)+'" data-role="remove">&minus;</button>' +
+      '<span class="px-1.5 text-[11px] font-bold text-white tracking-wide select-none border-x border-emerald-400/40 min-w-[38px] text-center leading-7">' + acCount + ' AC</span>' +
+      '<button type="button" ' + (canAdd ? '' : 'disabled ') +
+        'class="w-7 h-7 flex items-center justify-center text-sm font-bold transition-colors ' +
+        (canAdd ? 'text-white/90 hover:bg-emerald-600 active:bg-emerald-700' : 'text-emerald-300 cursor-not-allowed') +
+        '" data-student="'+escHtml(student)+'" data-role="add">+</button>' +
+    '</div>' +
+    '<button type="button" class="w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors" data-student="'+escHtml(student)+'" data-role="clear-ac" title="Remove AC">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>' +
+    '</button>';
+  } else {
+    acHtml = '<button type="button" class="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full transition-all duration-200 border border-emerald-200 bg-white text-emerald-600 hover:bg-emerald-500 hover:text-white hover:border-emerald-500 hover:shadow-sm active:scale-95" data-student="'+escHtml(student)+'" data-role="ac">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z" clip-rule="evenodd"/></svg>' +
+      'AC</button>';
+  }
+
+  // Absent button
+  var absCls = 'inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full transition-all duration-200 ' +
+    (state === 'absent' ? 'bg-red-500 text-white shadow-sm border border-red-500' :
+     'border border-slate-200 bg-white text-slate-400 hover:border-red-300 hover:text-red-500 active:scale-95');
 
   return '<div class="'+rowCls+'">' +
-    '<div class="flex items-center gap-2">' +
-      '<span class="'+nameCls+'">' + escHtml(student) + '</span>' +
-      acBadge + absBadge +
+    '<div class="flex items-center gap-2 min-w-0">' +
+      statusIcon +
+      '<span class="'+nameCls+' truncate">' + escHtml(student) + '</span>' +
     '</div>' +
-    '<div class="flex gap-1.5">' +
-      '<button type="button" class="'+acCls+'" data-student="'+escHtml(student)+'" data-role="ac">' + acLabel + '</button>' +
+    '<div class="flex items-center gap-1.5 flex-shrink-0">' +
+      acHtml +
       '<button type="button" class="'+absCls+'" data-student="'+escHtml(student)+'" data-role="absent">Absent</button>' +
     '</div>' +
   '</div>';
@@ -762,15 +796,35 @@ function rerender() {
 
 function toggleStudent(name, role) {
   var st = studentStates[name] || { state: null, acCount: 0 };
+
   if (role === 'ac') {
-    if (st.state === 'ac') {
-      if (st.acCount < MAX_AC_COUNT) { st.acCount++; }
-      else { st.state = null; st.acCount = 0; }
-    } else { st.state = 'ac'; st.acCount = 1; }
+    // First click: set to AC with count 1
+    st.state = 'ac';
+    st.acCount = 1;
+  } else if (role === 'add') {
+    // Increment AC count
+    if (st.state === 'ac' && st.acCount < MAX_AC_COUNT) {
+      st.acCount++;
+    }
+  } else if (role === 'remove') {
+    // Decrement AC count (min 1)
+    if (st.state === 'ac' && st.acCount > 1) {
+      st.acCount--;
+    }
+  } else if (role === 'clear-ac') {
+    // Clear AC state entirely
+    st.state = null;
+    st.acCount = 0;
   } else if (role === 'absent') {
-    if (st.state === 'absent') { st.state = null; st.acCount = 0; }
-    else { st.state = 'absent'; st.acCount = 0; }
+    if (st.state === 'absent') {
+      st.state = null;
+      st.acCount = 0;
+    } else {
+      st.state = 'absent';
+      st.acCount = 0;
+    }
   }
+
   studentStates[name] = st;
   rerender();
   updateHiddenInputs();
@@ -897,7 +951,7 @@ var rosterStudentsEl = document.getElementById('roster-students');
 if (rosterStudentsEl) {
   rosterStudentsEl.addEventListener('click', function(e) {
     var btn = e.target.closest('button');
-    if (!btn) return;
+    if (!btn || btn.disabled) return;
     var student = btn.getAttribute('data-student');
     var role = btn.getAttribute('data-role');
     if (student && role) {
