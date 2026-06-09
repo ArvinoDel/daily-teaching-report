@@ -1,6 +1,7 @@
 const Report = require('../models/Report');
 const User   = require('../models/User');
 const Group  = require('../models/Group'); // 🟢 Added for autocomplete
+const ExcelJS = require('exceljs');
 
 const TEACHING_TYPES = ['Prime Teacher (Full)', 'Assistant Teacher', '1/2 Prime Teacher', 'Prime Teacher (Assisted)'];
 
@@ -343,5 +344,510 @@ exports.destroy = async (req, res) => {
     res.redirect('/reports');
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete report.' });
+  }
+};
+
+exports.exportExcel = async (req, res) => {
+  try {
+    let selectedYear, selectedMonth;
+    if (req.query.month && /^\d{4}-\d{2}$/.test(req.query.month)) {
+      const [y, m] = req.query.month.split('-').map(Number);
+      selectedYear = y;
+      selectedMonth = m - 1;
+    } else {
+      const now = new Date();
+      selectedYear = now.getFullYear();
+      selectedMonth = now.getMonth();
+    }
+
+    const monthStart = new Date(selectedYear, selectedMonth, 1);
+    const monthEnd   = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59, 999);
+    const monthLabel = new Date(selectedYear, selectedMonth, 1)
+      .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+    const reports = await Report.find({
+      teacher: req.session.user._id,
+      date: { $gte: monthStart, $lte: monthEnd },
+    }).sort({ date: 1 });
+
+    const teacherUser = await User.findById(req.session.user._id).select('displayName username commission');
+    if (!teacherUser) {
+      return res.status(404).render('error', { message: 'Teacher details not found.' });
+    }
+
+    const comm = teacherUser.commission || {};
+    const commMap = {
+      'Prime Teacher (Full)':     comm.primeFull     || 0,
+      'Prime Teacher (Assisted)': comm.primeAssisted || 0,
+      '1/2 Prime Teacher':        comm.halfPrime     || 0,
+      'Assistant Teacher':        comm.assistant     || 0,
+    };
+    const hasCommission = Object.values(commMap).some(v => v > 0);
+
+    const fRate = commMap['Prime Teacher (Full)'];
+    const pRate = commMap['Prime Teacher (Assisted)'];
+    const hRate = commMap['1/2 Prime Teacher'];
+    const aRate = commMap['Assistant Teacher'];
+
+    const workbook = new ExcelJS.Workbook();
+
+    // ══════════════════════════════════════════════════════════════
+    // WORKSHEET 1: SUMMARY MATRIX (Calendar View)
+    // ══════════════════════════════════════════════════════════════
+    const matrixSheet = workbook.addWorksheet('Summary Matrix');
+    matrixSheet.views = [{ showGridLines: true }];
+
+    matrixSheet.columns = [
+      { key: 'date', width: 16 },
+      { key: 'F', width: 12 },
+      { key: 'P', width: 12 },
+      { key: 'H', width: 12 },
+      { key: 'A', width: 12 },
+      { key: 'total', width: 12 }
+    ];
+
+    // Merged Date Header (A1:A2)
+    matrixSheet.mergeCells('A1:A2');
+    const dateHeader = matrixSheet.getCell('A1');
+    dateHeader.value = 'DATE';
+    dateHeader.font = { name: 'Segoe UI', bold: true, size: 10 };
+    dateHeader.alignment = { vertical: 'middle', horizontal: 'center' };
+    
+    // Merged Teacher Header (B1:F1)
+    matrixSheet.mergeCells('B1:F1');
+    const teacherHeader = matrixSheet.getCell('B1');
+    teacherHeader.value = `${teacherUser.displayName.toUpperCase()} (${fRate.toLocaleString('id-ID')})`;
+    teacherHeader.font = { name: 'Segoe UI', bold: true, size: 10 };
+    teacherHeader.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    // Apply header background colors and borders (Row 1 & 2)
+    const headerCells = ['A1', 'A2', 'B1', 'C1', 'D1', 'E1', 'F1'];
+    headerCells.forEach(cellId => {
+      const cell = matrixSheet.getCell(cellId);
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFF8C471' } // Soft Amber Orange/Yellow
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFD68910' } },
+        bottom: { style: 'thin', color: { argb: 'FFD68910' } },
+        left: { style: 'thin', color: { argb: 'FFD68910' } },
+        right: { style: 'thin', color: { argb: 'FFD68910' } }
+      };
+    });
+
+    // Sub-headers (Row 2)
+    const row2 = matrixSheet.getRow(2);
+    row2.values = ['', 'F', 'P', 'H', 'A', 'Total'];
+    row2.height = 20;
+
+    for (let c = 2; c <= 6; c++) {
+      const cell = row2.getCell(c);
+      cell.font = { name: 'Segoe UI', bold: true, size: 10 };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFF8C471' }
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFD68910' } },
+        bottom: { style: 'thin', color: { argb: 'FFD68910' } },
+        left: { style: 'thin', color: { argb: 'FFD68910' } },
+        right: { style: 'thin', color: { argb: 'FFD68910' } }
+      };
+    }
+
+    // Populate daily entries
+    const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+    
+    let totalF = 0;
+    let totalP = 0;
+    let totalH = 0;
+    let totalA = 0;
+    let totalAll = 0;
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const currentDate = new Date(selectedYear, selectedMonth, d);
+      const rowNumber = 3 + d - 1;
+      const row = matrixSheet.getRow(rowNumber);
+      row.height = 20;
+
+      const dateStr = currentDate.toLocaleDateString('en-US', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short'
+      });
+
+      const reportsForDay = reports.filter(r => new Date(r.date).getDate() === d);
+
+      const fCount = reportsForDay.filter(r => r.teaching_type === 'Prime Teacher (Full)').length;
+      const pCount = reportsForDay.filter(r => r.teaching_type === 'Prime Teacher (Assisted)').length;
+      const hCount = reportsForDay.filter(r => r.teaching_type === '1/2 Prime Teacher').length;
+      const aCount = reportsForDay.filter(r => r.teaching_type === 'Assistant Teacher').length;
+      const totalCount = reportsForDay.length;
+
+      totalF += fCount;
+      totalP += pCount;
+      totalH += hCount;
+      totalA += aCount;
+      totalAll += totalCount;
+
+      row.getCell(1).value = dateStr;
+      row.getCell(2).value = fCount || '';
+      row.getCell(3).value = pCount || '';
+      row.getCell(4).value = hCount || '';
+      row.getCell(5).value = aCount || '';
+      row.getCell(6).value = totalCount || '';
+
+      const isSunday = currentDate.getDay() === 0;
+
+      for (let c = 1; c <= 6; c++) {
+        const cell = row.getCell(c);
+        cell.font = { name: 'Segoe UI', size: 10 };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+        };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        // Highlight Sundays or completely empty days in soft light yellow
+        if (isSunday || totalCount === 0) {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFFEF9E7' } // Light Yellow
+          };
+        }
+      }
+    }
+
+    // Totals Row
+    const totalRowNumber = 3 + daysInMonth;
+    const totalRow = matrixSheet.getRow(totalRowNumber);
+    totalRow.height = 24;
+
+    totalRow.getCell(1).value = 'Total';
+    totalRow.getCell(2).value = totalF;
+    totalRow.getCell(3).value = totalP;
+    totalRow.getCell(4).value = totalH;
+    totalRow.getCell(5).value = totalA;
+    totalRow.getCell(6).value = totalAll;
+
+    for (let c = 1; c <= 6; c++) {
+      const cell = totalRow.getCell(c);
+      cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF2ECC71' } // Green background
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF27AE60' } },
+        bottom: { style: 'thin', color: { argb: 'FF27AE60' } },
+        left: { style: 'thin', color: { argb: 'FF27AE60' } },
+        right: { style: 'thin', color: { argb: 'FF27AE60' } }
+      };
+    }
+
+    // RUPIAH Calculation Row
+    const rupiahRowNumber = totalRowNumber + 1;
+    const rupiahRow = matrixSheet.getRow(rupiahRowNumber);
+    rupiahRow.height = 36;
+
+    rupiahRow.getCell(1).value = 'RUPIAH';
+    rupiahRow.getCell(1).font = { name: 'Segoe UI', bold: true, size: 10 };
+    rupiahRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+    rupiahRow.getCell(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFF8FAFC' }
+    };
+    rupiahRow.getCell(1).border = {
+      top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+      bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+      left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+      right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+    };
+
+    const grandTotalRupiah = (totalF * fRate) + (totalP * pRate) + (totalH * hRate) + (totalA * aRate);
+    const rupiahFormulaString = `= (${totalF} x ${fRate.toLocaleString('id-ID')}) + (${totalP} x ${pRate.toLocaleString('id-ID')}) + (${totalH} x ${hRate.toLocaleString('id-ID')}) + (${totalA} x ${aRate.toLocaleString('id-ID')}) =\n${grandTotalRupiah.toLocaleString('id-ID')}`;
+
+    matrixSheet.mergeCells(`B${rupiahRowNumber}:F${rupiahRowNumber}`);
+    const formulaCell = matrixSheet.getCell(`B${rupiahRowNumber}`);
+    formulaCell.value = rupiahFormulaString;
+    formulaCell.font = { name: 'Segoe UI', bold: true, size: 10 };
+    formulaCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    formulaCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFFEF9E7' } // Light Yellow
+    };
+    formulaCell.border = {
+      top: { style: 'thin', color: { argb: 'FFD68910' } },
+      bottom: { style: 'thin', color: { argb: 'FFD68910' } },
+      left: { style: 'thin', color: { argb: 'FFD68910' } },
+      right: { style: 'thin', color: { argb: 'FFD68910' } }
+    };
+
+
+    // ══════════════════════════════════════════════════════════════
+    // WORKSHEET 2: DETAILED SESSIONS
+    // ══════════════════════════════════════════════════════════════
+    const detailedSheet = workbook.addWorksheet('Detailed Sessions');
+    detailedSheet.views = [{ showGridLines: true }];
+
+    const columnsConfig = [
+      { key: 'no' },
+      { key: 'date' },
+      { key: 'class_name' },
+      { key: 'subject' },
+      { key: 'teaching_type' },
+      { key: 'duration' },
+      { key: 'session_mode' },
+      { key: 'session_type' },
+      { key: 'ac_students' },
+      { key: 'absent_students' },
+      { key: 'uses_personal_internet' }
+    ];
+    if (hasCommission) {
+      columnsConfig.push({ key: 'commission_val' });
+    }
+    columnsConfig.push({ key: 'notes' });
+    detailedSheet.columns = columnsConfig;
+
+    // Title Row
+    detailedSheet.mergeCells('A1:L1');
+    const titleCell = detailedSheet.getCell('A1');
+    titleCell.value = 'DAILY TEACHING REPORT SUMMARY';
+    titleCell.font = { name: 'Segoe UI', size: 16, bold: true, color: { argb: 'FF15803D' } };
+    titleCell.alignment = { vertical: 'middle', horizontal: 'left' };
+
+    // Metadata block
+    detailedSheet.getCell('A2').value = 'Teacher:';
+    detailedSheet.getCell('B2').value = teacherUser.displayName;
+    detailedSheet.getCell('A3').value = 'Month:';
+    detailedSheet.getCell('B3').value = monthLabel;
+
+    detailedSheet.getCell('A2').font = { name: 'Segoe UI', bold: true, size: 10 };
+    detailedSheet.getCell('B2').font = { name: 'Segoe UI', size: 10 };
+    detailedSheet.getCell('A3').font = { name: 'Segoe UI', bold: true, size: 10 };
+    detailedSheet.getCell('B3').font = { name: 'Segoe UI', size: 10 };
+
+    // Stats block
+    detailedSheet.getCell('E2').value = 'Total Sessions';
+    detailedSheet.getCell('F2').value = reports.length;
+    detailedSheet.getCell('E3').value = 'Total Hours';
+    const totalMinutes = reports.reduce((sum, r) => sum + r.duration, 0);
+    const totalHours = (totalMinutes / 60).toFixed(1);
+    detailedSheet.getCell('F3').value = parseFloat(totalHours);
+
+    detailedSheet.getCell('E2').font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FF475569' } };
+    detailedSheet.getCell('F2').font = { name: 'Segoe UI', bold: true, size: 10 };
+    detailedSheet.getCell('E3').font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FF475569' } };
+    detailedSheet.getCell('F3').font = { name: 'Segoe UI', bold: true, size: 10 };
+
+    if (hasCommission) {
+      detailedSheet.getCell('E4').value = 'Total Commission';
+      const totalCommission = reports.reduce((sum, r) => sum + (commMap[r.teaching_type] || 0), 0);
+      detailedSheet.getCell('F4').value = totalCommission;
+      detailedSheet.getCell('F4').numFormat = 'Rp #,##0';
+      detailedSheet.getCell('E4').font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FF475569' } };
+      detailedSheet.getCell('F4').font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FF15803D' } };
+    }
+
+    // Border stats cells
+    const statsCells = ['E2', 'F2', 'E3', 'F3'];
+    if (hasCommission) {
+      statsCells.push('E4', 'F4');
+    }
+    statsCells.forEach(cellId => {
+      const cell = detailedSheet.getCell(cellId);
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+      };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFF8FAFC' }
+      };
+    });
+
+    // Main Table Headers (Row 6)
+    const headerRowNumber = 6;
+    const headers = [
+      'No.',
+      'Date',
+      'Class Name',
+      'Subject',
+      'Teaching Type',
+      'Duration',
+      'Session Mode',
+      'Session Type',
+      'Active Students',
+      'Absent Students',
+      'Internet (Personal)'
+    ];
+    if (hasCommission) {
+      headers.push('Commission');
+    }
+    headers.push('Notes');
+
+    const dHeaderRow = detailedSheet.getRow(headerRowNumber);
+    dHeaderRow.values = headers;
+    dHeaderRow.height = 28;
+
+    dHeaderRow.eachCell((cell) => {
+      cell.font = { name: 'Segoe UI', bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF15803D' }
+      };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF166534' } },
+        bottom: { style: 'medium', color: { argb: 'FF166534' } },
+        left: { style: 'thin', color: { argb: 'FF166534' } },
+        right: { style: 'thin', color: { argb: 'FF166534' } }
+      };
+    });
+
+    // Populate Detailed Data Rows
+    reports.forEach((report, index) => {
+      const rowNumber = headerRowNumber + 1 + index;
+      const row = detailedSheet.getRow(rowNumber);
+
+      const dateFormatted = new Date(report.date).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+
+      const values = [
+        index + 1,
+        dateFormatted,
+        report.class_name,
+        report.subject || '',
+        report.teaching_type,
+        `${report.duration} min`,
+        report.session_mode === 'online' ? 'Online' : 'Offline',
+        report.session_type ? report.session_type.charAt(0).toUpperCase() + report.session_type.slice(1) : 'Group',
+        report.ac_students && report.ac_students.length > 0 ? report.ac_students.join(', ') : '—',
+        report.absent_students && report.absent_students.length > 0 ? report.absent_students.join(', ') : '—',
+        report.uses_personal_internet ? 'Yes' : 'No'
+      ];
+
+      if (hasCommission) {
+        values.push(commMap[report.teaching_type] || 0);
+      }
+      values.push(report.notes || '');
+
+      row.values = values;
+      row.height = 20;
+
+      row.eachCell((cell, colNumber) => {
+        cell.font = { name: 'Segoe UI', size: 10 };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        };
+
+        // Alignments
+        if ([1, 2, 6, 7, 8, 11].includes(colNumber)) {
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        } else {
+          cell.alignment = { vertical: 'middle', horizontal: 'left' };
+        }
+
+        // Commission formatting
+        if (hasCommission && colNumber === 12) {
+          cell.numFormat = 'Rp #,##0';
+          cell.alignment = { vertical: 'middle', horizontal: 'right' };
+        }
+
+        // Alternate row fill
+        if (index % 2 === 1) {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFF0FDF4' }
+          };
+        }
+      });
+    });
+
+    // Total Row (Detailed Sheet)
+    const dTotalRowNumber = headerRowNumber + 1 + reports.length;
+    const dTotalRow = detailedSheet.getRow(dTotalRowNumber);
+    dTotalRow.height = 22;
+
+    const dTotalValues = new Array(headers.length).fill('');
+    dTotalValues[0] = 'Total';
+    dTotalValues[5] = `${totalMinutes} min`;
+
+    if (hasCommission) {
+      const totalCommission = reports.reduce((sum, r) => sum + (commMap[r.teaching_type] || 0), 0);
+      dTotalValues[11] = totalCommission;
+    }
+    dTotalRow.values = dTotalValues;
+
+    // Merge columns A to E for Total label
+    detailedSheet.mergeCells(`A${dTotalRowNumber}:E${dTotalRowNumber}`);
+    const dMergedTotalCell = detailedSheet.getCell(`A${dTotalRowNumber}`);
+    dMergedTotalCell.alignment = { vertical: 'middle', horizontal: 'right' };
+    dMergedTotalCell.font = { name: 'Segoe UI', bold: true, size: 10 };
+
+    dTotalRow.eachCell((cell, colNumber) => {
+      cell.font = { name: 'Segoe UI', bold: true, size: 10 };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF94A3B8' } },
+        bottom: { style: 'double', color: { argb: 'FF94A3B8' } },
+        left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+      };
+
+      if (colNumber === 6) {
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      }
+
+      if (hasCommission && colNumber === 12) {
+        cell.numFormat = 'Rp #,##0';
+        cell.alignment = { vertical: 'middle', horizontal: 'right' };
+      }
+    });
+
+    // Adjust column widths based on content length
+    detailedSheet.columns.forEach((col) => {
+      let maxLen = 10;
+      col.eachCell({ includeEmpty: false }, (cell) => {
+        if (cell.row > 1 && cell.value) {
+          const valStr = cell.value.toString();
+          if (valStr.length > maxLen) {
+            maxLen = valStr.length;
+          }
+        }
+      });
+      col.width = Math.min(Math.max(maxLen + 3, 10), 40);
+    });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    const safeMonthLabel = monthLabel.replace(/[^a-zA-Z0-9]/g, '_');
+    res.setHeader('Content-Disposition', `attachment; filename="Daily_Teaching_Report_${safeMonthLabel}.xlsx"`);
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error('Excel export error:', err);
+    res.status(500).render('error', { message: 'Failed to generate Excel report.' });
   }
 };
