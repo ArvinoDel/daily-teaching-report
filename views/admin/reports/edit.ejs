@@ -361,9 +361,6 @@ function setMode(mode) {
   }
 }
 var formEl = document.getElementById('edit-report-form');
-setSessionType(formEl.dataset.sessionType);
-setMode(formEl.dataset.sessionMode);
-if (formEl.dataset.usesPersonalInternet === 'true') document.getElementById('personal_internet_check').checked = true;
 
 /* ═══════════════════════════════════════════════════════════════
    Tag input — returns controller { reset, getTags }
@@ -908,6 +905,10 @@ function updateHiddenInputs() {
 ═══════════════════════════════════════════════════════════════ */
 acCtrl     = initTagInput({ inputId:'ac-input',     boxId:'ac-tag-box',     hiddenId:'ac-hidden',     countId:'ac-count',     tagCls:'bg-emerald-100 text-emerald-700', allowDuplicates: true });
 absentCtrl = initTagInput({ inputId:'absent-input', boxId:'absent-tag-box', hiddenId:'absent-hidden', countId:'absent-count', tagCls:'bg-red-100 text-red-600', allowDuplicates: false });
+
+setSessionType(formEl.dataset.sessionType);
+setMode(formEl.dataset.sessionMode);
+if (formEl.dataset.usesPersonalInternet === 'true') document.getElementById('personal_internet_check').checked = true;
 
 /* ═══════════════════════════════════════════════════════════════
    ★ EDIT-ONLY: Auto-detect & pre-select group on page load
