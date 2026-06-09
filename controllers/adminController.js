@@ -27,9 +27,14 @@ function parseStudentList(raw) {
 }
 
 // 🟠 Orange: consistent English messages + stricter integer check (rejects "60.5", "60.0")
-function validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type }) {
+function validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher }) {
   const errors = [];
   if (!date || isNaN(new Date(date).getTime())) errors.push('Invalid date.');
+  if (!teacher) {
+    errors.push('Teacher is required.');
+  } else if (!/^[0-9a-fA-F]{24}$/.test(teacher)) {
+    errors.push('Invalid teacher selected.');
+  }
   if (!class_name || class_name.trim().length === 0)  errors.push('Class name is required.');
   if (class_name && class_name.trim().length > 50)    errors.push('Class name max 50 characters.');
   const durStr = String(duration || '').trim();
@@ -415,12 +420,13 @@ exports.reportsList = async (req, res) => {
 
 exports.reportEditForm = async (req, res) => {
   try {
-    const [report, groupsJson] = await Promise.all([
+    const [report, groupsJson, teachers] = await Promise.all([
       Report.findById(req.params.id).populate('teacher', 'displayName username'),
       getGroupsJson(),
+      User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),
     ]);
     if (!report) return res.render('error', { message: 'Report not found.' });
-    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [], groupsJson });
+    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [], groupsJson, teachers });
   } catch (err) {
     res.render('error', { message: 'Report not found.' });
   }
@@ -428,24 +434,26 @@ exports.reportEditForm = async (req, res) => {
 
 exports.reportUpdate = async (req, res) => {
   try {
-    const { date, subject, class_name, duration, teaching_type, notes, session_mode, session_type } = req.body;
+    const { date, subject, class_name, duration, teaching_type, notes, session_mode, session_type, teacher } = req.body;
     const uses_personal_internet = req.body.uses_personal_internet === 'true';
     const ac_students     = parseStudentList(req.body.ac_students);
     const absent_students = parseStudentList(req.body.absent_students);
     const competition_groups = session_type === 'competition' ? parseStudentList(req.body.competition_groups) : [];
 
-    const validationErrors = validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type });
+    const validationErrors = validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher });
     if (validationErrors.length > 0) {
-      const [report, groupsJson] = await Promise.all([
+      const [report, groupsJson, teachers] = await Promise.all([
         Report.findById(req.params.id).populate('teacher', 'displayName username'),
         getGroupsJson(),
+        User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),
       ]);
-      return res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors, groupsJson });
+      return res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors, groupsJson, teachers });
     }
 
     const report = await Report.findByIdAndUpdate(
       req.params.id,
       {
+        teacher,
         date,
         subject:   subject ? subject.trim() : '',
         class_name: class_name.trim(),
@@ -467,11 +475,12 @@ exports.reportUpdate = async (req, res) => {
     res.redirect('/admin/reports');
   } catch (err) {
     console.error(err);
-    const [report, groupsJson] = await Promise.all([
+    const [report, groupsJson, teachers] = await Promise.all([
       Report.findById(req.params.id).populate('teacher', 'displayName username').catch(() => null),
       getGroupsJson(),
+      User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),
     ]);
-    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: ['Something went wrong.'], groupsJson });
+    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: ['Something went wrong.'], groupsJson, teachers });
   }
 };
 

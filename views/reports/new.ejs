@@ -42,7 +42,7 @@
 
     <%- include('../partials/reports/report-form', {
       isEdit: false,
-      isAdmin: false,
+      isAdmin: (typeof currentUser !== 'undefined' && currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin')),
       actionUrl: '/reports',
       cancelUrl: '/reports',
       dateValue: formData.date || new Date().toISOString().substring(0, 10),
@@ -57,7 +57,9 @@
       notesValue: formData.notes || '',
       acStudentsValue: formData.ac_students || '',
       absentStudentsValue: formData.absent_students || '',
-      teachingTypes: teachingTypes
+      teachingTypes: teachingTypes,
+      teacherValue: formData.teacher || (typeof currentUser !== 'undefined' && currentUser ? currentUser._id : ''),
+      teachers: typeof teachers !== 'undefined' ? teachers : []
     }) %>
 
   </div>

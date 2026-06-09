@@ -23,9 +23,13 @@ function parseStudentList(raw) {
   return raw.split(',').map(s => s.trim()).filter(Boolean);
 }
 
-function validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type }) {
+function validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher }) {
   const errors = [];
   if (!date || isNaN(new Date(date).getTime())) errors.push('Invalid date.');
+  if (teacher !== undefined) {
+    if (!teacher) errors.push('Teacher is required.');
+    else if (!/^[0-9a-fA-F]{24}$/.test(teacher)) errors.push('Invalid teacher selected.');
+  }
   if (subject && subject.trim().length > 100) errors.push('Subject max 100 characters.');
   if (!class_name || class_name.trim().length === 0) errors.push('Class name is required.');
   if (class_name && class_name.trim().length > 200) errors.push('Class name max 200 characters.');
@@ -190,28 +194,41 @@ exports.index = async (req, res) => {
   }
 };
 
-// 🟢 Now async — fetches groups for autocomplete
+// 🟢 Now async — fetches groups for autocomplete + teachers list if admin/superadmin
 exports.newForm = async (req, res) => {
   try {
     const groupsJson = await getGroupsJson();
-    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson });
+    const isAdmin = req.session.user && (req.session.user.role === 'admin' || req.session.user.role === 'superadmin');
+    const teachers = isAdmin
+      ? await User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 })
+      : [];
+    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson, teachers });
   } catch (err) {
-    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson: '[]' });
+    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson: '[]', teachers: [] });
   }
 };
 
 exports.create = async (req, res) => {
+  const isAdmin = req.session.user && (req.session.user.role === 'admin' || req.session.user.role === 'superadmin');
   try {
-    const { date, subject, class_name, duration, teaching_type, notes, session_mode, session_type } = req.body;
+    const { date, subject, class_name, duration, teaching_type, notes, session_mode, session_type, teacher } = req.body;
     const uses_personal_internet = req.body.uses_personal_internet === 'true';
     const ac_students     = parseStudentList(req.body.ac_students);
     const absent_students = parseStudentList(req.body.absent_students);
     const competition_groups = session_type === 'competition' ? parseStudentList(req.body.competition_groups) : [];
 
-    const validationErrors = validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type });
+    const teacherId = isAdmin && teacher ? teacher : req.session.user._id;
+
+    const validationErrors = validateReportInput({
+      date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type,
+      teacher: isAdmin ? teacherId : undefined
+    });
     if (validationErrors.length > 0) {
-      const groupsJson = await getGroupsJson(); // 🟢 keep autocomplete on error
-      return res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: validationErrors, formData: req.body, groupsJson });
+      const [groupsJson, teachers] = await Promise.all([
+        getGroupsJson(),
+        isAdmin ? User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }) : []
+      ]);
+      return res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: validationErrors, formData: req.body, groupsJson, teachers });
     }
 
     const report = new Report({
@@ -223,7 +240,7 @@ exports.create = async (req, res) => {
       notes: (notes || '').trim(),
       ac_students,
       absent_students,
-      teacher: req.session.user._id,
+      teacher: teacherId,
       session_mode: session_mode || 'offline',
       uses_personal_internet,
       session_type: session_type || 'group',
@@ -234,8 +251,11 @@ exports.create = async (req, res) => {
     res.redirect('/reports');
   } catch (err) {
     const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['An error occurred. Please try again.'];
-    const groupsJson = await getGroupsJson();
-    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors, formData: req.body, groupsJson });
+    const [groupsJson, teachers] = await Promise.all([
+      getGroupsJson(),
+      isAdmin ? User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }) : []
+    ]);
+    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors, formData: req.body, groupsJson, teachers });
   }
 };
 
