@@ -1,0 +1,1815 @@
+[
+  {
+    "_id": "6a0af9556dad673ff4533c83",
+    "group_name": "Chelsea F's Group",
+    "type": "GROUP",
+    "level": "A2",
+    "students": [
+      "Chelsea F 11 CS",
+      "Lionel 10 SPB",
+      "Kenzie 11 CS",
+      "Anne 11 SM",
+      "Vianna 11 CS",
+      "Valentino 11 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.803Z",
+    "updatedAt": "2026-05-18T11:34:45.803Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c84",
+    "group_name": "Bryan's Group",
+    "type": "GROUP",
+    "level": "A1",
+    "students": [
+      "Bryan 11 CS",
+      "Ethan 11 TB",
+      "Michelle Evelyn 11 CS",
+      "Charlos 11 CS",
+      "Brigitta 12 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.806Z",
+    "updatedAt": "2026-05-18T11:34:45.806Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c85",
+    "group_name": "Eka's Group",
+    "type": "GROUP",
+    "level": "A1",
+    "students": [
+      "Eka 10 CS",
+      "Arlene 12 CS",
+      "Jonathan Kevin 10 N2",
+      "Caca 10 N2",
+      "Alex 11 CS*",
+      "Micaiah 11 CS*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.806Z",
+    "updatedAt": "2026-05-18T11:34:45.806Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c86",
+    "group_name": "Annisa's Group",
+    "type": "GROUP",
+    "level": "PA",
+    "students": [
+      "Annisa 11 N2",
+      "Rafael B 11 CS",
+      "Vivian 11 SM",
+      "Callista 11 CS",
+      "Roy 9 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.806Z",
+    "updatedAt": "2026-05-18T11:34:45.806Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c87",
+    "group_name": "Ael's Group",
+    "type": "GROUP",
+    "level": "PA",
+    "students": [
+      "Ael 9 CS+",
+      "Vienna 10 CS",
+      "Jason 9 CS",
+      "Cecile 9 CS",
+      "Jayden W 10 CS",
+      "Amel 10 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.806Z",
+    "updatedAt": "2026-05-18T11:34:45.806Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c88",
+    "group_name": "Domi's Group",
+    "type": "GROUP",
+    "level": "PA",
+    "students": [
+      "Domi 10 CS",
+      "Fay 11 CS",
+      "Angelica 11 PN",
+      "Mariae 10 CS",
+      "Andrew 10 CS",
+      "Raphael E 11 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.806Z",
+    "updatedAt": "2026-05-18T11:34:45.806Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c89",
+    "group_name": "Kensley's Group",
+    "type": "GROUP",
+    "level": "PA",
+    "students": [
+      "Kensley 9 SM",
+      "Keely 9 CS",
+      "Lysander 9 SM",
+      "Steven 9 CS",
+      "Daphne 9 CS",
+      "Gaby 10 TB"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.807Z",
+    "updatedAt": "2026-05-18T11:34:45.807Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c8a",
+    "group_name": "Joel's Group",
+    "type": "GROUP",
+    "level": "I3",
+    "students": [
+      "Joel 9 TB",
+      "Matthew F 7 CS",
+      "Richelle 8 CS+",
+      "Apta 10 CS",
+      "Evans 8 CS+",
+      "Abigail 9 SM"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.807Z",
+    "updatedAt": "2026-05-18T11:34:45.807Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c8b",
+    "group_name": "Shellomitha's Group",
+    "type": "GROUP",
+    "level": "I3",
+    "students": [
+      "Shellomitha 8 CS",
+      "Zalfaa 11 N2",
+      "Airra 11 N1",
+      "Victoria 8 SPB",
+      "Ivone 9 CS",
+      "Avril 10 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.807Z",
+    "updatedAt": "2026-05-18T11:34:45.807Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c8c",
+    "group_name": "Cheryn's Group",
+    "type": "GROUP",
+    "level": "I3",
+    "students": [
+      "Cheryn 9 CS",
+      "Gabriel 8 CS+",
+      "Andrez 9 PN",
+      "Kayla A 9 TB",
+      "Nayla F 8 AA",
+      "Kiyora 10 SM"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.807Z",
+    "updatedAt": "2026-05-18T11:34:45.807Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c8d",
+    "group_name": "Celine V's Group",
+    "type": "GROUP",
+    "level": "I3",
+    "students": [
+      "Celine V 9 CS",
+      "Minka 11 N1",
+      "Melinda 9 KF",
+      "Jesselyn H 10 CS",
+      "Felisa 10 N2",
+      "Vega 11 N2"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.807Z",
+    "updatedAt": "2026-05-18T11:34:45.807Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c8e",
+    "group_name": "Colin's Group",
+    "type": "GROUP",
+    "level": "I2",
+    "students": [
+      "Colin 7 CS",
+      "Niero 10 SM",
+      "Adrian 8 SM",
+      "Noah 8 CS+",
+      "Arya 11 SM",
+      "Veronica V 7 KF"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.807Z",
+    "updatedAt": "2026-05-18T11:34:45.807Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c8f",
+    "group_name": "Yuki's Group",
+    "type": "GROUP",
+    "level": "I2",
+    "students": [
+      "Yuki 8 CS",
+      "Raffa 8 SPB",
+      "Ivy 7 CS",
+      "Keefe 9 N6",
+      "Keef V 10 CS",
+      "Bulan 9 KF*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.807Z",
+    "updatedAt": "2026-05-18T11:34:45.807Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c90",
+    "group_name": "Ziva's Group",
+    "type": "GROUP",
+    "level": "I2",
+    "students": [
+      "Ziva 9 N5",
+      "Davern 8 SPB",
+      "Azka 9 N5",
+      "Eina 9 TB",
+      "Nayla K 9 AA",
+      "Gerald 8 SM"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.810Z",
+    "updatedAt": "2026-05-18T11:34:45.810Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c91",
+    "group_name": "Chio's Group",
+    "type": "GROUP",
+    "level": "I2",
+    "students": [
+      "Chio 10 SM",
+      "Filia 10 SM",
+      "Crystal 9 SM",
+      "Chelsea M 10 SM",
+      "Richard 8 CS",
+      "Vina 9 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.810Z",
+    "updatedAt": "2026-05-18T11:34:45.810Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c92",
+    "group_name": "Jayden Lee's Group",
+    "type": "GROUP",
+    "level": "I2",
+    "students": [
+      "Jayden Lee 8 SPB",
+      "Keanne 8 CS",
+      "Kayden 8 CS+",
+      "S.Jason 7 CS",
+      "Kaitlyn 7 SM",
+      "Gwenn 10 SM"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.810Z",
+    "updatedAt": "2026-05-18T11:34:45.810Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c93",
+    "group_name": "Richelle E's Group",
+    "type": "GROUP",
+    "level": "I2",
+    "students": [
+      "Richelle E 10 MK 2",
+      "Bintang 7 KF* (May)",
+      "Calista 9 TB",
+      "Matthew I 11 CS",
+      "Tian 11 SM",
+      "Jesi N 11 CS*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.810Z",
+    "updatedAt": "2026-05-18T11:34:45.810Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c94",
+    "group_name": "Chiro's Group",
+    "type": "GROUP",
+    "level": "I1",
+    "students": [
+      "Chiro 9 SM",
+      "Audy 9 CS",
+      "Ireina 7 CS",
+      "James 8 N5",
+      "Nabila 8 KDA",
+      "Kennard 7 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.810Z",
+    "updatedAt": "2026-05-18T11:34:45.810Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c95",
+    "group_name": "Charice's Group",
+    "type": "GROUP",
+    "level": "I1",
+    "students": [
+      "Charice 8 MG",
+      "Juan J. 11 CS",
+      "Fina 11 CS*",
+      "Holly 11 CS",
+      "Meycha 11 N2",
+      "Ayesha 12 N1"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.810Z",
+    "updatedAt": "2026-05-18T11:34:45.810Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c96",
+    "group_name": "Yasmeen's Group",
+    "type": "GROUP",
+    "level": "I1",
+    "students": [
+      "Yasmeen 10 EG",
+      "Malda 9 AA",
+      "Clarissa N 12 CS",
+      "Ziven 10 CS",
+      "Delvis 9 CS*",
+      "Bening 9 AA"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.810Z",
+    "updatedAt": "2026-05-18T11:34:45.810Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c97",
+    "group_name": "Peter's Group",
+    "type": "GROUP",
+    "level": "I1",
+    "students": [
+      "Peter 9 SM",
+      "Owen I 10 CS",
+      "Tjiu Bryan 8 KF",
+      "Arthur 10 SM",
+      "Owen T. 7 CS*",
+      "Erbi 7 N1"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.810Z",
+    "updatedAt": "2026-05-18T11:34:45.810Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c98",
+    "group_name": "Edeline's Group",
+    "type": "GROUP",
+    "level": "I1",
+    "students": [
+      "Edeline 8 CS",
+      "Calvin A 10 CS",
+      "Jovita 10 CS",
+      "Ben 9 CS",
+      "Fatih 8 AA",
+      "Calnic 7 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.811Z",
+    "updatedAt": "2026-05-18T11:34:45.811Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c99",
+    "group_name": "Kenneth's Group",
+    "type": "GROUP",
+    "level": "PI",
+    "students": [
+      "Kenneth 9 SM",
+      "Davin H 7 SM",
+      "Bagas 9 AI",
+      "Alden 9 N1",
+      "Shaffa 9 AA"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.811Z",
+    "updatedAt": "2026-05-18T11:34:45.811Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c9a",
+    "group_name": "Clarence's Group",
+    "type": "GROUP",
+    "level": "PI",
+    "students": [
+      "Clarence 8 CS",
+      "Amy 7 CS",
+      "Aurell 8 CS",
+      "Edward 7 CS",
+      "Darren W 7 CS",
+      "Shane C 7 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.811Z",
+    "updatedAt": "2026-05-18T11:34:45.811Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c9b",
+    "group_name": "Jeremy's Group",
+    "type": "GROUP",
+    "level": "PI",
+    "students": [
+      "Jeremy 9 CS",
+      "M. Rakha 9 N1",
+      "Shanum 7 AI",
+      "Sandra 7 CS",
+      "Maxwell 7 CS",
+      "Quilla 9 CS*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.811Z",
+    "updatedAt": "2026-05-18T11:34:45.811Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c9c",
+    "group_name": "Thalita's Group",
+    "type": "GROUP",
+    "level": "PI",
+    "students": [
+      "Thalita 11 N2",
+      "Jesslyn K 10 CS",
+      "Agni 11 N1",
+      "Desva 9 N3",
+      "Qaylla 9 N1",
+      "Darren S 9 CS*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.811Z",
+    "updatedAt": "2026-05-18T11:34:45.811Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c9d",
+    "group_name": "Keano's Group",
+    "type": "GROUP",
+    "level": "PI",
+    "students": [
+      "Keano 9 N1",
+      "Rayner 7 CS+",
+      "Zizi 11 N2*",
+      "Kyle 7 CS+",
+      "Shayna 9 N1",
+      "Myesha C 7 N1"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.811Z",
+    "updatedAt": "2026-05-18T11:34:45.811Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c9e",
+    "group_name": "Stefani's Group",
+    "type": "GROUP",
+    "level": "PI",
+    "students": [
+      "Stefani 10 SM",
+      "Aurel P 10 SM",
+      "Zeta 5 SQ",
+      "Reva 8 CS",
+      "Garren 8 CS",
+      "Neisha 7 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.811Z",
+    "updatedAt": "2026-05-18T11:34:45.811Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533c9f",
+    "group_name": "Jesslyn's Group",
+    "type": "GROUP",
+    "level": "PI",
+    "students": [
+      "Jesslyn 9 CS",
+      "Vanberly 9 CS",
+      "Fellicia 10 SM",
+      "L. Nathan 8 CS",
+      "Rafael J 9 CS",
+      "Reyna 9 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.811Z",
+    "updatedAt": "2026-05-18T11:34:45.811Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ca0",
+    "group_name": "Austin's Group",
+    "type": "GROUP",
+    "level": "E6",
+    "students": [
+      "Austin 8 SM",
+      "Audrey J 8 SM",
+      "Rayden 7 CS",
+      "Kent A 8 CS",
+      "Jill 7 TB",
+      "Tian 5 GE*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.811Z",
+    "updatedAt": "2026-05-18T11:34:45.811Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ca1",
+    "group_name": "Fritzy's Group",
+    "type": "GROUP",
+    "level": "E6",
+    "students": [
+      "Fritzy 8 CS",
+      "Grace A 9 PN",
+      "Raezqa 8 AI",
+      "Rizky 9 N5",
+      "Kristin 10 N2",
+      "Clairine 6 CS+"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.811Z",
+    "updatedAt": "2026-05-18T11:34:45.811Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ca2",
+    "group_name": "Mazaya's Group",
+    "type": "GROUP",
+    "level": "E5",
+    "students": [
+      "Mazaya 11 N1*",
+      "Wilbert 11 CS*",
+      "A Darrel 7 SM*",
+      "Axel 11 CS*",
+      "Atthaya 10 N2",
+      "Zahra 9 N1"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.811Z",
+    "updatedAt": "2026-05-18T11:34:45.811Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ca3",
+    "group_name": "Stanley's Group",
+    "type": "GROUP",
+    "level": "E5",
+    "students": [
+      "Stanley 8 CS",
+      "Grace E 8 CS",
+      "George 6 CS",
+      "Jihan 8 SMM*",
+      "Eunice 7 SM",
+      "Elroy 5 CS+"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.811Z",
+    "updatedAt": "2026-05-18T11:34:45.811Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ca4",
+    "group_name": "Chalysta's Group",
+    "type": "GROUP",
+    "level": "E5",
+    "students": [
+      "Chalysta 7 CS",
+      "Keyzia 8 AA",
+      "Abyan 7 GE",
+      "Winson 7 CS",
+      "A Hardi 10 N5",
+      "Bintang 9 N1"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.811Z",
+    "updatedAt": "2026-05-18T11:34:45.811Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ca5",
+    "group_name": "Amos's Group",
+    "type": "GROUP",
+    "level": "E5",
+    "students": [
+      "Amos 5 CS+",
+      "Kenneth One 7 CS",
+      "Celine M 5 CS+",
+      "Ray F 5 CS+",
+      "Jesslyn V 7 SM",
+      "Michael A 6 SM"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ca6",
+    "group_name": "Chelsea D's Group",
+    "type": "GROUP",
+    "level": "E5",
+    "students": [
+      "Chelsea D 5 CS+",
+      "Elliora 6 CS+",
+      "Valerie Ivel 5 CS+",
+      "Fefei 5 CS+",
+      "Kenzou M 5 CS+",
+      "Kaivan 5 KTG"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ca7",
+    "group_name": "Marcello's Group",
+    "type": "GROUP",
+    "level": "E5",
+    "students": [
+      "Marcello 6 CS",
+      "Niella 6 CS+",
+      "Charlotte 8 SM",
+      "Greyson 7 CS",
+      "Lois 5 SP",
+      "Keliana 5 CS+"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ca8",
+    "group_name": "Vincent F's Group",
+    "type": "GROUP",
+    "level": "E5",
+    "students": [
+      "Vincent F 5 CS+",
+      "Kenzo Siddik 5 SPB",
+      "Millane 6 CS+",
+      "Alfi 7 N1*",
+      "Egun 5 CS+",
+      "Aufar 6 SA*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ca9",
+    "group_name": "Archie's Group",
+    "type": "GROUP",
+    "level": "E5",
+    "students": [
+      "Archie 6 CS+",
+      "Aaron 6 CS+",
+      "Arkan 7 EG",
+      "Akmal 8 AA",
+      "Risma 9 AA*",
+      "Ilham 10 N1"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533caa",
+    "group_name": "Cita's Group",
+    "type": "GROUP",
+    "level": "E5",
+    "students": [
+      "Cita 10 N2*",
+      "Peter Owen 7 CS",
+      "Gio 6 CS+",
+      "Frauline 11 CS*",
+      "Kevin 7 SM*",
+      "Adel 7 SM*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cab",
+    "group_name": "Kenzo V's Group",
+    "type": "GROUP",
+    "level": "E4",
+    "students": [
+      "Kenzo V 8 CS",
+      "Keane Edbert 6 CS",
+      "Khansa 9 N1",
+      "Ketty 8 CS+",
+      "Frey C 6 SM",
+      "Gerrard 6 SM"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cac",
+    "group_name": "Dio's Group",
+    "type": "GROUP",
+    "level": "E4",
+    "students": [
+      "Dio 9 N5",
+      "Amara 9 AA",
+      "William 10 CS",
+      "Juna 7 SM",
+      "Obama 11 CS",
+      "Dzaki 7 N1"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cad",
+    "group_name": "Britney's Group",
+    "type": "GROUP",
+    "level": "E4",
+    "students": [
+      "Britney 5 PN",
+      "Carlos 5 KF",
+      "Naureen 5 KB",
+      "Edeline 6 KF",
+      "Jennifer 4 KF",
+      "Nazneen 5 SA"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cae",
+    "group_name": "Fellyn's Group",
+    "type": "GROUP",
+    "level": "E4",
+    "students": [
+      "Fellyn 8 N1",
+      "Elora 7 N1",
+      "Adip 9 N1",
+      "Kevin 11 N2",
+      "Keisha 8 N5",
+      "Farrel 10 N2*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533caf",
+    "group_name": "Franco's Group",
+    "type": "GROUP",
+    "level": "E4",
+    "students": [
+      "Franco 5 CS+",
+      "Ben 7 CS",
+      "Olivia K 6 CS",
+      "Kevyn 6 KF",
+      "Kenzo A 4 CS+",
+      "Michael Liu 5 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cb0",
+    "group_name": "Andrea's Group",
+    "type": "GROUP",
+    "level": "E4",
+    "students": [
+      "Andrea 12 N1",
+      "Jihan 8 GE",
+      "Habibi 9 GE",
+      "Vinca 7 CS",
+      "Keefe 7 EG",
+      "Rifdah 10 N2"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cb1",
+    "group_name": "Clarina's Group",
+    "type": "GROUP",
+    "level": "E3",
+    "students": [
+      "Clarina 4 CS+",
+      "Bara 7 CS",
+      "Gift 5 TB*",
+      "Khiar 7 AI",
+      "Alexandra 5 SM",
+      "Dzaky 9 N1*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cb2",
+    "group_name": "Hafshah's Group",
+    "type": "GROUP",
+    "level": "E3",
+    "students": [
+      "Hafshah 5 AI",
+      "Anin 5 SA",
+      "Sarah 8 AA",
+      "Celine R 8 CS",
+      "Laras 9 SM",
+      "Biyyu 5 AI"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cb3",
+    "group_name": "Emyr's Group",
+    "type": "GROUP",
+    "level": "E3",
+    "students": [
+      "Emyr 7 AA",
+      "M Davin 6 AA",
+      "Ayu 9 N5",
+      "Kellent 4 SPB*",
+      "Yubi 5 AI",
+      "Syakira 8 AA"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cb4",
+    "group_name": "Fraya's Group",
+    "type": "GROUP",
+    "level": "E3",
+    "students": [
+      "Fraya 5 CS",
+      "Miracle 6 SM",
+      "Hayden 4 CS+",
+      "Felicia 8 CS",
+      "Edrick 5 SM",
+      "Aurora 5 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.812Z",
+    "updatedAt": "2026-05-18T11:34:45.812Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cb5",
+    "group_name": "Chavella's Group",
+    "type": "GROUP",
+    "level": "E3",
+    "students": [
+      "Chavella 9 TB",
+      "Vani 9 N1",
+      "Florencia E 6 CS",
+      "Zeddrich 5 KB4",
+      "Arvy 7 GE",
+      "Zhafira 8 EG*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cb6",
+    "group_name": "Valerie H's Group",
+    "type": "GROUP",
+    "level": "E3",
+    "students": [
+      "Valerie H 4 KF",
+      "Louis C 5 CS",
+      "Kaela 5 SM",
+      "Alex 4 CS+",
+      "Julian 5 CS+",
+      "Clairen 4 CS+"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cb7",
+    "group_name": "Raya's Group",
+    "type": "GROUP",
+    "level": "E3",
+    "students": [
+      "Raya 5 DH",
+      "Indah 7 CS",
+      "Quinn H 4 SPB",
+      "Angel 6 PN",
+      "Gracelyn 4 SM",
+      "Jejes 4 SPB*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cb8",
+    "group_name": "Hirzan's Group",
+    "type": "GROUP",
+    "level": "E3",
+    "students": [
+      "Hirzan 9 N1",
+      "Nazwa 10 N2",
+      "Kayla 7 N1",
+      "K. Akila 9 N5",
+      "Kaisan 7 N2",
+      "Rasyid 7 N5"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cb9",
+    "group_name": "Chika's Group",
+    "type": "GROUP",
+    "level": "E3",
+    "students": [
+      "Chika 7 CS",
+      "Juna 6 CS",
+      "Rayyan 9 N1",
+      "Ashila 7 N4",
+      "Melvien 5 CS",
+      "Siddhi 9 CS*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cba",
+    "group_name": "Hasna's Group",
+    "type": "GROUP",
+    "level": "E3",
+    "students": [
+      "Hasna 7 N1*",
+      "Marquez 7 CS*",
+      "Nicholas 11 SM*",
+      "Celvin 9 SM*",
+      "M Kevin 10 N2",
+      "Felix A 7 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cbb",
+    "group_name": "Ilona's Group",
+    "type": "GROUP",
+    "level": "E2",
+    "students": [
+      "Ilona 4 KF",
+      "Nafeeza 3 KF",
+      "Miga 5 AB",
+      "Alesha 4 KF",
+      "Felis 6 SM",
+      "Lynelle 3 SM"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cbc",
+    "group_name": "Caroline's Group",
+    "type": "GROUP",
+    "level": "E2",
+    "students": [
+      "Caroline 4 CS+",
+      "Xavier 3 KF",
+      "Kenzo Teja 5 SM",
+      "Quinn 5 ST",
+      "Bianca 4 KF",
+      "Darrel 3 SPB"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cbd",
+    "group_name": "Dominic O's Group",
+    "type": "GROUP",
+    "level": "E2",
+    "students": [
+      "Dominic O 4 CS",
+      "Keylin 4 SM",
+      "Alex B 3 KF",
+      "Kenzo F 3 TB",
+      "Meghan E 4 SM",
+      "Harleen 3 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cbe",
+    "group_name": "Fernando's Group",
+    "type": "GROUP",
+    "level": "E2",
+    "students": [
+      "Fernando 7 CS",
+      "Owen R 4 KF",
+      "Marvellino 5 SPB*",
+      "Yuan 4 CS",
+      "Miguel D 3 CS Jtb",
+      "Gumilang 7 N1"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cbf",
+    "group_name": "Michaela's Group",
+    "type": "GROUP",
+    "level": "E2",
+    "students": [
+      "Michaela 5 SM",
+      "Dave 4 CS",
+      "Catherine C 4 SM",
+      "Eugenia 5 CS",
+      "Edric 3 CS",
+      "Luthfi 3 AI"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cc0",
+    "group_name": "Elen's Group",
+    "type": "GROUP",
+    "level": "E2",
+    "students": [
+      "Elen 4 CS",
+      "Alton 3 CS+",
+      "Axl 3 CS+",
+      "Clairine C 4 CS+",
+      "Felice G 3 CS+",
+      "Chriselle 3 CS+"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cc1",
+    "group_name": "Hommy's Group",
+    "type": "GROUP",
+    "level": "E2",
+    "students": [
+      "Hommy 5 SM",
+      "Malven 3 SPB",
+      "Chloe 4 CS+",
+      "Rafka 5 GE",
+      "Madeleine Kho 3 CS+",
+      "Meivelli 5 SM"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cc2",
+    "group_name": "Kay's Group",
+    "type": "GROUP",
+    "level": "E2",
+    "students": [
+      "Kay 3 CS+",
+      "Darren H 3 KF",
+      "Nathan P 3 CS",
+      "Gavin 4 SM",
+      "Benaya 3 CS+",
+      "Olynn 5 CS+"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cc3",
+    "group_name": "Clayton's Group",
+    "type": "GROUP",
+    "level": "E2",
+    "students": [
+      "Clayton 3 CS+",
+      "Reynard 4 CS+",
+      "Raphael 2 KF",
+      "Satria 5 AA",
+      "S. Jayden 3 CS+",
+      "Luther 4 CS+"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cc4",
+    "group_name": "Revano's Group",
+    "type": "GROUP",
+    "level": "E1",
+    "students": [
+      "Revano 3 SPB",
+      "Clairine 4 CS",
+      "Louis K 2 CS+",
+      "Syeira 4 K5",
+      "Kathleen L 3 CS",
+      "Mahira 5 KB4"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cc5",
+    "group_name": "Alby's Group",
+    "type": "GROUP",
+    "level": "E1",
+    "students": [
+      "Alby 3 GE",
+      "Liora 4 TB",
+      "Mikhael Levin 4 CS",
+      "Nixon 3 K5",
+      "Emely 3 SM",
+      "Claire 3 CS Jtb"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cc6",
+    "group_name": "Genessa's Group",
+    "type": "GROUP",
+    "level": "E1",
+    "students": [
+      "Genessa 2 CS+",
+      "Elora 2 CS+",
+      "Leon 2 CS+",
+      "Renzo 2 KF",
+      "Bryan 4 TB",
+      "Leonidas 2 SM"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.813Z",
+    "updatedAt": "2026-05-18T11:34:45.813Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cc7",
+    "group_name": "Dietmar's Group",
+    "type": "GROUP",
+    "level": "E1",
+    "students": [
+      "Dietmar 3 SM",
+      "Darren 3 CS",
+      "Shane 3 CS",
+      "Mercy 3 CS",
+      "Arvind 2 SPB",
+      "Alika 4 GE*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cc8",
+    "group_name": "Yemima's Group",
+    "type": "GROUP",
+    "level": "E1",
+    "students": [
+      "Yemima 3 CS",
+      "Kimberly M 3 CS",
+      "Vania 3 CS",
+      "Kenan 4 CS",
+      "Brandon Derik 4 SP",
+      "Keenan 2 CS+"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cc9",
+    "group_name": "Aisyah's Group",
+    "type": "GROUP",
+    "level": "E1",
+    "students": [
+      "Aisyah 5 KB4",
+      "Akila S 6 K1",
+      "Yasmin 7 PAM",
+      "Seansachio 7 EG",
+      "Javi 8 AA*",
+      "Julius Davin 5 KF"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cca",
+    "group_name": "Rumman's Group",
+    "type": "GROUP",
+    "level": "E1",
+    "students": [
+      "Rumman 5 AI",
+      "Carissa 3 SM",
+      "Alfar 4 KB4",
+      "Arsyla 4 KB4",
+      "Larissa 6 CS",
+      "Tiara 10 MTS NU"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ccb",
+    "group_name": "Myesha's Group",
+    "type": "GROUP",
+    "level": "E1",
+    "students": [
+      "Myesha 3 AI",
+      "Clara 5 CS",
+      "Hyekyo 3 GE* (7/5/26)",
+      "Rindu 4 CS",
+      "Kenzie 2 SM",
+      "Ben 5 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ccc",
+    "group_name": "Zalika's Group",
+    "type": "GROUP",
+    "level": "E1",
+    "students": [
+      "Zalika 4 AA",
+      "Gibran 4 AA",
+      "Sheza 4 AA",
+      "Elav 4 AA",
+      "Ramzi 4 SA",
+      "Jofela 5 TB"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ccd",
+    "group_name": "Arsen's Group",
+    "type": "GROUP",
+    "level": "E1",
+    "students": [
+      "Arsen 3 CS",
+      "Zafran 5 AI",
+      "Azmi 5 AI",
+      "Mario 3 SM",
+      "Tesa 3 PN*",
+      "Samuel 4 CS* (May)"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cce",
+    "group_name": "Clement Rey's Group",
+    "type": "GROUP",
+    "level": "B2",
+    "students": [
+      "Clement Rey 2 CS+",
+      "Gea 5 Bima",
+      "Kimberly Maddison 2 CS+",
+      "Megan 2 CS+",
+      "Harvey 2 SM",
+      "Victoria Jocelyn 2 CS+"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ccf",
+    "group_name": "Alica's Group",
+    "type": "GROUP",
+    "level": "B2",
+    "students": [
+      "Alica 2 CS",
+      "Aline 2 SM",
+      "Joshua 2 CS",
+      "Hosea 2 CS+",
+      "Kellen 2 CS+",
+      "Heiner 1 CS+"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cd0",
+    "group_name": "Nafisa's Group",
+    "type": "GROUP",
+    "level": "B2",
+    "students": [
+      "Nafisa 3 AI",
+      "Joycelline 1 SM",
+      "Adaline 3 AA",
+      "Adrienne 3 AA",
+      "Caroline O 2 SM",
+      "Osa 1 SPB"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cd1",
+    "group_name": "Fidelis's Group",
+    "type": "GROUP",
+    "level": "B2",
+    "students": [
+      "Fidelis 4 CS",
+      "Ilona Sachi 3 AI",
+      "Fatiah 3 AI",
+      "Audrey F 5 TB*(May)",
+      "Rumaisa 3 AI",
+      "Ica H 1 KF"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cd2",
+    "group_name": "Ralin's Group",
+    "type": "GROUP",
+    "level": "B2",
+    "students": [
+      "Ralin 6 KM",
+      "Priska 6 GQ",
+      "Olwin 4 AL",
+      "Effan 4 AI",
+      "Fathan 5 KB4",
+      "Marvell 4 CS*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cd3",
+    "group_name": "Devi's Group",
+    "type": "GROUP",
+    "level": "B2",
+    "students": [
+      "Devi 5 IT A",
+      "Danish 6 AA",
+      "Alisa 5 NSQ",
+      "Radit 8 N5",
+      "Kekey 5 SA",
+      "Ukail 4 SA"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cd4",
+    "group_name": "Alice's Group",
+    "type": "GROUP",
+    "level": "B2",
+    "students": [
+      "Alice 2 KF",
+      "Domi 2 SM",
+      "Ica 5 KB4",
+      "Gwen 2 CS+",
+      "Jendra 3 AI",
+      "Josephine 4 CS*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cd5",
+    "group_name": "Adriel's Group",
+    "type": "GROUP",
+    "level": "B2",
+    "students": [
+      "Adriel 2 CS+",
+      "Marsha 3 CS",
+      "Shanum 2 AI",
+      "Athalla 2 KF",
+      "Jofine 4 TB",
+      "Jordan 1 CS+"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cd6",
+    "group_name": "Zahda's Group",
+    "type": "GROUP",
+    "level": "B2",
+    "students": [
+      "Zahda 9 N1",
+      "Gina 5 AW",
+      "Rifat 7 N1",
+      "Hafiz 7 AI",
+      "Dzihni 10 N6*",
+      "Lidia 9 CS*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cd7",
+    "group_name": "Nathan R's Group",
+    "type": "GROUP",
+    "level": "B2",
+    "students": [
+      "Nathan R 4 SM",
+      "N. Aldyna 4 AA",
+      "Keanu 5 AA",
+      "Jihan 8 N1",
+      "Kamila 4 KB4",
+      "Raisya Azzura 4 SH* (April)"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.814Z",
+    "updatedAt": "2026-05-18T11:34:45.814Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cd8",
+    "group_name": "Kyo's Group",
+    "type": "GROUP",
+    "level": "B2",
+    "students": [
+      "Kyo 5 GQ*",
+      "Syabil 6 SH*",
+      "Dimas 7 N16*",
+      "Ekel 5 CS*",
+      "Rafi 10 N2*",
+      "Aruna Raffi 7 EG* (April)"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.815Z",
+    "updatedAt": "2026-05-18T11:34:45.815Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cd9",
+    "group_name": "Steven C's Group",
+    "type": "GROUP",
+    "level": "B2",
+    "students": [
+      "Steven C 8 N6",
+      "Rafa 10 N2",
+      "Andin 4 AI*",
+      "Salsa 5 K5",
+      "Shafeea 6 DH",
+      "Stella 7 N1*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.815Z",
+    "updatedAt": "2026-05-18T11:34:45.815Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cda",
+    "group_name": "Mia's Group",
+    "type": "GROUP",
+    "level": "B2 Semester 1",
+    "students": [
+      "Mia 3 SM",
+      "Jessi 1 SM*",
+      "Mirza 4 SA*",
+      "Emilie 2 CS+",
+      "A. Niella 2 CS+",
+      "Andrew 1 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.815Z",
+    "updatedAt": "2026-05-18T11:34:45.815Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cdb",
+    "group_name": "Shannuel's Group",
+    "type": "GROUP",
+    "level": "B2 Semester 1",
+    "students": [
+      "Shannuel 2 CS",
+      "Joshua 5 SM*",
+      "Ica 2 CS",
+      "Scarlett S 2 CS",
+      "Lovia 2 CS+",
+      "Elvina 2 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.815Z",
+    "updatedAt": "2026-05-18T11:34:45.815Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cdc",
+    "group_name": "Bellva's Group",
+    "type": "GROUP",
+    "level": "B2 Semester 1",
+    "students": [
+      "Bellva 4 TB",
+      "Ais 5 MTPD",
+      "Alfano 4 KB4",
+      "Kevin H 3 CS",
+      "Cio 7 PN*",
+      "Joshua 7 PN"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.815Z",
+    "updatedAt": "2026-05-18T11:34:45.815Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cdd",
+    "group_name": "Miguel A.'s Group",
+    "type": "GROUP",
+    "level": "B1  Semester 2",
+    "students": [
+      "Miguel A. 1 CS+",
+      "Harvey J 1 SPB",
+      "Nicholas M 1 CS+",
+      "Michelle E 1 SM",
+      "Kioko 1 CS+",
+      "Gwen 1 CS+*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.815Z",
+    "updatedAt": "2026-05-18T11:34:45.815Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cde",
+    "group_name": "Dicto's Group",
+    "type": "GROUP",
+    "level": "B1",
+    "students": [
+      "Dicto 1 SM",
+      "Fressia K2 CS+",
+      "Elaine 1 CS+",
+      "Nicksen 1 CS+",
+      "Gill 1 CS+",
+      "Keigo 1 SM*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.815Z",
+    "updatedAt": "2026-05-18T11:34:45.815Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cdf",
+    "group_name": "Darren M.'s Group",
+    "type": "GROUP",
+    "level": "B1",
+    "students": [
+      "Darren M. 2 SM",
+      "Ghaisan 2 EG",
+      "Azzam 1 AI",
+      "S. Bryan 1 SM*",
+      "Abizard 3 AS",
+      "Kalila 3 GQ"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.815Z",
+    "updatedAt": "2026-05-18T11:34:45.815Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ce0",
+    "group_name": "Beatrix's Group",
+    "type": "GROUP",
+    "level": "B1",
+    "students": [
+      "Beatrix 1 SM",
+      "Jessen 1 SM",
+      "Ica L 1 SM",
+      "Eugene 1 SM",
+      "Alecia 1 SM",
+      "M Arsen 1 SM"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.815Z",
+    "updatedAt": "2026-05-18T11:34:45.815Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ce1",
+    "group_name": "Javier's Group",
+    "type": "GROUP",
+    "level": "B1",
+    "students": [
+      "Javier 1 CS",
+      "Carren 1 CS+*",
+      "Gya 1 AM*",
+      "Kimora 1 EG",
+      "Shannon 1 TB",
+      "Samy 1 KF*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.816Z",
+    "updatedAt": "2026-05-18T11:34:45.816Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ce2",
+    "group_name": "Lovi's Group",
+    "type": "GROUP",
+    "level": "B1",
+    "students": [
+      "Lovi 1 SM",
+      "Miyuki 1 SPB",
+      "Yaya 1 EG",
+      "Ansel 1 SM",
+      "Jacquelyn 1 CS+",
+      "Jollyn 1 CS"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.816Z",
+    "updatedAt": "2026-05-18T11:34:45.816Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ce3",
+    "group_name": "Jevlin's Group",
+    "type": "GROUP",
+    "level": "B1",
+    "students": [
+      "Jevlin 1 CS",
+      "Arthur 1 CS+",
+      "Gwyneth 1 SM",
+      "Meril 1 CS JTB",
+      "Joy 1 CS JTB",
+      "Enzo 1 CS+"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.816Z",
+    "updatedAt": "2026-05-18T11:34:45.816Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ce4",
+    "group_name": "Richard C's Group",
+    "type": "GROUP",
+    "level": "B1",
+    "students": [
+      "Richard C 3 SM",
+      "Alesha P 3 KA",
+      "Lois A 2 CS+*",
+      "Clayton 2 SPB",
+      "Hilya 2 GE",
+      "Albirru 2 AA*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.816Z",
+    "updatedAt": "2026-05-18T11:34:45.816Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ce5",
+    "group_name": "Sebby's Group",
+    "type": "GROUP",
+    "level": "B1  Sem 1 --> B1 Sem 2 (in April)",
+    "students": [
+      "Sebby K2 SM",
+      "Alicia K2 SM",
+      "Julio 1 KB 4",
+      "Finnley K2 SM",
+      "Syamil 1 AI",
+      "Danta K2 CS+"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.816Z",
+    "updatedAt": "2026-05-18T11:34:45.816Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ce6",
+    "group_name": "Zaky's Group",
+    "type": "GROUP",
+    "level": "B1  Semester 1",
+    "students": [
+      "Zaky 3 AI*",
+      "Eldina 6 AB*",
+      "Hana 3 KG*",
+      "Farel P 3 AS*",
+      "Gween 2 AI",
+      "Michelle Emily 2 SM*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.816Z",
+    "updatedAt": "2026-05-18T11:34:45.816Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ce7",
+    "group_name": "Deira's Group",
+    "type": "GROUP",
+    "level": "B1 Semester 1",
+    "students": [
+      "Deira 1 EG*",
+      "Kevin G 1 CS*",
+      "A. Shanum 1 EG*",
+      "Icha A 3 AI*",
+      "Mahes 1 GE*",
+      "Fio 2 CS*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.816Z",
+    "updatedAt": "2026-05-18T11:34:45.816Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ce8",
+    "group_name": "Jorrel's Group",
+    "type": "GROUP",
+    "level": "MOONLIGHT --> SUNSHINE in March",
+    "students": [
+      "Jorrel K2 CS+",
+      "Batara K2 CS",
+      "Lynnette K1 SM",
+      "Jacqueline K1 SPB",
+      "Glen K1 CS+*",
+      "Miguel Loe K2 KF*"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.816Z",
+    "updatedAt": "2026-05-18T11:34:45.816Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533ce9",
+    "group_name": "Richards's Group",
+    "type": "GROUP",
+    "level": "MOONLIGHT Semester 1",
+    "students": [
+      "Richards K1 CS+*",
+      "Raphael K1 CS*",
+      "Michael K1 BB*",
+      "Callie K1 CS+*",
+      "Hansel K1 CS+*",
+      "Zilvania K1 CS+"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.816Z",
+    "updatedAt": "2026-05-18T11:34:45.816Z"
+  },
+  {
+    "_id": "6a0af9556dad673ff4533cea",
+    "group_name": "Kianna's Group",
+    "type": "GROUP",
+    "level": "MOONLIGHT --> B1 Sem 1 in March",
+    "students": [
+      "Kianna K2 SM",
+      "Kelyn K2 SM",
+      "Keiichi K2 CS+",
+      "Elyn K2 TB",
+      "Dominic J K2 CS+",
+      "Ayesha K2 KF"
+    ],
+    "__v": 0,
+    "createdAt": "2026-05-18T11:34:45.816Z",
+    "updatedAt": "2026-05-18T11:34:45.816Z"
+  },
+  {
+    "_id": "6a0be70306a129f9c98532b9",
+    "group_name": "Zef",
+    "type": "PRIVATE",
+    "level": "B1",
+    "students": [
+      "Zef"
+    ],
+    "createdAt": "2026-05-19T04:28:51.516Z",
+    "updatedAt": "2026-05-19T04:28:51.516Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a0fcb235d398d24df477c76",
+    "group_name": "Ferdian",
+    "type": "PRIVATE",
+    "level": "B2",
+    "students": [
+      "Ferdian"
+    ],
+    "createdAt": "2026-05-22T03:18:59.610Z",
+    "updatedAt": "2026-05-22T03:18:59.610Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a18f94a73e03caeafcec02e",
+    "group_name": "Dwayne",
+    "type": "PRIVATE",
+    "level": "B2 SMT 1",
+    "students": [
+      "Dwayne"
+    ],
+    "createdAt": "2026-05-29T02:26:18.182Z",
+    "updatedAt": "2026-05-29T02:26:18.182Z",
+    "__v": 0
+  },
+  {
+    "_id": "6a279dc995977b2e89f3700a",
+    "group_name": "evan g",
+    "type": "PRIVATE",
+    "level": "",
+    "students": [
+      "evan g"
+    ],
+    "createdAt": "2026-06-09T04:59:53.393Z",
+    "updatedAt": "2026-06-09T04:59:53.393Z",
+    "__v": 0
+  }
+]
