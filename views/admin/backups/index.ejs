@@ -1,7 +1,15 @@
 <%- include('../../partials/header', { title: 'Backups' }) %>
 
+<style>
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .fade-in { animation: fadeSlideIn .3s ease both; }
+</style>
+
 <!-- Page Header -->
-<div class="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+<div class="mb-8 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
   <div>
     <div class="flex items-center gap-2 mb-1">
       <span class="inline-flex items-center gap-1 bg-rose-100 text-rose-700 text-xs font-bold px-2.5 py-1 rounded-full">
@@ -12,20 +20,141 @@
       </span>
     </div>
     <h1 class="text-2xl font-bold text-slate-900">Database Backups</h1>
-    <p class="text-slate-500 mt-0.5 text-sm">Export all collections to a compressed JSON file stored on Cloudinary.</p>
+    <p class="text-slate-500 mt-0.5 text-sm">Export all collections to the cloud or download directly to your device.</p>
   </div>
 
-  <!-- Create Backup Button -->
-  <form method="POST" action="/admin/backups" id="backupForm">
-    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-    <button type="submit" id="backupBtn"
-      class="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
+  <!-- Action Buttons -->
+  <div class="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+
+    <!-- Direct Export Dropdown -->
+    <div class="relative" id="exportDropdown">
+      <button type="button" id="exportDropdownBtn"
+        class="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm transition">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+        </svg>
+        Direct Export
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+        </svg>
+      </button>
+      <!-- Dropdown menu -->
+      <div id="exportMenu"
+        class="hidden absolute right-0 mt-2 w-64 bg-white rounded-2xl border border-slate-100 shadow-xl z-50 overflow-hidden fade-in">
+        <div class="px-4 py-2.5 border-b border-slate-100">
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Instant Download</p>
+          <p class="text-xs text-slate-400 mt-0.5">No cloud storage, direct to your device</p>
+        </div>
+        <div class="py-1.5">
+          <a href="/admin/backups/export?format=json_gz"
+            class="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition">
+            <span class="w-8 h-8 rounded-lg bg-sky-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+              </svg>
+            </span>
+            <div>
+              <p class="text-sm font-semibold text-slate-800">JSON Gzip <span class="text-slate-400 font-normal">.json.gz</span></p>
+              <p class="text-xs text-slate-400 mt-0.5">Compact, best for long-term storage</p>
+            </div>
+          </a>
+          <a href="/admin/backups/export?format=json"
+            class="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition">
+            <span class="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+              </svg>
+            </span>
+            <div>
+              <p class="text-sm font-semibold text-slate-800">Plain JSON <span class="text-slate-400 font-normal">.json</span></p>
+              <p class="text-xs text-slate-400 mt-0.5">Human-readable, inspect in any editor</p>
+            </div>
+          </a>
+          <a href="/admin/backups/export?format=bson_gz"
+            class="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition">
+            <span class="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+              </svg>
+            </span>
+            <div>
+              <p class="text-sm font-semibold text-slate-800">BSON Archive <span class="text-slate-400 font-normal">.bson.gz</span></p>
+              <p class="text-xs text-slate-400 mt-0.5">Native MongoDB format, restore with <code class="font-mono text-xs bg-slate-100 px-1 rounded">mongorestore</code></p>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cloud Backup Button — opens modal -->
+    <button type="button" id="openBackupModalBtn"
+      class="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition shadow-sm">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
       </svg>
-      <span id="backupBtnLabel">Create Backup</span>
+      Cloud Backup
     </button>
-  </form>
+  </div>
+</div>
+
+<!-- Cloud Backup Modal -->
+<div id="backupModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden">
+  <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" id="backupModalOverlay"></div>
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md fade-in">
+    <div class="px-6 pt-6 pb-2">
+      <h2 class="text-lg font-bold text-slate-900">Create Cloud Backup</h2>
+      <p class="text-sm text-slate-500 mt-1">Choose a format and upload to Cloudinary. The backup will appear in the history below.</p>
+    </div>
+
+    <form method="POST" action="/admin/backups" id="backupForm" class="px-6 pt-4 pb-6">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+      <fieldset class="space-y-2.5 mb-6">
+        <legend class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Backup Format</legend>
+
+        <!-- JSON Gzip -->
+        <label class="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50">
+          <input type="radio" name="format" value="json_gz" checked class="mt-0.5 accent-indigo-600">
+          <div>
+            <p class="text-sm font-semibold text-slate-800">JSON Gzip <code class="font-mono text-xs text-slate-400">.json.gz</code></p>
+            <p class="text-xs text-slate-400 mt-0.5">Compressed JSON — compact, best for weekly automated backups</p>
+          </div>
+        </label>
+
+        <!-- Plain JSON -->
+        <label class="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 cursor-pointer hover:border-emerald-300 hover:bg-emerald-50/30 transition has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50">
+          <input type="radio" name="format" value="json" class="mt-0.5 accent-emerald-600">
+          <div>
+            <p class="text-sm font-semibold text-slate-800">Plain JSON <code class="font-mono text-xs text-slate-400">.json</code></p>
+            <p class="text-xs text-slate-400 mt-0.5">Human-readable — easy to inspect in any text editor</p>
+          </div>
+        </label>
+
+        <!-- BSON -->
+        <label class="flex items-start gap-3 p-3.5 rounded-xl border border-slate-200 cursor-pointer hover:border-violet-300 hover:bg-violet-50/30 transition has-[:checked]:border-violet-500 has-[:checked]:bg-violet-50">
+          <input type="radio" name="format" value="bson_gz" class="mt-0.5 accent-violet-600">
+          <div>
+            <p class="text-sm font-semibold text-slate-800">BSON Archive <code class="font-mono text-xs text-slate-400">.bson.gz</code></p>
+            <p class="text-xs text-slate-400 mt-0.5">Native MongoDB format — preserves ObjectId, Date types exactly</p>
+          </div>
+        </label>
+      </fieldset>
+
+      <div class="flex gap-3">
+        <button type="button" id="cancelBackupBtn"
+          class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
+          Cancel
+        </button>
+        <button type="submit" id="backupBtn"
+          class="flex-1 inline-flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+          </svg>
+          <span id="backupBtnLabel">Create Backup</span>
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <!-- Flash Message -->
@@ -50,7 +179,7 @@
   <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
     <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Size Stored</p>
     <p class="text-3xl font-bold text-rose-600"><%= totalSize %></p>
-    <p class="text-xs text-slate-400 mt-1">compressed (gzip)</p>
+    <p class="text-xs text-slate-400 mt-1">on Cloudinary</p>
   </div>
   <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
     <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Last Backup</p>
@@ -78,8 +207,8 @@
 <!-- Backup History Table -->
 <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
   <div class="px-6 py-4 border-b border-slate-100">
-    <h2 class="text-sm font-bold text-slate-800">Backup History</h2>
-    <p class="text-xs text-slate-400 mt-0.5">Most recent 50 records. Download links expire based on your Cloudinary plan.</p>
+    <h2 class="text-sm font-bold text-slate-800">Cloud Backup History</h2>
+    <p class="text-xs text-slate-400 mt-0.5">Most recent 50 records. Download links proxy through the server.</p>
   </div>
 
   <% if (!backups.length) { %>
@@ -88,7 +217,7 @@
         <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
       </svg>
       <p class="text-sm font-medium">No backups yet.</p>
-      <p class="text-xs mt-1">Click "Create Backup" to start.</p>
+      <p class="text-xs mt-1">Click "Cloud Backup" to start.</p>
     </div>
   <% } else { %>
     <div class="overflow-x-auto">
@@ -97,6 +226,7 @@
           <tr class="text-xs font-semibold text-slate-400 uppercase tracking-wider bg-slate-50">
             <th class="px-6 py-3 text-left">Date & Time</th>
             <th class="px-6 py-3 text-left">Initiated By</th>
+            <th class="px-6 py-3 text-left">Format</th>
             <th class="px-6 py-3 text-left">Status</th>
             <th class="px-6 py-3 text-left hidden md:table-cell">Records</th>
             <th class="px-6 py-3 text-left hidden sm:table-cell">Size</th>
@@ -122,6 +252,15 @@
                 <%= b.initiatedByName %>
               </td>
 
+              <!-- Format Badge -->
+              <td class="px-6 py-3.5">
+                <% const fmt = b.format || 'json_gz'; %>
+                <span class="inline-flex items-center text-xs font-bold px-2 py-0.5 rounded-full
+                  <%= fmt === 'bson_gz' ? 'bg-violet-100 text-violet-700' : fmt === 'json' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700' %>">
+                  <%= b.formatLabel || 'JSON Gzip' %>
+                </span>
+              </td>
+
               <!-- Status -->
               <td class="px-6 py-3.5">
                 <% if (b.status === 'success') { %>
@@ -141,7 +280,7 @@
                 <% } %>
               </td>
 
-              <!-- Records breakdown -->
+              <!-- Records -->
               <td class="px-6 py-3.5 hidden md:table-cell">
                 <% if (b.status === 'success' && b.recordCounts && b.totalRecords > 0) { %>
                   <p class="text-slate-700 font-semibold text-xs"><%= b.totalRecords %> total</p>
@@ -167,19 +306,16 @@
 
               <!-- Actions -->
               <td class="px-6 py-3.5 text-right whitespace-nowrap">
-                <div class="inline-flex items-center gap-2">
-                  <!-- Download (proxied through server — Cloudinary URL never exposed) -->
+                <div class="inline-flex items-center gap-1">
                   <% if (b.status === 'success' && b.fileUrl) { %>
                     <a href="/admin/backups/<%= b._id %>/download"
-                      title="Download .json.gz"
+                      title="Download <%= b.formatLabel || 'backup' %>"
                       class="p-1.5 rounded-lg text-slate-300 hover:text-sky-500 hover:bg-sky-50 transition">
                       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
                       </svg>
                     </a>
                   <% } %>
-
-                  <!-- Delete -->
                   <button type="button"
                     class="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition btn-delete-backup"
                     data-id="<%= b._id %>"
@@ -199,28 +335,50 @@
 </div>
 
 <!-- Info note -->
-<div class="mt-6 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">
-  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-  </svg>
-  <span>
-    Backup files are <strong>gzip-compressed JSON</strong> stored on Cloudinary.
-    To restore, decompress the file (<code class="font-mono bg-amber-100 px-1 rounded">gunzip backup.json.gz</code>)
-    and re-import each collection using <code class="font-mono bg-amber-100 px-1 rounded">mongoimport</code> or a custom script.
-    Passwords are stored as bcrypt hashes and remain safe.
-  </span>
+<div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+  <div class="flex items-start gap-3 bg-sky-50 border border-sky-100 rounded-xl px-4 py-3 text-xs text-sky-700">
+    <span class="font-bold whitespace-nowrap">.json.gz</span>
+    <span>Decompress with <code class="font-mono bg-sky-100 px-1 rounded">gunzip</code>, then re-import with <code class="font-mono bg-sky-100 px-1 rounded">mongoimport</code> or a Node script.</span>
+  </div>
+  <div class="flex items-start gap-3 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-xs text-emerald-700">
+    <span class="font-bold whitespace-nowrap">.json</span>
+    <span>Open directly in any text editor or parse with <code class="font-mono bg-emerald-100 px-1 rounded">JSON.parse()</code>.</span>
+  </div>
+  <div class="flex items-start gap-3 bg-violet-50 border border-violet-100 rounded-xl px-4 py-3 text-xs text-violet-700">
+    <span class="font-bold whitespace-nowrap">.bson.gz</span>
+    <span>Preserves ObjectIds & Dates. Use <code class="font-mono bg-violet-100 px-1 rounded">mongorestore</code> or BSON driver to read.</span>
+  </div>
 </div>
 
 <script>
-  // Disable button + show loading while form submits
-  document.getElementById('backupForm').addEventListener('submit', function (e) {
-    const btn   = document.getElementById('backupBtn');
-    const label = document.getElementById('backupBtnLabel');
+  // ── Cloud Backup Modal ───────────────────────────────────────────
+  var modal        = document.getElementById('backupModal');
+  var openBtn      = document.getElementById('openBackupModalBtn');
+  var cancelBtn    = document.getElementById('cancelBackupBtn');
+  var modalOverlay = document.getElementById('backupModalOverlay');
+
+  openBtn.addEventListener('click', function () { modal.classList.remove('hidden'); });
+  cancelBtn.addEventListener('click', function () { modal.classList.add('hidden'); });
+  modalOverlay.addEventListener('click', function () { modal.classList.add('hidden'); });
+
+  document.getElementById('backupForm').addEventListener('submit', function () {
+    var btn   = document.getElementById('backupBtn');
+    var label = document.getElementById('backupBtnLabel');
     btn.disabled  = true;
     label.textContent = 'Creating…';
   });
 
-  // Delete backup — AJAX with CSRF
+  // ── Direct Export Dropdown ───────────────────────────────────────
+  var exportMenu = document.getElementById('exportMenu');
+  var exportBtn  = document.getElementById('exportDropdownBtn');
+
+  exportBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    exportMenu.classList.toggle('hidden');
+  });
+  document.addEventListener('click', function () { exportMenu.classList.add('hidden'); });
+
+  // ── Delete backup AJAX ───────────────────────────────────────────
   document.querySelectorAll('.btn-delete-backup').forEach(function (btn) {
     btn.addEventListener('click', async function () {
       const id = this.dataset.id;

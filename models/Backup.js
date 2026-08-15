@@ -12,6 +12,11 @@ const backupSchema = new mongoose.Schema({
     enum: ['success', 'failed'],
     default: 'success',
   },
+  format: {
+    type: String,
+    enum: ['json_gz', 'json', 'bson_gz'],
+    default: 'json_gz',
+  },
   fileUrl:       { type: String, default: null },   // Cloudinary secure_url
   cloudinaryId:  { type: String, default: null },   // for deletion
   fileSizeBytes: { type: Number, default: 0 },

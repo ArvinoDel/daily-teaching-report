@@ -25,13 +25,13 @@ exports.backupsList = async (req, res) => {
     const flashMessage = req.session.flash || null;
     delete req.session.flash;
 
-    // Pre-format for the template
     const backupsFormatted = backups.map(b => {
       const obj = b.toObject({ virtuals: true });
       obj.fileSizeFormatted = formatBytes(b.fileSizeBytes);
       obj.totalRecords = b.recordCounts
         ? Object.values(b.recordCounts).reduce((s, n) => s + n, 0)
         : 0;
+      obj.formatLabel = (backupService.FORMAT_META[b.format] || {}).label || b.format || 'JSON Gzip';
       return obj;
     });
 
@@ -41,11 +41,12 @@ exports.backupsList = async (req, res) => {
     res.render('admin/backups/index', {
       backups: backupsFormatted,
       flashMessage,
-      totalSize:     formatBytes(totalSizeBytes),
-      totalBackups:  backups.length,
-      successCount:  successBackups.length,
-      lastBackup:    successBackups[0] || null,
+      totalSize:      formatBytes(totalSizeBytes),
+      totalBackups:   backups.length,
+      successCount:   successBackups.length,
+      lastBackup:     successBackups[0] || null,
       nextBackupDate: backupService.getNextBackupDate(),
+      formatMeta:     backupService.FORMAT_META,
     });
   } catch (err) {
     console.error(err);
@@ -54,22 +55,27 @@ exports.backupsList = async (req, res) => {
 };
 
 /* ═══════════════════════════════════════════════
-   POST /admin/backups  — create new backup
+   POST /admin/backups  — create new backup (cloud)
 ═══════════════════════════════════════════════ */
 exports.createBackup = async (req, res) => {
   try {
+    const format = ['json_gz', 'json', 'bson_gz'].includes(req.body.format)
+      ? req.body.format
+      : 'json_gz';
+
     const backup = await backupService.performBackup(
       req.session.user._id,
-      req.session.user.displayName || req.session.user.username
+      req.session.user.displayName || req.session.user.username,
+      format
     );
 
     const totalRecords = Object.values(backup.recordCounts).reduce((s, n) => s + n, 0);
-    req.session.flash = `Backup created! ${totalRecords} records exported.`;
+    const meta = backupService.FORMAT_META[format];
+    req.session.flash = `Backup created! ${totalRecords} records exported as ${meta.label}.`;
     res.redirect('/admin/backups');
 
   } catch (err) {
     console.error('Backup error:', err);
-    // Record failure with sanitized error — never store raw internal messages
     const safeMessage = (err.message || 'Unknown error')
       .replace(/mongodb(\+srv)?:\/\/[^\s,]+/gi, '[REDACTED]')
       .replace(/https?:\/\/[^\s,]+/gi, '[REDACTED]')
@@ -82,9 +88,36 @@ exports.createBackup = async (req, res) => {
       errorMessage:    safeMessage,
       recordCounts:    {},
     }).catch(() => {});
-    // Generic flash — do not expose internal error details to the user
     req.session.flash = 'Backup failed. Please try again or contact the system administrator.';
     res.redirect('/admin/backups');
+  }
+};
+
+/* ═══════════════════════════════════════════════
+   GET /admin/backups/export?format=json_gz|json|bson_gz
+   — Instant direct download (no Cloudinary upload)
+═══════════════════════════════════════════════ */
+exports.exportDirect = async (req, res) => {
+  try {
+    const format = ['json_gz', 'json', 'bson_gz'].includes(req.query.format)
+      ? req.query.format
+      : 'json_gz';
+
+    const meta = backupService.FORMAT_META[format];
+    const dateStr = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+    const filename = `backup-${dateStr}.${meta.ext}`;
+
+    const { collections, recordCounts } = await backupService.fetchRawCollections();
+    const buffer = backupService.serializeToFormat(format, collections, recordCounts);
+
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', meta.contentType);
+    res.setHeader('Content-Length', buffer.length);
+    return res.send(buffer);
+
+  } catch (err) {
+    console.error('Direct export error:', err);
+    res.status(500).render('error', { message: 'Export failed. Please try again.' });
   }
 };
 
@@ -96,13 +129,11 @@ exports.deleteBackup = async (req, res) => {
     const backup = await Backup.findById(req.params.id);
     if (!backup) return res.status(404).json({ error: 'Backup not found.' });
 
-    // Delete from Cloudinary if it exists
     if (backup.cloudinaryId) {
       try {
         await cloudinary.uploader.destroy(backup.cloudinaryId, { resource_type: 'raw' });
       } catch (e) {
         console.error('Cloudinary raw delete error:', e);
-        // Non-fatal — still remove the DB record
       }
     }
 
@@ -129,30 +160,26 @@ exports.downloadBackup = async (req, res) => {
     if (!backup)    return res.status(404).render('error', { message: 'Backup not found.' });
     if (!backup.fileUrl) return res.status(404).render('error', { message: 'No file attached to this backup.' });
 
-    // Build a human-friendly filename from the backup date
+    const meta    = backupService.FORMAT_META[backup.format] || backupService.FORMAT_META['json_gz'];
     const dateStr = new Date(backup.createdAt)
       .toISOString().replace(/[:.]/g, '-').substring(0, 19);
-    const filename = `backup-${dateStr}.json.gz`;
+    const filename = `backup-${dateStr}.${meta.ext}`;
 
-    // Fetch the file from Cloudinary server-side
-    const https = require('https');
-    const url   = require('url');
+    const https  = require('https');
     const parsed = new URL(backup.fileUrl);
 
     https.get(parsed, (upstream) => {
       if (upstream.statusCode !== 200) {
-        upstream.resume(); // drain the response
+        upstream.resume();
         return res.status(502).render('error', { message: 'Failed to fetch backup file from storage.' });
       }
 
-      // Set download headers
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.setHeader('Content-Type', 'application/gzip');
+      res.setHeader('Content-Type', meta.contentType);
       if (upstream.headers['content-length']) {
         res.setHeader('Content-Length', upstream.headers['content-length']);
       }
 
-      // Pipe the Cloudinary response straight to the client
       upstream.pipe(res);
     }).on('error', (err) => {
       console.error('Download proxy error:', err);
