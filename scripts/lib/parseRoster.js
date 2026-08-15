@@ -51,6 +51,11 @@ function readCsvRows(filePath) {
   return parse(raw, { relax_column_count: true, skip_empty_lines: false });
 }
 
+function parseCsvString(csvString) {
+  const raw = csvString.replace(/^\uFEFF/, '');
+  return parse(raw, { relax_column_count: true, skip_empty_lines: false });
+}
+
 function getRow(rows, idx, width) {
   const r = rows[idx] || [];
   return Array.from({ length: width }, (_, j) => r[j] || '');
@@ -66,8 +71,7 @@ function getRow(rows, idx, width) {
  * skipped. A schedule row is detected, not counted, so block size is
  * inferred rather than fixed.
  * ────────────────────────────────────────────────────────────────*/
-function parseGroupsCsv(filePath) {
-  const rows = readCsvRows(filePath);
+function parseGroupsCsvFromRows(rows) {
   const records = [];
   let buffer = [[], [], [], []];
   let awaitingLevel = false;
@@ -126,8 +130,7 @@ function parseGroupsCsv(filePath) {
  * The two shapes are distinguished by probing the row right after the
  * name row: if it looks like a schedule, the grade row is absent.
  * ────────────────────────────────────────────────────────────────*/
-function parsePrivateCsv(filePath) {
-  const rows = readCsvRows(filePath);
+function parsePrivateCsvFromRows(rows) {
   const records = [];
   let i = 0;
 
@@ -213,8 +216,26 @@ function buildGroupRecords(rawRecords) {
   return out;
 }
 
+function parseGroupsCsv(filePath) {
+  return parseGroupsCsvFromRows(readCsvRows(filePath));
+}
+
+function parsePrivateCsv(filePath) {
+  return parsePrivateCsvFromRows(readCsvRows(filePath));
+}
+
+function parseGroupsCsvFromString(csvString) {
+  return parseGroupsCsvFromRows(parseCsvString(csvString));
+}
+
+function parsePrivateCsvFromString(csvString) {
+  return parsePrivateCsvFromRows(parseCsvString(csvString));
+}
+
 module.exports = {
   parseGroupsCsv,
   parsePrivateCsv,
+  parseGroupsCsvFromString,
+  parsePrivateCsvFromString,
   buildGroupRecords,
 };

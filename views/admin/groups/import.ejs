@@ -1,0 +1,354 @@
+<%- include('../../partials/header', { title: 'Import Groups' }) %>
+
+<style>
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulse-border {
+    0%, 100% { border-color: #6366f1; }
+    50%      { border-color: #a5b4fc; }
+  }
+  .fade-in { animation: fadeSlideIn .3s ease both; }
+
+  .drop-zone {
+    transition: all .2s ease;
+  }
+  .drop-zone.dragover {
+    border-color: #6366f1;
+    background-color: #eef2ff;
+    animation: pulse-border 1.2s ease infinite;
+  }
+  .drop-zone.has-file {
+    border-color: #22c55e;
+    background-color: #f0fdf4;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2.5px solid rgba(255,255,255,.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .result-card { animation: fadeSlideIn .35s ease both; }
+</style>
+
+<!-- Page Header -->
+<div class="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+  <div>
+    <div class="flex items-center gap-2 mb-1">
+      <span class="inline-flex items-center gap-1 bg-rose-100 text-rose-700 text-xs font-bold px-2.5 py-1 rounded-full">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
+        </svg>
+        Superadmin Only
+      </span>
+    </div>
+    <h1 class="text-2xl font-bold text-slate-900">Import Groups from CSV</h1>
+    <p class="text-slate-500 mt-0.5 text-sm">Upload roster CSVs to replace all groups. A backup is created automatically before import.</p>
+  </div>
+
+  <a href="/admin/groups"
+    class="inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold px-4 py-2.5 rounded-xl transition">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
+    </svg>
+    Back to Groups
+  </a>
+</div>
+
+<!-- Warning Banner -->
+<div class="mb-6 flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium">
+  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mt-0.5 flex-shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+  </svg>
+  <div>
+    <strong>This will replace ALL existing groups.</strong>
+    The current groups are backed up automatically before deletion. Use "Preview" first to verify the data.
+  </div>
+</div>
+
+<!-- Upload Form -->
+<form id="importForm" class="space-y-6">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Groups CSV -->
+    <div>
+      <label class="block text-sm font-semibold text-slate-700 mb-2">
+        Groups CSV
+        <span class="text-slate-400 font-normal">(group classes)</span>
+      </label>
+      <div id="dropGroups" class="drop-zone relative flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-200 rounded-2xl bg-white cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30">
+        <input type="file" name="groupsCsv" id="groupsCsvInput" accept=".csv" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+        </svg>
+        <p id="dropGroupsLabel" class="text-sm text-slate-500 text-center">
+          <span class="font-semibold text-indigo-600">Click to upload</span> or drag and drop<br>
+          <span class="text-xs text-slate-400">e.g. Groups_-_NEW_ACADEMIC_YEAR.csv</span>
+        </p>
+      </div>
+    </div>
+
+    <!-- Private CSV -->
+    <div>
+      <label class="block text-sm font-semibold text-slate-700 mb-2">
+        Private CSV
+        <span class="text-slate-400 font-normal">(private sessions)</span>
+      </label>
+      <div id="dropPrivate" class="drop-zone relative flex flex-col items-center justify-center p-8 border-2 border-dashed border-slate-200 rounded-2xl bg-white cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30">
+        <input type="file" name="privateCsv" id="privateCsvInput" accept=".csv" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-slate-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+        </svg>
+        <p id="dropPrivateLabel" class="text-sm text-slate-500 text-center">
+          <span class="font-semibold text-indigo-600">Click to upload</span> or drag and drop<br>
+          <span class="text-xs text-slate-400">e.g. Private_-_NEW_PRIVATE.csv</span>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action Buttons -->
+  <div class="flex flex-wrap gap-3">
+    <button type="button" id="previewBtn"
+      class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+      </svg>
+      <span id="previewBtnLabel">Preview</span>
+    </button>
+
+    <button type="button" id="importBtn" disabled
+      class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+      </svg>
+      <span id="importBtnLabel">Import Now</span>
+    </button>
+  </div>
+</form>
+
+<!-- Results Panel -->
+<div id="resultsPanel" class="mt-8 hidden"></div>
+
+<script>
+(function () {
+  var form         = document.getElementById('importForm');
+  var previewBtn   = document.getElementById('previewBtn');
+  var importBtn    = document.getElementById('importBtn');
+  var resultsPanel = document.getElementById('resultsPanel');
+
+  var groupsInput  = document.getElementById('groupsCsvInput');
+  var privateInput = document.getElementById('privateCsvInput');
+
+  // ── Drop zone UX ──────────────────────────────────────────
+  function setupDropZone(zone, input, labelId) {
+    var label = document.getElementById(labelId);
+    var originalHTML = label.innerHTML;
+
+    ['dragenter', 'dragover'].forEach(function (evt) {
+      zone.addEventListener(evt, function (e) { e.preventDefault(); zone.classList.add('dragover'); });
+    });
+    ['dragleave', 'drop'].forEach(function (evt) {
+      zone.addEventListener(evt, function (e) { e.preventDefault(); zone.classList.remove('dragover'); });
+    });
+    zone.addEventListener('drop', function (e) {
+      if (e.dataTransfer.files.length) {
+        input.files = e.dataTransfer.files;
+        input.dispatchEvent(new Event('change'));
+      }
+    });
+    input.addEventListener('change', function () {
+      if (input.files.length) {
+        zone.classList.add('has-file');
+        label.innerHTML =
+          '<span class="font-semibold text-emerald-600">' + escHtml(input.files[0].name) + '</span>' +
+          '<br><span class="text-xs text-slate-400">Click or drop to replace</span>';
+        importBtn.disabled = true; // require re-preview
+      } else {
+        zone.classList.remove('has-file');
+        label.innerHTML = originalHTML;
+      }
+    });
+  }
+
+  setupDropZone(document.getElementById('dropGroups'),  groupsInput,  'dropGroupsLabel');
+  setupDropZone(document.getElementById('dropPrivate'), privateInput, 'dropPrivateLabel');
+
+  function escHtml(s) {
+    var d = document.createElement('div');
+    d.appendChild(document.createTextNode(s));
+    return d.innerHTML;
+  }
+
+  // ── Shared submit ─────────────────────────────────────────
+  function submitImport(dryRun, callback) {
+    var data = new FormData(form);
+    data.append('dryRun', dryRun ? '1' : '0');
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/admin/groups/import', true);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.onload = function () {
+      var res;
+      try { res = JSON.parse(xhr.responseText); } catch (e) {
+        return callback({ ok: false, error: 'Invalid server response.' });
+      }
+      callback(res);
+    };
+    xhr.onerror = function () { callback({ ok: false, error: 'Network error. Please check your connection.' }); };
+    xhr.send(data);
+  }
+
+  // ── Preview (dry run) ────────────────────────────────────
+  previewBtn.addEventListener('click', function () {
+    if (!groupsInput.files.length && !privateInput.files.length) {
+      return showError('Please upload at least one CSV file.');
+    }
+
+    previewBtn.disabled = true;
+    document.getElementById('previewBtnLabel').innerHTML = '<span class="spinner"></span> Parsing…';
+
+    submitImport(true, function (res) {
+      previewBtn.disabled = false;
+      document.getElementById('previewBtnLabel').textContent = 'Preview';
+
+      if (!res.ok) {
+        return showError(res.error, res.validationErrors);
+      }
+
+      showPreview(res.summary, res.sample);
+      importBtn.disabled = false;
+    });
+  });
+
+  // ── Import (live) ────────────────────────────────────────
+  importBtn.addEventListener('click', function () {
+    if (!confirm('⚠️ This will DELETE all existing groups and replace them with the parsed CSV data.\n\nAre you sure?')) return;
+
+    importBtn.disabled = true;
+    previewBtn.disabled = true;
+    document.getElementById('importBtnLabel').innerHTML = '<span class="spinner"></span> Importing…';
+
+    submitImport(false, function (res) {
+      importBtn.disabled = true; // keep disabled after import
+      previewBtn.disabled = false;
+      document.getElementById('importBtnLabel').textContent = 'Import Now';
+
+      if (!res.ok) {
+        return showError(res.error, res.validationErrors);
+      }
+
+      showResult(res.summary);
+    });
+  });
+
+  // ── Render helpers ───────────────────────────────────────
+  function showError(msg, validationErrors) {
+    var html = '<div class="result-card bg-red-50 border border-red-200 rounded-2xl p-6">'
+      + '<div class="flex items-start gap-3">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" /></svg>'
+      + '<div>'
+      + '<p class="font-semibold text-red-700">' + escHtml(msg) + '</p>';
+
+    if (validationErrors && validationErrors.length) {
+      html += '<ul class="mt-2 space-y-0.5 text-xs text-red-600 list-disc list-inside max-h-48 overflow-y-auto">';
+      validationErrors.forEach(function (e) {
+        html += '<li>' + escHtml(e) + '</li>';
+      });
+      html += '</ul>';
+    }
+
+    html += '</div></div></div>';
+    resultsPanel.innerHTML = html;
+    resultsPanel.classList.remove('hidden');
+  }
+
+  function showPreview(summary, sample) {
+    var html = '<div class="result-card space-y-5">'
+      + '<div class="bg-indigo-50 border border-indigo-200 rounded-2xl p-6">'
+      + '<h3 class="font-bold text-indigo-900 text-lg mb-4 flex items-center gap-2">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>'
+      + 'Preview Results</h3>';
+
+    // Stats
+    html += '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">';
+    html += statCard('Total Groups', summary.totalParsed, 'text-slate-900');
+    html += statCard('Group Classes', summary.groupCount, 'text-emerald-600');
+    html += statCard('Private', summary.privateCount, 'text-purple-600');
+    html += statCard('Student Slots', summary.studentSlots, 'text-indigo-600');
+    html += '</div>';
+
+    // Sample table
+    if (sample && sample.length) {
+      html += '<div class="overflow-x-auto">'
+        + '<table class="w-full text-sm text-left">'
+        + '<thead><tr class="text-xs text-indigo-500 uppercase tracking-wider">'
+        + '<th class="py-2 pr-3">Name</th><th class="py-2 pr-3">Type</th><th class="py-2 pr-3">Level</th><th class="py-2">Students</th>'
+        + '</tr></thead><tbody>';
+      sample.forEach(function (s) {
+        var typeBadge = s.type === 'GROUP'
+          ? '<span class="inline-block bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded-full">GROUP</span>'
+          : '<span class="inline-block bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded-full">PRIVATE</span>';
+        html += '<tr class="border-t border-indigo-100">'
+          + '<td class="py-2 pr-3 font-medium text-slate-800">' + escHtml(s.name) + '</td>'
+          + '<td class="py-2 pr-3">' + typeBadge + '</td>'
+          + '<td class="py-2 pr-3"><span class="bg-slate-100 text-slate-600 text-xs font-semibold px-2 py-0.5 rounded-full">' + escHtml(s.level || '—') + '</span></td>'
+          + '<td class="py-2 text-slate-600">' + s.studentCount + '</td>'
+          + '</tr>';
+      });
+      if (summary.totalParsed > sample.length) {
+        html += '<tr class="border-t border-indigo-100"><td colspan="4" class="py-2 text-xs text-indigo-400 italic">… and '
+          + (summary.totalParsed - sample.length) + ' more groups</td></tr>';
+      }
+      html += '</tbody></table></div>';
+    }
+
+    html += '</div>'
+      + '<p class="text-sm text-indigo-600 font-medium">✓ Preview looks good — click <strong>Import Now</strong> to proceed.</p>'
+      + '</div>';
+
+    resultsPanel.innerHTML = html;
+    resultsPanel.classList.remove('hidden');
+  }
+
+  function showResult(summary) {
+    var html = '<div class="result-card bg-emerald-50 border border-emerald-200 rounded-2xl p-6">'
+      + '<h3 class="font-bold text-emerald-900 text-lg mb-4 flex items-center gap-2">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>'
+      + 'Import Complete</h3>';
+
+    html += '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">';
+    html += statCard('Backed Up', summary.existingCount || 0, 'text-amber-600');
+    html += statCard('Deleted', summary.deletedCount || 0, 'text-red-600');
+    html += statCard('Inserted', summary.insertedCount || 0, 'text-emerald-600');
+    html += statCard('Student Slots', summary.studentSlots || 0, 'text-indigo-600');
+    html += '</div>';
+
+    html += '<p class="mt-4 text-sm text-emerald-700">'
+      + 'All groups have been replaced successfully. '
+      + '<a href="/admin/groups" class="underline font-semibold hover:text-emerald-900">View Groups →</a></p>';
+
+    html += '</div>';
+
+    resultsPanel.innerHTML = html;
+    resultsPanel.classList.remove('hidden');
+  }
+
+  function statCard(label, value, color) {
+    return '<div class="bg-white/70 rounded-xl p-3 text-center">'
+      + '<p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">' + label + '</p>'
+      + '<p class="text-2xl font-bold ' + color + '">' + value + '</p>'
+      + '</div>';
+  }
+})();
+</script>
+
+<%- include('../../partials/footer') %>

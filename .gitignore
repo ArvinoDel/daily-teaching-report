@@ -1,3 +1,9 @@
 node_modules/
 .env
 *.log
+.vercel
+.env*
+
+.flaskenv*
+!.env.project
+!.env.vault
