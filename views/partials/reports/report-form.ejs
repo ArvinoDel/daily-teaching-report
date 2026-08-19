@@ -96,11 +96,26 @@
           class="hidden absolute z-30 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden divide-y divide-slate-50 max-h-56 overflow-y-auto">
         </div>
       </div>
-      <!-- Private mode: plain free-text input -->
-      <input type="text" id="private_name_input"
-        placeholder="e.g: John Doe"
-        autocomplete="off"
-        class="hidden w-full rounded-xl border border-purple-200 bg-purple-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition" />
+      <!-- Private mode: autocomplete wrapper (searches PRIVATE groups, also allows free-text) -->
+      <div id="private-ac-wrap" class="hidden relative">
+        <input type="text" id="private_name_input"
+          placeholder="Type to search private students…"
+          autocomplete="off"
+          class="w-full rounded-xl border border-purple-200 bg-purple-50 px-4 py-2.5 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition" />
+        <!-- Clear button -->
+        <button type="button" id="btn-clear-private"
+          onclick="clearPrivateSelection()"
+          class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition"
+          title="Clear private selection">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+          </svg>
+        </button>
+        <!-- Autocomplete dropdown -->
+        <div id="private-dropdown"
+          class="hidden absolute z-30 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden divide-y divide-slate-50 max-h-56 overflow-y-auto">
+        </div>
+      </div>
       <!-- Competition mode: multi-group picker -->
       <div id="competition-group-wrap" class="hidden">
         <div id="competition-selected-tags" class="flex flex-wrap gap-1.5 mb-2"></div>
@@ -306,6 +321,7 @@ function setSessionType(type) {
   var classInput      = document.getElementById('class_name');
   var privateInput    = document.getElementById('private_name_input');
   var groupAcWrap     = document.getElementById('group-ac-wrap');
+  var privateAcWrap   = document.getElementById('private-ac-wrap');
   var compWrap        = document.getElementById('competition-group-wrap');
   var groupHint       = document.getElementById('group-hint');
   var classNameLabel  = document.getElementById('class-name-label');
@@ -317,7 +333,7 @@ function setSessionType(type) {
     bP.className = inactiveCls;
     bC.className = inactiveCls;
     groupAcWrap.classList.remove('hidden');
-    privateInput.classList.add('hidden');
+    if (privateAcWrap) privateAcWrap.classList.add('hidden');
     compWrap.classList.add('hidden');
     privateInput.removeAttribute('name');
     classInput.setAttribute('name', 'class_name');
@@ -329,12 +345,13 @@ function setSessionType(type) {
     bG.className = inactiveCls;
     bP.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-purple-400 bg-purple-50 text-purple-700';
     bC.className = inactiveCls;
-    if (selectedGroup) { clearGroupSelection(); }
+    // Only clear when manually switching away from a GROUP — not when selectGroup() auto-switches to private
+    if (selectedGroup && selectedGroup.type !== 'PRIVATE') { clearGroupSelection(); }
     groupAcWrap.classList.add('hidden');
     compWrap.classList.add('hidden');
     classInput.removeAttribute('name');
     classInput.required = false;
-    privateInput.classList.remove('hidden');
+    if (privateAcWrap) privateAcWrap.classList.remove('hidden');
     privateInput.setAttribute('name', 'class_name');
     privateInput.required = true;
     if (!privateInput.value && classInput.value) privateInput.value = classInput.value;
@@ -348,7 +365,7 @@ function setSessionType(type) {
     bC.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-orange-500 bg-orange-50 text-orange-700';
     if (selectedGroup) { clearGroupSelection(); }
     groupAcWrap.classList.add('hidden');
-    privateInput.classList.add('hidden');
+    if (privateAcWrap) privateAcWrap.classList.add('hidden');
     compWrap.classList.remove('hidden');
     classInput.removeAttribute('name');
     classInput.required = false;
@@ -530,12 +547,81 @@ if (classInput) {
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   Private Autocomplete (searches PRIVATE-type groups only)
+   ═══════════════════════════════════════════════════════════════ */
+var privateDropdown  = document.getElementById('private-dropdown');
+var clearPrivateBtn  = document.getElementById('btn-clear-private');
+var privateNameInput = document.getElementById('private_name_input');
+
+function renderPrivateDropdown(groups) {
+  if (!privateDropdown) return;
+  var filtered = groups.filter(function(g) { return g.type === 'PRIVATE'; });
+  if (filtered.length === 0) { privateDropdown.classList.add('hidden'); return; }
+  privateDropdown.innerHTML = filtered.slice(0, 8).map(function(g) {
+    return '<button type="button" onclick="selectGroup(\'' + escHtml(g._id) + '\')" ' +
+      'class="w-full text-left px-4 py-3 hover:bg-purple-50 transition flex items-center justify-between gap-3">' +
+      '<div class="flex-1 min-w-0">' +
+        '<p class="text-sm font-semibold text-slate-800 truncate">' + escHtml(g.group_name) + '</p>' +
+        '<div class="flex items-center gap-1.5 mt-0.5">' +
+          '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700">Private</span>' +
+          (g.level ? '<span class="text-[10px] font-mono text-slate-400">' + escHtml(g.level) + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<span class="text-xs text-slate-400 flex-shrink-0">' + g.students.length + ' student(s)</span>' +
+    '</button>';
+  }).join('');
+  privateDropdown.classList.remove('hidden');
+}
+
+function hidePrivateDropdown() {
+  if (privateDropdown) privateDropdown.classList.add('hidden');
+}
+
+function clearPrivateSelection() {
+  selectedGroup = null; studentStates = {};
+  if (privateNameInput) { privateNameInput.value = ''; privateNameInput.focus(); }
+  if (clearPrivateBtn) clearPrivateBtn.classList.add('hidden');
+  hidePrivateDropdown();
+  hideRoster();
+  if (acCtrl) acCtrl.reset([]);
+  if (absentCtrl) absentCtrl.reset([]);
+}
+
+if (privateNameInput) {
+  privateNameInput.addEventListener('focus', function() {
+    var q = this.value.trim().toLowerCase();
+    var list = q
+      ? groupsData.filter(function(g) { return g.type === 'PRIVATE' && g.group_name.toLowerCase().includes(q); })
+      : groupsData.filter(function(g) { return g.type === 'PRIVATE'; });
+    if (list.length) renderPrivateDropdown(list);
+  });
+
+  privateNameInput.addEventListener('input', function() {
+    var q = this.value.trim().toLowerCase();
+    // If user edits away from a selected private group, deselect it
+    if (selectedGroup && selectedGroup.type === 'PRIVATE' && this.value !== selectedGroup.group_name) {
+      selectedGroup = null; studentStates = {};
+      hideRoster();
+      if (clearPrivateBtn) clearPrivateBtn.classList.add('hidden');
+    }
+    if (!q) { hidePrivateDropdown(); return; }
+    var list = groupsData.filter(function(g) { return g.type === 'PRIVATE' && g.group_name.toLowerCase().includes(q); });
+    list.length ? renderPrivateDropdown(list) : hidePrivateDropdown();
+  });
+
+  privateNameInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' || e.key === 'Tab') hidePrivateDropdown();
+  });
+}
+
 document.addEventListener('click', function(e) {
   if (!e.target.closest('#group-ac-wrap')) hideDropdown();
   if (!e.target.closest('#competition-group-wrap')) {
     var cd = document.getElementById('competition-dropdown');
     if (cd) cd.classList.add('hidden');
   }
+  if (!e.target.closest('#private-ac-wrap')) hidePrivateDropdown();
 });
 
 /* ═══════════════════════════════════════════════════════════════
@@ -549,6 +635,16 @@ function selectGroup(id, opts) {
   hideDropdown();
 
   setSessionType(selectedGroup.type === 'PRIVATE' ? 'private' : 'group');
+
+  // Sync the private name input when a PRIVATE group is selected
+  if (selectedGroup.type === 'PRIVATE') {
+    var pvInput = document.getElementById('private_name_input');
+    if (pvInput) pvInput.value = selectedGroup.group_name;
+    if (clearPrivateBtn) clearPrivateBtn.classList.remove('hidden');
+    hidePrivateDropdown();
+  } else {
+    if (clearBtn) clearBtn.classList.remove('hidden');
+  }
 
   // Reset states
   studentStates = {};
@@ -575,14 +671,19 @@ function selectGroup(id, opts) {
   renderRoster();
   if (rosterPanel) rosterPanel.classList.remove('hidden');
   if (manualSection) manualSection.classList.add('hidden');
-  if (clearBtn) clearBtn.classList.remove('hidden');
-  setGroupHintSelected();
+  // clearBtn is for group mode; clearPrivateBtn is already shown above for private mode
+  if (selectedGroup.type !== 'PRIVATE' && clearBtn) clearBtn.classList.remove('hidden');
+  if (selectedGroup.type === 'GROUP') setGroupHintSelected();
   updateHiddenInputs();
 }
 
 function clearGroupSelection() {
   selectedGroup = null; studentStates = {};
   if (classInput) { classInput.value = ''; classInput.focus(); }
+  // Also clear private input in case we were in private mode
+  var pvInput = document.getElementById('private_name_input');
+  if (pvInput) pvInput.value = '';
+  if (clearPrivateBtn) clearPrivateBtn.classList.add('hidden');
   hideRoster();
   if (clearBtn) clearBtn.classList.add('hidden');
   if (acCtrl) acCtrl.reset([]);
