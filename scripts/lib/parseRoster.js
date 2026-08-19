@@ -178,7 +178,8 @@ function parsePrivateCsvFromRows(rows) {
 }
 
 /* ── group_name generation ──────────────────────────────────────
- * Convention: "<first name of first student>'s Group - <level>"
+ * Group:   "<first name of first student>'s Group - <level>"
+ * Private: "<student name(s)>" (e.g. "Jessica Jena 12 CS")
  * Collisions get a " (2)", " (3)"... suffix.
  * ────────────────────────────────────────────────────────────────*/
 function firstNameOf(studentStr) {
@@ -193,9 +194,15 @@ function buildGroupRecords(rawRecords) {
   for (const rec of rawRecords) {
     if (!rec.students || !rec.students.length) continue;
 
-    const fn = firstNameOf(rec.students[0]);
-    const lvl = (rec.level || '').trim() || 'Unassigned';
-    const base = `${fn}'s Group - ${lvl}`;
+    let base;
+    if (rec.type === 'PRIVATE') {
+      base = rec.students.join(' & ');
+    } else {
+      const fn = firstNameOf(rec.students[0]);
+      const lvl = (rec.level || '').trim() || 'Unassigned';
+      base = `${fn}'s Group - ${lvl}`;
+    }
+
     let name = base;
     let n = 2;
     while (used.has(name)) {

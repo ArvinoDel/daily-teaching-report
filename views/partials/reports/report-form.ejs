@@ -1124,15 +1124,12 @@ absentCtrl = initTagInput({ inputId:'absent-input', boxId:'absent-tag-box', hidd
     return;
   }
 
-  if (initSessionType === 'private') {
-    var privateInput = document.getElementById('private_name_input');
-    if (privateInput) privateInput.value = initClassName;
-    return;
-  }
-
   var match = groupsData.find(function(g) { return g.group_name === initClassName; });
   if (match) {
     selectGroup(match._id, { preAc: initAc, preAbsent: initAbsent });
+  } else if (initSessionType === 'private') {
+    var privateInput = document.getElementById('private_name_input');
+    if (privateInput) privateInput.value = initClassName;
   }
 })();
 
