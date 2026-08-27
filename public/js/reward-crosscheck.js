@@ -181,7 +181,8 @@ async function runOcr() {
 
   } catch (err) {
     console.error('OCR error:', err);
-    statusText.textContent = '❌ OCR failed: ' + err.message;
+    const errMsg = (err && err.message) ? err.message : 'Unknown error — check browser console.';
+    statusText.textContent = '❌ OCR failed: ' + errMsg;
   }
 }
 
