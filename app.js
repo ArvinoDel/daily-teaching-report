@@ -104,11 +104,9 @@ app.set('views', path.join(__dirname, 'views'));
 
 app.use(generalLimiter);
 
-// Body size limit to prevent DoS via large payloads
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
-app.use(express.json({ limit: '10kb' }));
-// Larger limit for image upload endpoint only
-app.use('/reports/api/analyze-sheet', express.json({ limit: '10mb' }));
+// Body size limits — 10MB to accommodate image uploads & large JSON payloads
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '10mb' }));
 // Only allow method override via POST body hidden field (not query string)
 app.use(methodOverride(function (req) {
   if (req.body && typeof req.body === 'object' && '_method' in req.body) {
@@ -176,10 +174,13 @@ app.get('/', (req, res) => res.redirect('/reports'));
 app.use((req, res) => {
   res.locals.currentUser = res.locals.currentUser || null;
   res.locals.csrfToken = res.locals.csrfToken || (req.session && req.session.csrfToken) || '';
+  if (req.path.includes('/api/') || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+    return res.status(404).json({ error: 'Endpoint not found.' });
+  }
   res.status(404).render('error', { message: 'Page not found.' });
 });
 
-// Multer file-upload error handler
+// Multer & General error handler
 app.use((err, req, res, next) => {
   res.locals.currentUser = res.locals.currentUser || null;
   res.locals.csrfToken = res.locals.csrfToken || (req.session && req.session.csrfToken) || '';
@@ -188,9 +189,16 @@ app.use((err, req, res, next) => {
     let message = 'File upload error.';
     if (err.code === 'LIMIT_FILE_SIZE') message = 'File too large. Maximum size is 2MB.';
     if (err.code === 'LIMIT_UNEXPECTED_FILE') message = 'Unexpected file field.';
+    if (req.path.includes('/api/') || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+      return res.status(400).json({ error: message });
+    }
     return res.status(400).render('error', { message });
   }
+
   console.error(err.stack);
+  if (req.path.includes('/api/') || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+    return res.status(err.status || 500).json({ error: err.message || 'Internal server error.' });
+  }
   res.status(500).render('error', { message: 'Internal server error.' });
 });
 

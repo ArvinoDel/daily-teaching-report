@@ -174,7 +174,18 @@ async function runOcr() {
 
     progressBar.style.width = '80%';
 
-    const data = await res.json();
+    const contentType = res.headers.get('content-type') || '';
+    let data;
+    if (contentType.includes('application/json')) {
+      data = await res.json();
+    } else {
+      const rawHtml = await res.text();
+      const statusMsg = res.status === 413 ? 'Image is too large for the server.' :
+                        res.status === 403 ? 'Security session expired. Please refresh the page.' :
+                        res.status === 504 ? 'Server timed out processing the image.' :
+                        `Server returned status ${res.status}`;
+      throw new Error(statusMsg);
+    }
 
     if (!res.ok || !data.ok) {
       throw new Error(data.error || `Server error ${res.status}`);

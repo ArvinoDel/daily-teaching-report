@@ -160,48 +160,70 @@ Output format:
   ...
 ]`;
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const modelsToTry = [
+      'gemini-flash-latest',
+      'gemini-3.6-flash',
+      'gemini-3.7-flash',
+      'gemini-2.5-flash',
+    ];
 
-    const geminiRes = await fetch(geminiUrl, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: prompt },
-            { inline_data: { mime_type: mimeType, data: b64data } },
-          ],
-        }],
-        generationConfig: {
-          temperature:     0,
-          maxOutputTokens: 2048,
-          responseMimeType: 'application/json',
-        },
-      }),
-    });
+    let lastError = '';
+    let rawText = '';
 
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
-      console.error('Gemini API error:', geminiRes.status, errText);
-      return res.status(502).json({ error: `Gemini API error ${geminiRes.status}: ${errText.slice(0, 200)}` });
+    for (const model of modelsToTry) {
+      try {
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const geminiRes = await fetch(geminiUrl, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { text: prompt },
+                { inline_data: { mime_type: mimeType, data: b64data } },
+              ],
+            }],
+            generationConfig: {
+              temperature:     0,
+              maxOutputTokens: 2048,
+              responseMimeType: 'application/json',
+            },
+          }),
+        });
+
+        if (!geminiRes.ok) {
+          const errText = await geminiRes.text();
+          lastError = `Model ${model} returned ${geminiRes.status}: ${errText.slice(0, 150)}`;
+          console.warn(lastError);
+          continue; // Try next model in list
+        }
+
+        const geminiData = await geminiRes.json();
+        rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (rawText) break; // Succeeded!
+      } catch (reqErr) {
+        lastError = `Model ${model} request failed: ${reqErr.message}`;
+        console.warn(lastError);
+      }
     }
 
-    const geminiData = await geminiRes.json();
-    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (!rawText) {
+      console.error('All Gemini models failed. Last error:', lastError);
+      return res.status(502).json({ error: 'AI analysis failed. ' + lastError });
+    }
 
     // Parse the JSON array from Gemini's response
     let rows;
     try {
-      // Strip any accidental markdown fences
       const cleaned = rawText.replace(/```json?/gi, '').replace(/```/g, '').trim();
       rows = JSON.parse(cleaned);
     } catch (parseErr) {
       console.error('Failed to parse Gemini response:', rawText);
-      return res.status(502).json({ error: 'Could not parse Gemini response as JSON.', raw: rawText.slice(0, 500) });
+      return res.status(502).json({ error: 'Could not parse AI response as JSON.', raw: rawText.slice(0, 300) });
     }
 
     if (!Array.isArray(rows)) {
-      return res.status(502).json({ error: 'Gemini returned unexpected format.', raw: rawText.slice(0, 500) });
+      return res.status(502).json({ error: 'AI returned unexpected data format.' });
     }
 
     // Sanitize rows: ensure F/P/H/A are integers >= 0

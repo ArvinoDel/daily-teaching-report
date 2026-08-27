@@ -35,6 +35,11 @@ function csrfProtection(req, res, next) {
   const token = req.body._csrf || req.headers['x-csrf-token'];
 
   if (!token || token !== req.session.csrfToken) {
+    if (req.path.includes('/api/') || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+      return res.status(403).json({
+        error: 'Invalid or expired security token. Please refresh the page and try again.',
+      });
+    }
     return res.status(403).render('error', {
       message: 'Invalid or expired security token. Please go back and try again.',
     });
