@@ -142,23 +142,33 @@ function closeImgModal() {
 async function runOcr() {
   if (!currentImageFile) return;
 
+  const btn          = document.getElementById('btn-run-ocr');
   const progressWrap = document.getElementById('ocr-progress-wrap');
   const progressBar  = document.getElementById('ocr-progress-bar');
   const statusText   = document.getElementById('ocr-status-text');
+  const spinner      = document.getElementById('ocr-spinner');
+  const checkIcon    = document.getElementById('ocr-check-icon');
+
+  // Reset & show progress
   progressWrap.classList.remove('hidden');
   progressBar.style.width = '0%';
   progressBar.classList.replace('bg-emerald-500', 'bg-brand-500');
+  progressBar.classList.replace('bg-red-500', 'bg-brand-500');
+
+  if (spinner) spinner.classList.remove('hidden');
+  if (checkIcon) checkIcon.classList.add('hidden');
+  if (btn) btn.disabled = true;
 
   try {
     // ── 1. Convert image to base64 data URL
     statusText.textContent = '📷 Preparing image…';
-    progressBar.style.width = '15%';
+    progressBar.style.width = '20%';
 
     const imageBase64 = await fileToDataUrl(currentImageFile);
 
     // ── 2. Send to server → Gemini AI
     statusText.textContent = '🤖 Analyzing image with Gemini AI…';
-    progressBar.style.width = '40%';
+    progressBar.style.width = '50%';
 
     const year  = parseInt(document.getElementById('sel-year').value)  || new Date().getFullYear();
     const month = parseInt(document.getElementById('sel-month').value) || (new Date().getMonth() + 1);
@@ -172,7 +182,7 @@ async function runOcr() {
       body:    JSON.stringify({ imageBase64, year, month }),
     });
 
-    progressBar.style.width = '80%';
+    progressBar.style.width = '85%';
 
     const contentType = res.headers.get('content-type') || '';
     let data;
@@ -191,7 +201,7 @@ async function runOcr() {
       throw new Error(data.error || `Server error ${res.status}`);
     }
 
-    // ── 3. Map rows to supervisor format (add dateLabel)
+    // ── 3. Map rows to supervisor format
     const parsed = (data.rows || []).map(r => ({
       dateKey:   r.dateKey,
       dateLabel: formatDateLabel(new Date(r.dateKey)),
@@ -201,23 +211,42 @@ async function runOcr() {
       A: r.A || 0,
     }));
 
+    // ── 4. Set Complete state (stop spinner, show checkmark)
     progressBar.style.width = '100%';
     progressBar.classList.replace('bg-brand-500', 'bg-emerald-500');
 
+    if (spinner) spinner.classList.add('hidden');
+    if (checkIcon) checkIcon.classList.remove('hidden');
+
     if (parsed.length === 0) {
-      statusText.textContent = '⚠️ Gemini found no data rows. Please check the image and try again, or enter manually.';
+      statusText.innerHTML = '<span class="text-amber-600 font-semibold">Complete</span> — No rows detected. You can add rows manually below.';
     } else {
-      statusText.textContent = `✅ Gemini extracted ${parsed.length} row(s). Verify & correct below.`;
+      statusText.innerHTML = `<span class="text-emerald-700 font-semibold">Analysis Complete!</span> Successfully extracted ${parsed.length} day(s).`;
       supervisorRows = parsed;
       renderSupervisorTable();
     }
+
     showSupervisorSection();
+
+    // Smooth scroll down to the table
+    const tableSec = document.getElementById('supervisor-table-section');
+    if (tableSec) {
+      setTimeout(() => {
+        tableSec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 250);
+    }
 
   } catch (err) {
     console.error('Gemini analyze error:', err);
     progressBar.style.width = '100%';
     progressBar.classList.replace('bg-brand-500', 'bg-red-500');
+
+    if (spinner) spinner.classList.add('hidden');
+    if (checkIcon) checkIcon.classList.add('hidden');
+
     statusText.textContent = '❌ Failed: ' + (err.message || 'Unknown error');
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
