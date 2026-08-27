@@ -107,6 +107,8 @@ app.use(generalLimiter);
 // Body size limit to prevent DoS via large payloads
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(express.json({ limit: '10kb' }));
+// Larger limit for image upload endpoint only
+app.use('/reports/api/analyze-sheet', express.json({ limit: '10mb' }));
 // Only allow method override via POST body hidden field (not query string)
 app.use(methodOverride(function (req) {
   if (req.body && typeof req.body === 'object' && '_method' in req.body) {

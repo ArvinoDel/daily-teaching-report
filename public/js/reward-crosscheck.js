@@ -165,7 +165,10 @@ async function runOcr() {
 
     const res = await fetch('/reports/api/analyze-sheet', {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type':  'application/json',
+        'x-csrf-token':  document.querySelector('meta[name="csrf-token"]')?.content || '',
+      },
       body:    JSON.stringify({ imageBase64, year, month }),
     });
 
