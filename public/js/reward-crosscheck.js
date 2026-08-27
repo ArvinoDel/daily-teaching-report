@@ -194,25 +194,49 @@ async function runOcr() {
   }
 }
 
-/* ─── SPATIAL TABLE PARSER (Bounding-box aware) ────────── */
+/* ─── SPATIAL TABLE PARSER (Global word Y-band matching) ─ */
 function parseOcrSpatial(ocrData) {
-  if (!ocrData || !ocrData.lines || ocrData.lines.length === 0) return [];
+  if (!ocrData) return [];
 
-  const dayPat = /\b(mon|tue|wed|thu|fri|sat|sun)\b/i;
-  const monPat = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
-  const year   = window.RC.selectedYear || new Date().getFullYear();
+  const dayPat  = /\b(mon|tue|wed|thu|fri|sat|sun)\b/i;
+  const monPat  = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
+  const year    = window.RC.selectedYear || new Date().getFullYear();
 
-  // 1. Detect candidate date rows & calculate table bounds
-  const dateRows = [];
-  let minDateX = Infinity, maxDateX = 0, minColX = Infinity, maxColX = 0;
+  // ── Step 1: Flatten ALL words from the entire OCR result into one list
+  // Tesseract returns: data.words[] at top level (all words with bboxes)
+  const allWords = ocrData.words || [];
+  if (allWords.length === 0) return [];
 
-  for (const line of ocrData.lines) {
-    const text = (line.text || '').trim();
-    if (!dayPat.test(text) || !monPat.test(text)) continue;
+  // ── Step 2: Find every "date anchor" — a word cluster on the same line
+  //    that forms a date like "Thu, 16 Jul" or "Fri, 17"
+  //    We look at words grouped by their Y-center proximity (±20px tolerance)
+  const Y_TOLERANCE = 20;
 
-    const dayMatch = text.match(/\b(\d{1,2})\b/);
-    const monMatch = text.match(monPat);
-    if (!dayMatch || !monMatch) continue;
+  // Group all words by Y-band
+  const yBands = [];
+  for (const w of allWords) {
+    if (!w.bbox) continue;
+    const wYCenter = (w.bbox.y0 + w.bbox.y1) / 2;
+    let band = yBands.find(b => Math.abs(b.yCenter - wYCenter) < Y_TOLERANCE);
+    if (!band) {
+      band = { yCenter: wYCenter, yMin: w.bbox.y0, yMax: w.bbox.y1, words: [] };
+      yBands.push(band);
+    }
+    band.yMin = Math.min(band.yMin, w.bbox.y0);
+    band.yMax = Math.max(band.yMax, w.bbox.y1);
+    band.words.push(w);
+  }
+
+  // ── Step 3: Identify date bands and extract date info
+  const dateAnchors = []; // { dateKey, dateLabel, yMin, yMax, xDateMax }
+
+  for (const band of yBands) {
+    const bandText = band.words.map(w => w.text || '').join(' ');
+    if (!dayPat.test(bandText) || !monPat.test(bandText)) continue;
+
+    const monMatch = bandText.match(monPat);
+    const dayMatch = bandText.match(/\b(\d{1,2})\b/);
+    if (!monMatch || !dayMatch) continue;
 
     const day   = parseInt(dayMatch[1]);
     const month = MONTH_MAP[monMatch[1].toLowerCase()];
@@ -221,80 +245,106 @@ function parseOcrSpatial(ocrData) {
     const dateKey   = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const dateLabel = formatDateLabel(new Date(dateKey));
 
-    // Find date words (words belonging to weekday, day, month)
-    const words = line.words || [];
-    const dateWords = [];
-    const numberWords = [];
+    // Rightmost X of all date words in this band
+    const xDateMax = Math.max(...band.words.map(w => w.bbox ? w.bbox.x1 : 0));
 
-    for (const w of words) {
-      const wt = (w.text || '').trim();
-      if (dayPat.test(wt) || monPat.test(wt) || wt === String(day) || /^[A-Za-z]+,?\s*\d+/.test(wt)) {
-        dateWords.push(w);
-        if (w.bbox) {
-          minDateX = Math.min(minDateX, w.bbox.x0);
-          maxDateX = Math.max(maxDateX, w.bbox.x1);
-        }
-      } else {
-        const numVal = parseInt(wt.replace(/\D/g, ''));
-        if (!isNaN(numVal) && numVal < 100 && w.bbox) {
-          numberWords.push({ val: numVal, bbox: w.bbox });
-          minColX = Math.min(minColX, w.bbox.x0);
-          maxColX = Math.max(maxColX, w.bbox.x1);
-        }
-      }
-    }
-
-    dateRows.push({ dateKey, dateLabel, numberWords, y: line.bbox ? (line.bbox.y0 + line.bbox.y1)/2 : 0 });
+    dateAnchors.push({
+      dateKey,
+      dateLabel,
+      yCenter: band.yCenter,
+      yMin: band.yMin,
+      yMax: band.yMax,
+      xDateMax,
+    });
   }
 
-  if (dateRows.length === 0) return [];
+  if (dateAnchors.length === 0) return [];
 
-  // 2. Determine column boundaries for F, P, H, A
-  // If we found numbers to the right of dates:
-  const colSpanStart = Math.max(maxDateX, isFinite(minColX) ? minColX : maxDateX);
-  const colSpanEnd   = isFinite(maxColX) && maxColX > colSpanStart ? maxColX : (colSpanStart + 400);
-  const colWidth     = (colSpanEnd - colSpanStart) / 4;
+  // ── Step 4: Determine column boundaries (F, P, H, A)
+  //    Use ALL numeric-only words that appear to the right of date cells
+  //    across ALL date rows to infer the 4 column X positions.
+  const xDateMax  = Math.max(...dateAnchors.map(a => a.xDateMax));
 
-  const colCenters = [
-    colSpanStart + colWidth * 0.5, // F
-    colSpanStart + colWidth * 1.5, // P
-    colSpanStart + colWidth * 2.5, // H
-    colSpanStart + colWidth * 3.5, // A
+  // Collect all pure-number words that are to the right of dates
+  const numericWords = allWords.filter(w => {
+    if (!w.bbox) return false;
+    const txt = (w.text || '').replace(/[^\d]/g, '');
+    return txt.length > 0 && parseInt(txt) < 200 && w.bbox.x0 > xDateMax * 0.8;
+  });
+
+  if (numericWords.length === 0) {
+    // Nothing to the right — cannot determine columns
+    return [];
+  }
+
+  // Get X-center of all numeric words to figure out column zones
+  const numericXCenters = numericWords.map(w => (w.bbox.x0 + w.bbox.x1) / 2).sort((a, b) => a - b);
+  const xMin = numericXCenters[0];
+  const xMax = numericXCenters[numericXCenters.length - 1];
+
+  // Divide the numeric X range into 4 equal zones for F, P, H, A
+  const colZoneWidth = (xMax - xMin + 1) / 4;
+  // Allow at least 30px zone even if range is tiny
+  const zoneW = Math.max(colZoneWidth, 30);
+
+  const colZones = [
+    { key: 'F', xStart: xMin - zoneW * 0.5, xEnd: xMin + zoneW * 0.5 },
+    { key: 'P', xStart: xMin + zoneW * 0.5, xEnd: xMin + zoneW * 1.5 },
+    { key: 'H', xStart: xMin + zoneW * 1.5, xEnd: xMin + zoneW * 2.5 },
+    { key: 'A', xStart: xMin + zoneW * 2.5, xEnd: xMax + zoneW * 0.5 },
   ];
 
-  // 3. Map numbers in each row to the closest column
+  // Column center fallback
+  const colCenters = colZones.map(z => (z.xStart + z.xEnd) / 2);
+
+  function assignColumn(xCenter) {
+    // Find closest column center
+    let best = 0, bestDist = Infinity;
+    for (let i = 0; i < 4; i++) {
+      const d = Math.abs(xCenter - colCenters[i]);
+      if (d < bestDist) { bestDist = d; best = i; }
+    }
+    return ['F', 'P', 'H', 'A'][best];
+  }
+
+  // ── Step 5: For each date anchor, find ALL numeric words in the same Y-band
+  //    (searching across ALL words, not just the same OCR line)
   const rows = [];
-  const seen = new Set();
+  const seenDates = new Set();
 
-  for (const dr of dateRows) {
-    if (seen.has(dr.dateKey)) continue;
-    seen.add(dr.dateKey);
+  for (const anchor of dateAnchors) {
+    if (seenDates.has(anchor.dateKey)) continue;
+    seenDates.add(anchor.dateKey);
 
+    const ROW_Y_TOLERANCE = Math.max(Y_TOLERANCE, (anchor.yMax - anchor.yMin) * 0.8);
     const counts = { F: 0, P: 0, H: 0, A: 0 };
-    const cols = ['F', 'P', 'H', 'A'];
 
-    for (const nw of dr.numberWords) {
-      const centerX = (nw.bbox.x0 + nw.bbox.x1) / 2;
-      // Find closest column center
-      let closestIdx = 0;
-      let minDistance = Infinity;
-      for (let c = 0; c < 4; c++) {
-        const dist = Math.abs(centerX - colCenters[c]);
-        if (dist < minDistance) {
-          minDistance = dist;
-          closestIdx = c;
-        }
-      }
-      counts[cols[closestIdx]] = nw.val;
+    for (const w of allWords) {
+      if (!w.bbox) continue;
+      const wText    = (w.text || '').replace(/[^\d]/g, '');
+      if (!wText) continue;
+      const numVal   = parseInt(wText);
+      if (isNaN(numVal) || numVal > 99) continue;
+
+      // Must be in same Y band as the date
+      const wYCenter = (w.bbox.y0 + w.bbox.y1) / 2;
+      if (Math.abs(wYCenter - anchor.yCenter) > ROW_Y_TOLERANCE) continue;
+
+      // Must be to the right of the date text
+      if (w.bbox.x0 <= xDateMax * 0.7) continue;
+
+      const wXCenter = (w.bbox.x0 + w.bbox.x1) / 2;
+      const col = assignColumn(wXCenter);
+      counts[col] = numVal;
     }
 
     rows.push({
-      dateKey:   dr.dateKey,
-      dateLabel: dr.dateLabel,
-      F:         counts.F,
-      P:         counts.P,
-      H:         counts.H,
-      A:         counts.A,
+      dateKey:   anchor.dateKey,
+      dateLabel: anchor.dateLabel,
+      F: counts.F,
+      P: counts.P,
+      H: counts.H,
+      A: counts.A,
     });
   }
 
