@@ -138,7 +138,7 @@ function closeImgModal() {
   m.classList.remove('flex');
 }
 
-/* ─── OCR ────────────────────────────────────────────── */
+/* ─── ANALYZE WITH GEMINI AI ──────────────────────────── */
 async function runOcr() {
   if (!currentImageFile) return;
 
@@ -146,258 +146,78 @@ async function runOcr() {
   const progressBar  = document.getElementById('ocr-progress-bar');
   const statusText   = document.getElementById('ocr-status-text');
   progressWrap.classList.remove('hidden');
+  progressBar.style.width = '0%';
+  progressBar.classList.replace('bg-emerald-500', 'bg-brand-500');
 
   try {
-    const { createWorker } = Tesseract;
-    const worker = await createWorker('eng', 1, {
-      workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
-      corePath:   'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
-      langPath:   'https://tessdata.projectnaptha.com/4.0.0',
-      logger: m => {
-        if (m.status === 'recognizing text') {
-          const pct = Math.round((m.progress || 0) * 100);
-          progressBar.style.width = pct + '%';
-          statusText.textContent  = `Recognizing text… ${pct}%`;
-        } else if (m.status) {
-          statusText.textContent = m.status;
-        }
-      },
+    // ── 1. Convert image to base64 data URL
+    statusText.textContent = '📷 Preparing image…';
+    progressBar.style.width = '15%';
+
+    const imageBase64 = await fileToDataUrl(currentImageFile);
+
+    // ── 2. Send to server → Gemini AI
+    statusText.textContent = '🤖 Analyzing image with Gemini AI…';
+    progressBar.style.width = '40%';
+
+    const year  = parseInt(document.getElementById('sel-year').value)  || new Date().getFullYear();
+    const month = parseInt(document.getElementById('sel-month').value) || (new Date().getMonth() + 1);
+
+    const res = await fetch('/reports/api/analyze-sheet', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ imageBase64, year, month }),
     });
 
-    statusText.textContent = 'Running OCR…';
-    const result = await worker.recognize(currentImageFile);
-    await worker.terminate();
+    progressBar.style.width = '80%';
+
+    const data = await res.json();
+
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || `Server error ${res.status}`);
+    }
+
+    // ── 3. Map rows to supervisor format (add dateLabel)
+    const parsed = (data.rows || []).map(r => ({
+      dateKey:   r.dateKey,
+      dateLabel: formatDateLabel(new Date(r.dateKey)),
+      F: r.F || 0,
+      P: r.P || 0,
+      H: r.H || 0,
+      A: r.A || 0,
+    }));
 
     progressBar.style.width = '100%';
     progressBar.classList.replace('bg-brand-500', 'bg-emerald-500');
 
-    // Debug: log raw OCR text to console so we can see what Tesseract reads
-    console.group('OCR Raw Output');
-    console.log('Full text:\n', result.data.text);
-    console.log('Total words found:', (result.data.words || []).length);
-    console.groupEnd();
-
-    statusText.textContent = '✅ OCR complete! Parsing table…';
-
-    const parsed = parseTableFromOcr(result.data);
-
     if (parsed.length === 0) {
-      statusText.textContent = '⚠️ Could not detect table rows. Please enter data manually.';
+      statusText.textContent = '⚠️ Gemini found no data rows. Please check the image and try again, or enter manually.';
     } else {
-      statusText.textContent = `✅ Extracted ${parsed.length} row(s). Verify & correct below.`;
+      statusText.textContent = `✅ Gemini extracted ${parsed.length} row(s). Verify & correct below.`;
       supervisorRows = parsed;
       renderSupervisorTable();
     }
     showSupervisorSection();
 
   } catch (err) {
-    console.error('OCR error:', err);
-    const errMsg = (err && err.message) ? err.message : 'Worker failed — check browser console.';
-    statusText.textContent = '❌ OCR failed: ' + errMsg;
+    console.error('Gemini analyze error:', err);
+    progressBar.style.width = '100%';
+    progressBar.classList.replace('bg-brand-500', 'bg-red-500');
+    statusText.textContent = '❌ Failed: ' + (err.message || 'Unknown error');
   }
 }
 
-/* ─── MAIN TABLE PARSER ─────────────────────────────────────
- *
- * Strategy:
- *  1. Group ALL OCR words into visual rows by Y-center proximity.
- *  2. Identify which rows contain a date (weekday + day number + month name).
- *  3. From those rows, collect all pure-digit words that appear to the
- *     RIGHT of the date text, sorted left-to-right by X.
- *  4. Determine 4 column X-zones (F, P, H, A) from the X spread of all
- *     such numbers across ALL date rows.
- *  5. Map each number to its column by closest X-zone center.
- *
- * Falls back to line-by-line text regex if word bbox data is absent.
- * ─────────────────────────────────────────────────────────── */
-function parseTableFromOcr(ocrData) {
-  const words = ocrData && ocrData.words;
-
-  // ── Spatial path: word bboxes available
-  if (words && words.length > 0) {
-    const result = parseSpatial(words);
-    if (result.length > 0) return result;
-  }
-
-  // ── Text fallback: plain line-by-line regex
-  return parseTextFallback(ocrData && ocrData.text || '');
+/* ── Convert File to base64 data URL ─────────────────── */
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = e => resolve(e.target.result);
+    reader.onerror = e => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
 }
 
-/* ── Spatial parser ────────────────────────────────────── */
-function parseSpatial(allWords) {
-  const DAY_PAT   = /^(mon|tue|wed|thu|fri|sat|sun),?$/i;
-  const MONTH_PAT = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\.?$/i;
-  const year      = window.RC.selectedYear || new Date().getFullYear();
 
-  // ── 1. Group words into visual rows by Y-center (±25px)
-  const ROW_SNAP = 25; // px tolerance for "same row"
-  const rows = [];
-
-  for (const w of allWords) {
-    if (!w.bbox || !(w.text || '').trim()) continue;
-    const cy = (w.bbox.y0 + w.bbox.y1) / 2;
-    let row = rows.find(r => Math.abs(r.cy - cy) < ROW_SNAP);
-    if (!row) {
-      row = { cy, yMin: w.bbox.y0, yMax: w.bbox.y1, words: [] };
-      rows.push(row);
-    }
-    row.yMin = Math.min(row.yMin, w.bbox.y0);
-    row.yMax = Math.max(row.yMax, w.bbox.y1);
-    row.words.push(w);
-  }
-
-  // Sort rows top-to-bottom; words left-to-right within each row
-  rows.sort((a, b) => a.cy - b.cy);
-  rows.forEach(r => r.words.sort((a, b) => a.bbox.x0 - b.bbox.x0));
-
-  // ── 2. Identify date rows
-  const dateRows = [];
-  for (const row of rows) {
-    const texts = row.words.map(w => (w.text || '').trim());
-
-    // Must have weekday abbreviation
-    const hasDOW = texts.some(t => DAY_PAT.test(t));
-    if (!hasDOW) continue;
-
-    // Must have month name
-    const monthWord = row.words.find(w => MONTH_PAT.test((w.text || '').trim()));
-    if (!monthWord) continue;
-    const month = MONTH_MAP[monthWord.text.trim().toLowerCase().slice(0, 3)];
-    if (!month) continue;
-
-    // Must have a 1–2 digit number (the day)
-    const dayWord = row.words.find(w => /^\d{1,2}$/.test((w.text || '').trim()));
-    if (!dayWord) continue;
-    const day = parseInt(dayWord.text.trim());
-    if (day < 1 || day > 31) continue;
-
-    // Rightmost X of words that are date-text (weekday/day/month)
-    const dateWordSet = row.words.filter(w => {
-      const t = (w.text || '').trim();
-      return DAY_PAT.test(t) || MONTH_PAT.test(t) ||
-             t === String(day) || /^[A-Za-z]+,?$/.test(t);
-    });
-    const dateEndX = Math.max(...dateWordSet.map(w => w.bbox.x1), 0);
-
-    // Collect digit-only words that are to the RIGHT of the date area
-    const numWords = row.words.filter(w => {
-      if (w.bbox.x0 <= dateEndX) return false;
-      const t = (w.text || '').replace(/[^\d]/g, '');
-      if (!t) return false;
-      const v = parseInt(t);
-      return !isNaN(v) && v >= 0 && v < 100;
-    });
-
-    const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    dateRows.push({
-      dateKey,
-      dateLabel: formatDateLabel(new Date(dateKey)),
-      dateEndX,
-      rowCy: row.cy,
-      numWords,
-    });
-  }
-
-  if (dateRows.length === 0) return [];
-
-  // ── 3. Determine F/P/H/A column X-zones from ALL numbers across ALL date rows
-  const allNumWords = dateRows.flatMap(r => r.numWords);
-
-  if (allNumWords.length === 0) {
-    // Dates found but ZERO numbers visible — return dates with 0s so user
-    // can fill in manually rather than silently returning nothing
-    const seen = new Set();
-    return dateRows
-      .filter(r => !seen.has(r.dateKey) && seen.add(r.dateKey))
-      .map(r => ({ dateKey: r.dateKey, dateLabel: r.dateLabel, F: 0, P: 0, H: 0, A: 0 }));
-  }
-
-  // X-centers of all discovered numbers
-  const xcs = allNumWords.map(w => (w.bbox.x0 + w.bbox.x1) / 2).sort((a, b) => a - b);
-  const xMin = xcs[0];
-  const xMax = xcs[xcs.length - 1];
-
-  // 4 equal-width column zones spanning F→A
-  const span     = Math.max(xMax - xMin, 60); // at least 60px total span
-  const zoneW    = span / 3; // 3 gaps for 4 cols: F, P, H, A
-  const colCenters = [
-    xMin,
-    xMin + zoneW,
-    xMin + zoneW * 2,
-    xMax,
-  ];
-
-  function assignCol(xc) {
-    let best = 0, bestD = Infinity;
-    for (let i = 0; i < 4; i++) {
-      const d = Math.abs(xc - colCenters[i]);
-      if (d < bestD) { bestD = d; best = i; }
-    }
-    return ['F', 'P', 'H', 'A'][best];
-  }
-
-  // ── 4. Build final table
-  const seen = new Set();
-  return dateRows
-    .filter(r => !seen.has(r.dateKey) && seen.add(r.dateKey))
-    .map(r => {
-      const counts = { F: 0, P: 0, H: 0, A: 0 };
-      for (const w of r.numWords) {
-        const xc  = (w.bbox.x0 + w.bbox.x1) / 2;
-        const col = assignCol(xc);
-        const val = parseInt((w.text || '').replace(/[^\d]/g, ''));
-        if (!isNaN(val)) counts[col] = val;
-      }
-      return { dateKey: r.dateKey, dateLabel: r.dateLabel, ...counts };
-    })
-    .sort((a, b) => a.dateKey.localeCompare(b.dateKey));
-}
-
-/* ── Text fallback parser ──────────────────────────────── */
-function parseTextFallback(rawText) {
-  const DAY_PAT = /\b(mon|tue|wed|thu|fri|sat|sun)\b/i;
-  const MON_PAT = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
-  const NUM_PAT = /\d+/g;
-  const year    = window.RC.selectedYear || new Date().getFullYear();
-
-  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
-  const seen  = new Set();
-  const rows  = [];
-
-  for (const line of lines) {
-    if (!DAY_PAT.test(line)) continue;
-    const monMatch = line.match(MON_PAT);
-    if (!monMatch) continue;
-    const dayMatch = line.match(/\b(\d{1,2})\b/);
-    if (!dayMatch) continue;
-
-    const day   = parseInt(dayMatch[1]);
-    const month = MONTH_MAP[monMatch[1].toLowerCase()];
-    if (!month || day < 1 || day > 31) continue;
-
-    const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    if (seen.has(dateKey)) continue;
-    seen.add(dateKey);
-
-    // Strip weekday, month, and day digit; remaining numbers are F P H A in order
-    const cleaned = line
-      .replace(DAY_PAT, '')
-      .replace(MON_PAT, '')
-      .replace(new RegExp(`\\b${day}\\b`), '');
-    const nums = [...cleaned.matchAll(NUM_PAT)].map(m => parseInt(m[0])).filter(n => n < 100);
-
-    rows.push({
-      dateKey,
-      dateLabel: formatDateLabel(new Date(dateKey)),
-      F: nums[0] || 0,
-      P: nums[1] || 0,
-      H: nums[2] || 0,
-      A: nums[3] || 0,
-    });
-  }
-
-  return rows.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
-}
 
 /* ─── SUPERVISOR TABLE UI ────────────────────────────── */
 function showSupervisorSection() {

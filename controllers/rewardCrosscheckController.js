@@ -120,3 +120,103 @@ exports.getMonthReportsApi = async (req, res) => {
     return res.status(500).json({ error: 'Server error.' });
   }
 };
+
+// POST /reports/api/analyze-sheet
+// Body: { imageBase64: "<data:image/...;base64,...>", year: 2026, month: 7 }
+// Returns: { ok: true, rows: [{dateKey, F, P, H, A}, ...] }
+exports.analyzeSheet = async (req, res) => {
+  try {
+    const { imageBase64, year, month } = req.body;
+    if (!imageBase64) return res.status(400).json({ error: 'No image provided.' });
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY not configured on server.' });
+
+    // Strip data URL prefix if present → get pure base64 + mime
+    const matches = imageBase64.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) return res.status(400).json({ error: 'Invalid image format. Must be a data URL.' });
+    const [, mimeType, b64data] = matches;
+
+    const prompt = `You are analyzing a teaching reward sheet / attendance summary table image.
+
+The table has these columns (in order from left to right):
+- DATE  (format like "Thu, 16 Jul" or "Thu 16 Jul" or "16-Jul")
+- F     (Full / Prime Teacher Full session count — integer)
+- P     (Prime Assisted session count — integer)
+- H     (Half / ½ Prime session count — integer)
+- A     (Assistant session count — integer)
+
+The expected year is ${year || new Date().getFullYear()}, month is ${month || new Date().getMonth() + 1}.
+
+Instructions:
+1. Find every data row that contains a date.
+2. For each row, read the F, P, H, A values (these are small integers, usually 0–10).
+3. If a cell is blank, dashed, or empty → use 0.
+4. Return ONLY a valid JSON array. No explanation, no markdown fences, no extra text.
+
+Output format:
+[
+  { "dateKey": "YYYY-MM-DD", "F": 0, "P": 0, "H": 0, "A": 0 },
+  ...
+]`;
+
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+    const geminiRes = await fetch(geminiUrl, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: mimeType, data: b64data } },
+          ],
+        }],
+        generationConfig: {
+          temperature:     0,
+          maxOutputTokens: 2048,
+          responseMimeType: 'application/json',
+        },
+      }),
+    });
+
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
+      console.error('Gemini API error:', geminiRes.status, errText);
+      return res.status(502).json({ error: `Gemini API error ${geminiRes.status}: ${errText.slice(0, 200)}` });
+    }
+
+    const geminiData = await geminiRes.json();
+    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // Parse the JSON array from Gemini's response
+    let rows;
+    try {
+      // Strip any accidental markdown fences
+      const cleaned = rawText.replace(/```json?/gi, '').replace(/```/g, '').trim();
+      rows = JSON.parse(cleaned);
+    } catch (parseErr) {
+      console.error('Failed to parse Gemini response:', rawText);
+      return res.status(502).json({ error: 'Could not parse Gemini response as JSON.', raw: rawText.slice(0, 500) });
+    }
+
+    if (!Array.isArray(rows)) {
+      return res.status(502).json({ error: 'Gemini returned unexpected format.', raw: rawText.slice(0, 500) });
+    }
+
+    // Sanitize rows: ensure F/P/H/A are integers >= 0
+    const sanitized = rows.map(r => ({
+      dateKey: String(r.dateKey || ''),
+      F: Math.max(0, parseInt(r.F) || 0),
+      P: Math.max(0, parseInt(r.P) || 0),
+      H: Math.max(0, parseInt(r.H) || 0),
+      A: Math.max(0, parseInt(r.A) || 0),
+    })).filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.dateKey));
+
+    return res.json({ ok: true, rows: sanitized });
+  } catch (err) {
+    console.error('analyzeSheet error:', err);
+    return res.status(500).json({ error: 'Server error: ' + err.message });
+  }
+};
+
