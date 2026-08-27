@@ -50,11 +50,13 @@ app.use(helmet({
           "'unsafe-inline'",
           "'unsafe-eval'",
           "blob:",
+          "data:",
           "https://cdn.tailwindcss.com",
           "https://*.tailwindcss.com",
           "https://cdn.jsdelivr.net"
         ],
-        workerSrc: ["'self'", "blob:"],
+        workerSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net"],
+        childSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net"],
         scriptSrcAttr: ["'unsafe-inline'"],
         styleSrc: [
           "'self'",
@@ -66,7 +68,15 @@ app.use(helmet({
         ],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
-        connectSrc: ["'self'", "blob:", "https://*.tailwindcss.com", "https://cdn.jsdelivr.net", "https://tessdata.projectnaptha.com"],
+        connectSrc: [
+          "'self'",
+          "blob:",
+          "data:",
+          "https://*.tailwindcss.com",
+          "https://cdn.jsdelivr.net",
+          "https://tessdata.projectnaptha.com",
+          "https://raw.githubusercontent.com"
+        ],
       },
     }
     : false,

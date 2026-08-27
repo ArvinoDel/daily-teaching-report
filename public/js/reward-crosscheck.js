@@ -150,28 +150,36 @@ async function runOcr() {
   try {
     const { createWorker } = Tesseract;
     const worker = await createWorker('eng', 1, {
+      workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+      corePath:   'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
+      langPath:   'https://tessdata.projectnaptha.com/4.0.0',
       logger: m => {
         if (m.status === 'recognizing text') {
           const pct = Math.round((m.progress || 0) * 100);
           progressBar.style.width = pct + '%';
           statusText.textContent  = `Recognizing text… ${pct}%`;
         } else {
-          statusText.textContent = m.status;
+          statusText.textContent = m.status || 'Processing...';
         }
       },
     });
 
-    statusText.textContent = 'Running OCR…';
-    const { data: { text } } = await worker.recognize(currentImageFile);
+    statusText.textContent = 'Analyzing image layout & text…';
+    const result = await worker.recognize(currentImageFile);
     await worker.terminate();
 
     statusText.textContent     = '✅ OCR complete! Parsing table…';
     progressBar.style.width    = '100%';
     progressBar.classList.replace('bg-brand-500', 'bg-emerald-500');
 
-    const parsed = parseOcrText(text);
+    // Try spatial column layout parser first, fallback to text regex
+    let parsed = parseOcrSpatial(result.data);
+    if (!parsed || parsed.length === 0) {
+      parsed = parseOcrText(result.data.text || '');
+    }
+
     if (parsed.length === 0) {
-      statusText.textContent = '⚠️ Could not detect table rows. Please enter data manually below.';
+      statusText.textContent = '⚠️ Could not auto-detect table rows. Please enter data manually below.';
     } else {
       statusText.textContent = `✅ Extracted ${parsed.length} row(s). Verify below.`;
       supervisorRows = parsed;
@@ -181,12 +189,119 @@ async function runOcr() {
 
   } catch (err) {
     console.error('OCR error:', err);
-    const errMsg = (err && err.message) ? err.message : 'Unknown error — check browser console.';
+    const errMsg = (err && err.message) ? err.message : 'Worker initialization failed — check network/browser settings.';
     statusText.textContent = '❌ OCR failed: ' + errMsg;
   }
 }
 
-/* ─── OCR TEXT PARSER ────────────────────────────────── */
+/* ─── SPATIAL TABLE PARSER (Bounding-box aware) ────────── */
+function parseOcrSpatial(ocrData) {
+  if (!ocrData || !ocrData.lines || ocrData.lines.length === 0) return [];
+
+  const dayPat = /\b(mon|tue|wed|thu|fri|sat|sun)\b/i;
+  const monPat = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
+  const year   = window.RC.selectedYear || new Date().getFullYear();
+
+  // 1. Detect candidate date rows & calculate table bounds
+  const dateRows = [];
+  let minDateX = Infinity, maxDateX = 0, minColX = Infinity, maxColX = 0;
+
+  for (const line of ocrData.lines) {
+    const text = (line.text || '').trim();
+    if (!dayPat.test(text) || !monPat.test(text)) continue;
+
+    const dayMatch = text.match(/\b(\d{1,2})\b/);
+    const monMatch = text.match(monPat);
+    if (!dayMatch || !monMatch) continue;
+
+    const day   = parseInt(dayMatch[1]);
+    const month = MONTH_MAP[monMatch[1].toLowerCase()];
+    if (day < 1 || day > 31 || !month) continue;
+
+    const dateKey   = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dateLabel = formatDateLabel(new Date(dateKey));
+
+    // Find date words (words belonging to weekday, day, month)
+    const words = line.words || [];
+    const dateWords = [];
+    const numberWords = [];
+
+    for (const w of words) {
+      const wt = (w.text || '').trim();
+      if (dayPat.test(wt) || monPat.test(wt) || wt === String(day) || /^[A-Za-z]+,?\s*\d+/.test(wt)) {
+        dateWords.push(w);
+        if (w.bbox) {
+          minDateX = Math.min(minDateX, w.bbox.x0);
+          maxDateX = Math.max(maxDateX, w.bbox.x1);
+        }
+      } else {
+        const numVal = parseInt(wt.replace(/\D/g, ''));
+        if (!isNaN(numVal) && numVal < 100 && w.bbox) {
+          numberWords.push({ val: numVal, bbox: w.bbox });
+          minColX = Math.min(minColX, w.bbox.x0);
+          maxColX = Math.max(maxColX, w.bbox.x1);
+        }
+      }
+    }
+
+    dateRows.push({ dateKey, dateLabel, numberWords, y: line.bbox ? (line.bbox.y0 + line.bbox.y1)/2 : 0 });
+  }
+
+  if (dateRows.length === 0) return [];
+
+  // 2. Determine column boundaries for F, P, H, A
+  // If we found numbers to the right of dates:
+  const colSpanStart = Math.max(maxDateX, isFinite(minColX) ? minColX : maxDateX);
+  const colSpanEnd   = isFinite(maxColX) && maxColX > colSpanStart ? maxColX : (colSpanStart + 400);
+  const colWidth     = (colSpanEnd - colSpanStart) / 4;
+
+  const colCenters = [
+    colSpanStart + colWidth * 0.5, // F
+    colSpanStart + colWidth * 1.5, // P
+    colSpanStart + colWidth * 2.5, // H
+    colSpanStart + colWidth * 3.5, // A
+  ];
+
+  // 3. Map numbers in each row to the closest column
+  const rows = [];
+  const seen = new Set();
+
+  for (const dr of dateRows) {
+    if (seen.has(dr.dateKey)) continue;
+    seen.add(dr.dateKey);
+
+    const counts = { F: 0, P: 0, H: 0, A: 0 };
+    const cols = ['F', 'P', 'H', 'A'];
+
+    for (const nw of dr.numberWords) {
+      const centerX = (nw.bbox.x0 + nw.bbox.x1) / 2;
+      // Find closest column center
+      let closestIdx = 0;
+      let minDistance = Infinity;
+      for (let c = 0; c < 4; c++) {
+        const dist = Math.abs(centerX - colCenters[c]);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestIdx = c;
+        }
+      }
+      counts[cols[closestIdx]] = nw.val;
+    }
+
+    rows.push({
+      dateKey:   dr.dateKey,
+      dateLabel: dr.dateLabel,
+      F:         counts.F,
+      P:         counts.P,
+      H:         counts.H,
+      A:         counts.A,
+    });
+  }
+
+  return rows.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+}
+
+/* ─── OCR TEXT PARSER (Fallback) ─────────────────────── */
 function parseOcrText(rawText) {
   const lines  = rawText.split('\n').map(l => l.trim()).filter(Boolean);
   const rows   = [];
@@ -199,11 +314,10 @@ function parseOcrText(rawText) {
   const numPat  = /\d+/g;
 
   for (const line of lines) {
-    if (!dayPat.test(line)) continue;                   // must have weekday
+    if (!dayPat.test(line)) continue;
     const monMatch = line.match(monPat);
-    if (!monMatch) continue;                             // must have month name
+    if (!monMatch) continue;
 
-    // Extract day number
     const dayMatch = line.match(/\b(\d{1,2})\b/);
     if (!dayMatch) continue;
     const day   = parseInt(dayMatch[1]);
@@ -213,28 +327,22 @@ function parseOcrText(rawText) {
     const dateKey   = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     const dateLabel = formatDateLabel(new Date(dateKey));
 
-    // Find all numbers in line (excluding the day number already found)
-    // Strip the weekday, day, and month name from line, then collect remaining numbers
     const cleaned  = line
       .replace(dayPat, '')
       .replace(monPat, '')
-      .replace(/\b\d{1,2}\b/, '');             // remove leading day digit
+      .replace(/\b\d{1,2}\b/, '');
     const nums     = [...(cleaned.matchAll(numPat))].map(m => parseInt(m[0]));
 
-    // The supervisor table has columns in order: F, P, H, A (some may be blank)
-    // We take up to 4 numbers; missing columns are treated as 0
     const F = nums[0] || 0;
     const P = nums[1] || 0;
     const H = nums[2] || 0;
     const A = nums[3] || 0;
 
-    // Sanity-check: skip rows with suspiciously large numbers (likely garbage OCR)
     if (F > 50 || P > 50 || H > 50 || A > 50) continue;
 
     rows.push({ dateKey, dateLabel, F, P, H, A });
   }
 
-  // Deduplicate by dateKey (keep first occurrence)
   const seen = new Set();
   return rows.filter(r => { if (seen.has(r.dateKey)) return false; seen.add(r.dateKey); return true; })
              .sort((a, b) => a.dateKey.localeCompare(b.dateKey));
