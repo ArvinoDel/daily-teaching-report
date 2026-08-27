@@ -158,30 +158,33 @@ async function runOcr() {
           const pct = Math.round((m.progress || 0) * 100);
           progressBar.style.width = pct + '%';
           statusText.textContent  = `Recognizing text… ${pct}%`;
-        } else {
-          statusText.textContent = m.status || 'Processing...';
+        } else if (m.status) {
+          statusText.textContent = m.status;
         }
       },
     });
 
-    statusText.textContent = 'Analyzing image layout & text…';
+    statusText.textContent = 'Running OCR…';
     const result = await worker.recognize(currentImageFile);
     await worker.terminate();
 
-    statusText.textContent     = '✅ OCR complete! Parsing table…';
-    progressBar.style.width    = '100%';
+    progressBar.style.width = '100%';
     progressBar.classList.replace('bg-brand-500', 'bg-emerald-500');
 
-    // Try spatial column layout parser first, fallback to text regex
-    let parsed = parseOcrSpatial(result.data);
-    if (!parsed || parsed.length === 0) {
-      parsed = parseOcrText(result.data.text || '');
-    }
+    // Debug: log raw OCR text to console so we can see what Tesseract reads
+    console.group('OCR Raw Output');
+    console.log('Full text:\n', result.data.text);
+    console.log('Total words found:', (result.data.words || []).length);
+    console.groupEnd();
+
+    statusText.textContent = '✅ OCR complete! Parsing table…';
+
+    const parsed = parseTableFromOcr(result.data);
 
     if (parsed.length === 0) {
-      statusText.textContent = '⚠️ Could not auto-detect table rows. Please enter data manually below.';
+      statusText.textContent = '⚠️ Could not detect table rows. Please enter data manually.';
     } else {
-      statusText.textContent = `✅ Extracted ${parsed.length} row(s). Verify below.`;
+      statusText.textContent = `✅ Extracted ${parsed.length} row(s). Verify & correct below.`;
       supervisorRows = parsed;
       renderSupervisorTable();
     }
@@ -189,213 +192,211 @@ async function runOcr() {
 
   } catch (err) {
     console.error('OCR error:', err);
-    const errMsg = (err && err.message) ? err.message : 'Worker initialization failed — check network/browser settings.';
+    const errMsg = (err && err.message) ? err.message : 'Worker failed — check browser console.';
     statusText.textContent = '❌ OCR failed: ' + errMsg;
   }
 }
 
-/* ─── SPATIAL TABLE PARSER (Global word Y-band matching) ─ */
-function parseOcrSpatial(ocrData) {
-  if (!ocrData) return [];
+/* ─── MAIN TABLE PARSER ─────────────────────────────────────
+ *
+ * Strategy:
+ *  1. Group ALL OCR words into visual rows by Y-center proximity.
+ *  2. Identify which rows contain a date (weekday + day number + month name).
+ *  3. From those rows, collect all pure-digit words that appear to the
+ *     RIGHT of the date text, sorted left-to-right by X.
+ *  4. Determine 4 column X-zones (F, P, H, A) from the X spread of all
+ *     such numbers across ALL date rows.
+ *  5. Map each number to its column by closest X-zone center.
+ *
+ * Falls back to line-by-line text regex if word bbox data is absent.
+ * ─────────────────────────────────────────────────────────── */
+function parseTableFromOcr(ocrData) {
+  const words = ocrData && ocrData.words;
 
-  const dayPat  = /\b(mon|tue|wed|thu|fri|sat|sun)\b/i;
-  const monPat  = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
-  const year    = window.RC.selectedYear || new Date().getFullYear();
-
-  // ── Step 1: Flatten ALL words from the entire OCR result into one list
-  // Tesseract returns: data.words[] at top level (all words with bboxes)
-  const allWords = ocrData.words || [];
-  if (allWords.length === 0) return [];
-
-  // ── Step 2: Find every "date anchor" — a word cluster on the same line
-  //    that forms a date like "Thu, 16 Jul" or "Fri, 17"
-  //    We look at words grouped by their Y-center proximity (±20px tolerance)
-  const Y_TOLERANCE = 20;
-
-  // Group all words by Y-band
-  const yBands = [];
-  for (const w of allWords) {
-    if (!w.bbox) continue;
-    const wYCenter = (w.bbox.y0 + w.bbox.y1) / 2;
-    let band = yBands.find(b => Math.abs(b.yCenter - wYCenter) < Y_TOLERANCE);
-    if (!band) {
-      band = { yCenter: wYCenter, yMin: w.bbox.y0, yMax: w.bbox.y1, words: [] };
-      yBands.push(band);
-    }
-    band.yMin = Math.min(band.yMin, w.bbox.y0);
-    band.yMax = Math.max(band.yMax, w.bbox.y1);
-    band.words.push(w);
+  // ── Spatial path: word bboxes available
+  if (words && words.length > 0) {
+    const result = parseSpatial(words);
+    if (result.length > 0) return result;
   }
 
-  // ── Step 3: Identify date bands and extract date info
-  const dateAnchors = []; // { dateKey, dateLabel, yMin, yMax, xDateMax }
+  // ── Text fallback: plain line-by-line regex
+  return parseTextFallback(ocrData && ocrData.text || '');
+}
 
-  for (const band of yBands) {
-    const bandText = band.words.map(w => w.text || '').join(' ');
-    if (!dayPat.test(bandText) || !monPat.test(bandText)) continue;
+/* ── Spatial parser ────────────────────────────────────── */
+function parseSpatial(allWords) {
+  const DAY_PAT   = /^(mon|tue|wed|thu|fri|sat|sun),?$/i;
+  const MONTH_PAT = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\.?$/i;
+  const year      = window.RC.selectedYear || new Date().getFullYear();
 
-    const monMatch = bandText.match(monPat);
-    const dayMatch = bandText.match(/\b(\d{1,2})\b/);
-    if (!monMatch || !dayMatch) continue;
+  // ── 1. Group words into visual rows by Y-center (±25px)
+  const ROW_SNAP = 25; // px tolerance for "same row"
+  const rows = [];
 
-    const day   = parseInt(dayMatch[1]);
-    const month = MONTH_MAP[monMatch[1].toLowerCase()];
-    if (day < 1 || day > 31 || !month) continue;
+  for (const w of allWords) {
+    if (!w.bbox || !(w.text || '').trim()) continue;
+    const cy = (w.bbox.y0 + w.bbox.y1) / 2;
+    let row = rows.find(r => Math.abs(r.cy - cy) < ROW_SNAP);
+    if (!row) {
+      row = { cy, yMin: w.bbox.y0, yMax: w.bbox.y1, words: [] };
+      rows.push(row);
+    }
+    row.yMin = Math.min(row.yMin, w.bbox.y0);
+    row.yMax = Math.max(row.yMax, w.bbox.y1);
+    row.words.push(w);
+  }
 
-    const dateKey   = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const dateLabel = formatDateLabel(new Date(dateKey));
+  // Sort rows top-to-bottom; words left-to-right within each row
+  rows.sort((a, b) => a.cy - b.cy);
+  rows.forEach(r => r.words.sort((a, b) => a.bbox.x0 - b.bbox.x0));
 
-    // Rightmost X of all date words in this band
-    const xDateMax = Math.max(...band.words.map(w => w.bbox ? w.bbox.x1 : 0));
+  // ── 2. Identify date rows
+  const dateRows = [];
+  for (const row of rows) {
+    const texts = row.words.map(w => (w.text || '').trim());
 
-    dateAnchors.push({
+    // Must have weekday abbreviation
+    const hasDOW = texts.some(t => DAY_PAT.test(t));
+    if (!hasDOW) continue;
+
+    // Must have month name
+    const monthWord = row.words.find(w => MONTH_PAT.test((w.text || '').trim()));
+    if (!monthWord) continue;
+    const month = MONTH_MAP[monthWord.text.trim().toLowerCase().slice(0, 3)];
+    if (!month) continue;
+
+    // Must have a 1–2 digit number (the day)
+    const dayWord = row.words.find(w => /^\d{1,2}$/.test((w.text || '').trim()));
+    if (!dayWord) continue;
+    const day = parseInt(dayWord.text.trim());
+    if (day < 1 || day > 31) continue;
+
+    // Rightmost X of words that are date-text (weekday/day/month)
+    const dateWordSet = row.words.filter(w => {
+      const t = (w.text || '').trim();
+      return DAY_PAT.test(t) || MONTH_PAT.test(t) ||
+             t === String(day) || /^[A-Za-z]+,?$/.test(t);
+    });
+    const dateEndX = Math.max(...dateWordSet.map(w => w.bbox.x1), 0);
+
+    // Collect digit-only words that are to the RIGHT of the date area
+    const numWords = row.words.filter(w => {
+      if (w.bbox.x0 <= dateEndX) return false;
+      const t = (w.text || '').replace(/[^\d]/g, '');
+      if (!t) return false;
+      const v = parseInt(t);
+      return !isNaN(v) && v >= 0 && v < 100;
+    });
+
+    const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    dateRows.push({
       dateKey,
-      dateLabel,
-      yCenter: band.yCenter,
-      yMin: band.yMin,
-      yMax: band.yMax,
-      xDateMax,
+      dateLabel: formatDateLabel(new Date(dateKey)),
+      dateEndX,
+      rowCy: row.cy,
+      numWords,
     });
   }
 
-  if (dateAnchors.length === 0) return [];
+  if (dateRows.length === 0) return [];
 
-  // ── Step 4: Determine column boundaries (F, P, H, A)
-  //    Use ALL numeric-only words that appear to the right of date cells
-  //    across ALL date rows to infer the 4 column X positions.
-  const xDateMax  = Math.max(...dateAnchors.map(a => a.xDateMax));
+  // ── 3. Determine F/P/H/A column X-zones from ALL numbers across ALL date rows
+  const allNumWords = dateRows.flatMap(r => r.numWords);
 
-  // Collect all pure-number words that are to the right of dates
-  const numericWords = allWords.filter(w => {
-    if (!w.bbox) return false;
-    const txt = (w.text || '').replace(/[^\d]/g, '');
-    return txt.length > 0 && parseInt(txt) < 200 && w.bbox.x0 > xDateMax * 0.8;
-  });
-
-  if (numericWords.length === 0) {
-    // Nothing to the right — cannot determine columns
-    return [];
+  if (allNumWords.length === 0) {
+    // Dates found but ZERO numbers visible — return dates with 0s so user
+    // can fill in manually rather than silently returning nothing
+    const seen = new Set();
+    return dateRows
+      .filter(r => !seen.has(r.dateKey) && seen.add(r.dateKey))
+      .map(r => ({ dateKey: r.dateKey, dateLabel: r.dateLabel, F: 0, P: 0, H: 0, A: 0 }));
   }
 
-  // Get X-center of all numeric words to figure out column zones
-  const numericXCenters = numericWords.map(w => (w.bbox.x0 + w.bbox.x1) / 2).sort((a, b) => a - b);
-  const xMin = numericXCenters[0];
-  const xMax = numericXCenters[numericXCenters.length - 1];
+  // X-centers of all discovered numbers
+  const xcs = allNumWords.map(w => (w.bbox.x0 + w.bbox.x1) / 2).sort((a, b) => a - b);
+  const xMin = xcs[0];
+  const xMax = xcs[xcs.length - 1];
 
-  // Divide the numeric X range into 4 equal zones for F, P, H, A
-  const colZoneWidth = (xMax - xMin + 1) / 4;
-  // Allow at least 30px zone even if range is tiny
-  const zoneW = Math.max(colZoneWidth, 30);
-
-  const colZones = [
-    { key: 'F', xStart: xMin - zoneW * 0.5, xEnd: xMin + zoneW * 0.5 },
-    { key: 'P', xStart: xMin + zoneW * 0.5, xEnd: xMin + zoneW * 1.5 },
-    { key: 'H', xStart: xMin + zoneW * 1.5, xEnd: xMin + zoneW * 2.5 },
-    { key: 'A', xStart: xMin + zoneW * 2.5, xEnd: xMax + zoneW * 0.5 },
+  // 4 equal-width column zones spanning F→A
+  const span     = Math.max(xMax - xMin, 60); // at least 60px total span
+  const zoneW    = span / 3; // 3 gaps for 4 cols: F, P, H, A
+  const colCenters = [
+    xMin,
+    xMin + zoneW,
+    xMin + zoneW * 2,
+    xMax,
   ];
 
-  // Column center fallback
-  const colCenters = colZones.map(z => (z.xStart + z.xEnd) / 2);
-
-  function assignColumn(xCenter) {
-    // Find closest column center
-    let best = 0, bestDist = Infinity;
+  function assignCol(xc) {
+    let best = 0, bestD = Infinity;
     for (let i = 0; i < 4; i++) {
-      const d = Math.abs(xCenter - colCenters[i]);
-      if (d < bestDist) { bestDist = d; best = i; }
+      const d = Math.abs(xc - colCenters[i]);
+      if (d < bestD) { bestD = d; best = i; }
     }
     return ['F', 'P', 'H', 'A'][best];
   }
 
-  // ── Step 5: For each date anchor, find ALL numeric words in the same Y-band
-  //    (searching across ALL words, not just the same OCR line)
-  const rows = [];
-  const seenDates = new Set();
+  // ── 4. Build final table
+  const seen = new Set();
+  return dateRows
+    .filter(r => !seen.has(r.dateKey) && seen.add(r.dateKey))
+    .map(r => {
+      const counts = { F: 0, P: 0, H: 0, A: 0 };
+      for (const w of r.numWords) {
+        const xc  = (w.bbox.x0 + w.bbox.x1) / 2;
+        const col = assignCol(xc);
+        const val = parseInt((w.text || '').replace(/[^\d]/g, ''));
+        if (!isNaN(val)) counts[col] = val;
+      }
+      return { dateKey: r.dateKey, dateLabel: r.dateLabel, ...counts };
+    })
+    .sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+}
 
-  for (const anchor of dateAnchors) {
-    if (seenDates.has(anchor.dateKey)) continue;
-    seenDates.add(anchor.dateKey);
+/* ── Text fallback parser ──────────────────────────────── */
+function parseTextFallback(rawText) {
+  const DAY_PAT = /\b(mon|tue|wed|thu|fri|sat|sun)\b/i;
+  const MON_PAT = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
+  const NUM_PAT = /\d+/g;
+  const year    = window.RC.selectedYear || new Date().getFullYear();
 
-    const ROW_Y_TOLERANCE = Math.max(Y_TOLERANCE, (anchor.yMax - anchor.yMin) * 0.8);
-    const counts = { F: 0, P: 0, H: 0, A: 0 };
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+  const seen  = new Set();
+  const rows  = [];
 
-    for (const w of allWords) {
-      if (!w.bbox) continue;
-      const wText    = (w.text || '').replace(/[^\d]/g, '');
-      if (!wText) continue;
-      const numVal   = parseInt(wText);
-      if (isNaN(numVal) || numVal > 99) continue;
+  for (const line of lines) {
+    if (!DAY_PAT.test(line)) continue;
+    const monMatch = line.match(MON_PAT);
+    if (!monMatch) continue;
+    const dayMatch = line.match(/\b(\d{1,2})\b/);
+    if (!dayMatch) continue;
 
-      // Must be in same Y band as the date
-      const wYCenter = (w.bbox.y0 + w.bbox.y1) / 2;
-      if (Math.abs(wYCenter - anchor.yCenter) > ROW_Y_TOLERANCE) continue;
+    const day   = parseInt(dayMatch[1]);
+    const month = MONTH_MAP[monMatch[1].toLowerCase()];
+    if (!month || day < 1 || day > 31) continue;
 
-      // Must be to the right of the date text
-      if (w.bbox.x0 <= xDateMax * 0.7) continue;
+    const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    if (seen.has(dateKey)) continue;
+    seen.add(dateKey);
 
-      const wXCenter = (w.bbox.x0 + w.bbox.x1) / 2;
-      const col = assignColumn(wXCenter);
-      counts[col] = numVal;
-    }
+    // Strip weekday, month, and day digit; remaining numbers are F P H A in order
+    const cleaned = line
+      .replace(DAY_PAT, '')
+      .replace(MON_PAT, '')
+      .replace(new RegExp(`\\b${day}\\b`), '');
+    const nums = [...cleaned.matchAll(NUM_PAT)].map(m => parseInt(m[0])).filter(n => n < 100);
 
     rows.push({
-      dateKey:   anchor.dateKey,
-      dateLabel: anchor.dateLabel,
-      F: counts.F,
-      P: counts.P,
-      H: counts.H,
-      A: counts.A,
+      dateKey,
+      dateLabel: formatDateLabel(new Date(dateKey)),
+      F: nums[0] || 0,
+      P: nums[1] || 0,
+      H: nums[2] || 0,
+      A: nums[3] || 0,
     });
   }
 
   return rows.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
-}
-
-/* ─── OCR TEXT PARSER (Fallback) ─────────────────────── */
-function parseOcrText(rawText) {
-  const lines  = rawText.split('\n').map(l => l.trim()).filter(Boolean);
-  const rows   = [];
-
-  // Day abbreviations pattern
-  const dayPat  = /\b(mon|tue|wed|thu|fri|sat|sun)\b/i;
-  // Month name pattern
-  const monPat  = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
-  // Number extractor
-  const numPat  = /\d+/g;
-
-  for (const line of lines) {
-    if (!dayPat.test(line)) continue;
-    const monMatch = line.match(monPat);
-    if (!monMatch) continue;
-
-    const dayMatch = line.match(/\b(\d{1,2})\b/);
-    if (!dayMatch) continue;
-    const day   = parseInt(dayMatch[1]);
-    const month = MONTH_MAP[monMatch[1].toLowerCase()];
-    const year  = window.RC.selectedYear || new Date().getFullYear();
-
-    const dateKey   = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-    const dateLabel = formatDateLabel(new Date(dateKey));
-
-    const cleaned  = line
-      .replace(dayPat, '')
-      .replace(monPat, '')
-      .replace(/\b\d{1,2}\b/, '');
-    const nums     = [...(cleaned.matchAll(numPat))].map(m => parseInt(m[0]));
-
-    const F = nums[0] || 0;
-    const P = nums[1] || 0;
-    const H = nums[2] || 0;
-    const A = nums[3] || 0;
-
-    if (F > 50 || P > 50 || H > 50 || A > 50) continue;
-
-    rows.push({ dateKey, dateLabel, F, P, H, A });
-  }
-
-  const seen = new Set();
-  return rows.filter(r => { if (seen.has(r.dateKey)) return false; seen.add(r.dateKey); return true; })
-             .sort((a, b) => a.dateKey.localeCompare(b.dateKey));
 }
 
 /* ─── SUPERVISOR TABLE UI ────────────────────────────── */
