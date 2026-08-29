@@ -29,57 +29,27 @@ document.addEventListener('DOMContentLoaded', () => {
   } catch (e) {
     console.error('Failed to parse RC config JSON:', e);
   }
-  window.RC = window.RC || { commMap: {}, selectedYear: new Date().getFullYear(), selectedMonth: new Date().getMonth() + 1, hasCommission: false };
-
-  // Auto-load DB reports on page load
-  loadDbReports();
-
-  // Period load button
-  document.getElementById('btn-load-period').addEventListener('click', loadDbReports);
+  window.RC = window.RC || { commMap: {}, hasCommission: false };
 
   // OCR button
   document.getElementById('btn-run-ocr').addEventListener('click', runOcr);
 
   // Clipboard paste anywhere on page
   document.addEventListener('paste', handlePaste);
-
-  // Show supervisor table section with empty table so user can add manually
-  showSupervisorSection();
 });
 
-/* ─── PERIOD / DB LOAD ───────────────────────────────── */
-async function loadDbReports() {
-  const year  = document.getElementById('sel-year').value;
-  const month = String(document.getElementById('sel-month').value).padStart(2, '0');
-  const period = `${year}-${month}`;
-
-  const statusWrap = document.getElementById('period-status');
-  const statusText = document.getElementById('period-status-text');
-  statusWrap.classList.remove('hidden');
-  statusText.textContent = '⏳ Loading your reports…';
-
+/* ─── FETCH DB REPORTS FOR SPECIFIC DATES ────────────── */
+async function loadDbReportsForDates(dateKeys) {
+  if (!dateKeys || dateKeys.length === 0) return;
   try {
-    const res  = await fetch(`/reports/api/daily-summary?month=${period}`);
+    const res  = await fetch(`/reports/api/reports-by-dates?dates=${dateKeys.join(',')}`);
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'API error');
-
     dbDays   = data.days;
     dbLoaded = true;
-
-    // Update RC globals
-    window.RC.selectedYear  = parseInt(year);
-    window.RC.selectedMonth = parseInt(month);
-
-    const total = dbDays.reduce((s, d) => s + d.counts.F + d.counts.P + d.counts.H + d.counts.A, 0);
-    statusText.textContent = `✅ Loaded ${dbDays.length} day(s) · ${total} session(s) for ${period}`;
-    statusText.className   = 'text-emerald-600 font-semibold text-xs';
-
-    // Re-run crosscheck if supervisor data already present
-    if (supervisorRows.length > 0) runCrosscheck();
-
   } catch (err) {
-    statusText.textContent = `❌ Failed: ${err.message}`;
-    statusText.className   = 'text-red-500 font-semibold text-xs';
+    console.error('Failed to load DB reports for dates:', err);
+    dbLoaded = false;
   }
 }
 
@@ -154,6 +124,10 @@ async function runOcr() {
   progressBar.style.width = '0%';
   progressBar.classList.replace('bg-emerald-500', 'bg-brand-500');
   progressBar.classList.replace('bg-red-500', 'bg-brand-500');
+
+  // Reset DB data — will re-fetch for new supervisor dates
+  dbLoaded = false;
+  dbDays   = [];
 
   if (spinner) spinner.classList.remove('hidden');
   if (checkIcon) checkIcon.classList.add('hidden');
@@ -323,11 +297,9 @@ function buildSupervisorRow(row, idx) {
 }
 
 function addSupervisorRow() {
-  const year  = window.RC.selectedYear  || new Date().getFullYear();
-  const month = window.RC.selectedMonth || (new Date().getMonth() + 1);
   const nextDay = supervisorRows.length
     ? (() => { const last = new Date(supervisorRows[supervisorRows.length-1].dateKey); last.setDate(last.getDate()+1); return last; })()
-    : new Date(year, month-1, 1);
+    : new Date();
 
   const dateKey   = nextDay.toISOString().substring(0,10);
   const dateLabel = formatDateLabel(nextDay);
@@ -337,26 +309,26 @@ function addSupervisorRow() {
 }
 
 /* ─── CROSSCHECK ENGINE ──────────────────────────────── */
-function runCrosscheck(silent = false) {
+async function runCrosscheck(silent = false) {
   if (supervisorRows.length === 0) {
-    if (!silent) alert('No supervisor data. Add rows or run OCR first.');
+    if (!silent) alert('No supervisor data. Add rows or upload the supervisor sheet first.');
     return;
   }
+
+  // Fetch DB data for exactly the dates in supervisor sheet (if not already loaded)
+  const supervisorDateKeys = supervisorRows.map(r => r.dateKey);
   if (!dbLoaded) {
-    if (!silent) alert('Please load your database reports first (Step 1).');
-    return;
+    await loadDbReportsForDates(supervisorDateKeys);
   }
 
-  // Build a map from dateKey -> dbDay
-  const dbMap = {};
+  // Build maps
+  const dbMap  = {};
   dbDays.forEach(d => { dbMap[d.dateKey] = d; });
-
-  // Build a map from dateKey -> supervisorRow
   const supMap = {};
   supervisorRows.forEach(r => { supMap[r.dateKey] = r; });
 
-  // Union of all dateKeys
-  const allKeys = [...new Set([...Object.keys(supMap), ...Object.keys(dbMap)])].sort();
+  // Only crosscheck dates that appear in supervisor data
+  const allKeys = supervisorDateKeys.slice().sort();
 
   let totalDays    = allKeys.length;
   let matchedDays  = 0;

@@ -121,6 +121,65 @@ exports.getMonthReportsApi = async (req, res) => {
   }
 };
 
+// GET /reports/api/reports-by-dates?dates=2026-07-16,2026-07-17,...
+// Returns DB counts only for the exact dates requested
+exports.getReportsByDates = async (req, res) => {
+  try {
+    const { dates } = req.query;
+    if (!dates) return res.status(400).json({ error: 'No dates provided.' });
+
+    const dateKeys = dates.split(',').map(d => d.trim()).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
+    if (dateKeys.length === 0) return res.status(400).json({ error: 'No valid dates provided.' });
+
+    // Build date ranges for each unique date
+    const dateConditions = dateKeys.map(dk => {
+      const [y, m, d] = dk.split('-').map(Number);
+      return { $gte: new Date(y, m - 1, d), $lte: new Date(y, m - 1, d, 23, 59, 59, 999) };
+    });
+
+    const reports = await Report.find({
+      teacher: req.session.user._id,
+      $or: dateConditions.map(cond => ({ date: cond })),
+    }).sort({ date: 1 });
+
+    const dailyMap = {};
+    for (const r of reports) {
+      const key = r.date.toISOString().substring(0, 10);
+      if (!dailyMap[key]) {
+        dailyMap[key] = {
+          dateKey: key,
+          counts:  { F: 0, P: 0, H: 0, A: 0 },
+          sessions: [],
+        };
+      }
+      const letter = TYPE_TO_LETTER[r.teaching_type];
+      if (letter) dailyMap[key].counts[letter]++;
+      dailyMap[key].sessions.push({
+        _id:           String(r._id),
+        class_name:    r.class_name,
+        subject:       r.subject,
+        teaching_type: r.teaching_type,
+        letter:        letter || '?',
+        duration:      r.durationFormatted,
+        session_type:  r.session_type,
+        session_mode:  r.session_mode,
+      });
+    }
+
+    // Include all requested dates (even ones with no DB records → 0 counts)
+    const days = dateKeys.map(dk => dailyMap[dk] || {
+      dateKey: dk,
+      counts: { F: 0, P: 0, H: 0, A: 0 },
+      sessions: [],
+    });
+
+    return res.json({ ok: true, days });
+  } catch (err) {
+    console.error('getReportsByDates error:', err);
+    return res.status(500).json({ error: 'Server error.' });
+  }
+};
+
 // POST /reports/api/analyze-sheet
 // Body: { imageBase64: "<data:image/...;base64,...>", year: 2026, month: 7 }
 // Returns: { ok: true, rows: [{dateKey, F, P, H, A}, ...] }
