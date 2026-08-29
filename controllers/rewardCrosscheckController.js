@@ -185,8 +185,22 @@ Output format:
             }],
             generationConfig: {
               temperature:     0,
-              maxOutputTokens: 2048,
+              maxOutputTokens: 8192,
               responseMimeType: 'application/json',
+              responseSchema: {
+                type: 'ARRAY',
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    dateKey: { type: 'STRING', description: 'Date in YYYY-MM-DD format' },
+                    F: { type: 'INTEGER', description: 'Full/Prime sessions count' },
+                    P: { type: 'INTEGER', description: 'Prime Assisted sessions count' },
+                    H: { type: 'INTEGER', description: 'Half Prime sessions count' },
+                    A: { type: 'INTEGER', description: 'Assistant sessions count' },
+                  },
+                  required: ['dateKey', 'F', 'P', 'H', 'A'],
+                },
+              },
             },
           }),
         });
@@ -212,18 +226,30 @@ Output format:
       return res.status(502).json({ error: 'AI analysis failed. ' + lastError });
     }
 
-    // Parse the JSON array from Gemini's response
-    let rows;
+    // Parse the JSON array from Gemini's response (with fallback recovery)
+    let rows = [];
     try {
       const cleaned = rawText.replace(/```json?/gi, '').replace(/```/g, '').trim();
       rows = JSON.parse(cleaned);
     } catch (parseErr) {
-      console.error('Failed to parse Gemini response:', rawText);
-      return res.status(502).json({ error: 'Could not parse AI response as JSON.', raw: rawText.slice(0, 300) });
+      console.warn('Direct JSON.parse failed, attempting regex recovery...', parseErr.message);
+      // Fallback: extract individual JSON objects from rawText
+      const objMatches = rawText.match(/\{[^{}]*"dateKey"[^{}]*\}/g);
+      if (objMatches && objMatches.length > 0) {
+        for (const objStr of objMatches) {
+          try {
+            const parsedObj = JSON.parse(objStr);
+            if (parsedObj && parsedObj.dateKey) rows.push(parsedObj);
+          } catch (e) {
+            // Ignore single corrupt chunk
+          }
+        }
+      }
     }
 
-    if (!Array.isArray(rows)) {
-      return res.status(502).json({ error: 'AI returned unexpected data format.' });
+    if (!Array.isArray(rows) || rows.length === 0) {
+      console.error('Failed to parse Gemini response:', rawText.slice(0, 500));
+      return res.status(502).json({ error: 'Could not parse AI response as JSON.', raw: rawText.slice(0, 300) });
     }
 
     // Sanitize rows: ensure F/P/H/A are integers >= 0
