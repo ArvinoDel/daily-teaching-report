@@ -144,8 +144,8 @@ async function runOcr() {
     statusText.textContent = '🤖 Analyzing image with Gemini AI…';
     progressBar.style.width = '50%';
 
-    const year  = parseInt(document.getElementById('sel-year').value)  || new Date().getFullYear();
-    const month = parseInt(document.getElementById('sel-month').value) || (new Date().getMonth() + 1);
+    const year  = new Date().getFullYear();
+    const month = new Date().getMonth() + 1;
 
     const res = await fetch('/reports/api/analyze-sheet', {
       method:  'POST',
