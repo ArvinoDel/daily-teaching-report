@@ -6,6 +6,7 @@ const crosscheck  = require('../controllers/rewardCrosscheckController');
 router.get('/', ctrl.index);
 router.get('/new', ctrl.newForm);
 router.post('/', ctrl.create);
+router.post('/bulk', ctrl.createBulk);
 router.get('/export', ctrl.exportExcel);
 
 // Reward crosscheck routes (must be before /:id wildcard)
