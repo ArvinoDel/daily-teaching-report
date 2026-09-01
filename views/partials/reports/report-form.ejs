@@ -286,7 +286,7 @@
   <!-- Actions -->
   <div class="flex items-center justify-between pt-2">
     <a href="<%= _cancelUrl %>" id="cancel-btn" class="text-sm font-semibold text-slate-400 hover:text-slate-600 transition">Cancel</a>
-    <button type="submit"
+    <button type="submit" id="btn-main-submit"
       class="inline-flex items-center gap-2 <%= _submitColorClass %> active:scale-95 text-white font-semibold text-sm px-6 py-2.5 rounded-xl shadow transition">
       <% if (_isEdit) { %>
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
@@ -297,10 +297,61 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
         </svg>
       <% } %>
-      <%= _submitText %>
+      <span id="btn-submit-text"><%= _submitText %></span>
     </button>
   </div>
 </form>
+
+<% if (!_isEdit) { %>
+<!-- ═══════════════════════════════════════════════════════════════
+     BULK ADD: Additional Class Entries
+     ═══════════════════════════════════════════════════════════════ -->
+
+<!-- Bulk error display -->
+<div id="bulk-errors" class="hidden mt-4">
+  <div class="bg-red-50 border border-red-200 rounded-xl p-4">
+    <div class="flex items-start gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/>
+      </svg>
+      <ul id="bulk-error-list" class="text-sm text-red-700 space-y-0.5"></ul>
+    </div>
+  </div>
+</div>
+
+<!-- Extra class entries container -->
+<div id="bulk-extra-entries" class="space-y-4 mt-2"></div>
+
+<!-- Add Another Class button -->
+<div class="mt-4">
+  <button type="button" id="btn-add-class"
+    onclick="addBulkEntry()"
+    class="w-full inline-flex items-center justify-center gap-2 text-sm font-semibold text-brand-600 hover:text-brand-700 bg-white hover:bg-brand-50 border-2 border-dashed border-brand-200 hover:border-brand-400 px-6 py-3.5 rounded-2xl transition-all active:scale-[0.98] group">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 transition-transform group-hover:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+    </svg>
+    Add Another Class
+  </button>
+</div>
+
+<!-- Bulk submit bar (shown when extra entries exist) -->
+<div id="bulk-submit-bar" class="hidden mt-4">
+  <div class="bg-gradient-to-r from-brand-600 to-brand-700 rounded-2xl px-6 py-4 flex items-center justify-between gap-4 shadow-lg shadow-brand-200/50">
+    <div>
+      <p class="text-white font-semibold text-sm"><span id="bulk-total-count">2</span> reports ready to save</p>
+      <p class="text-brand-200 text-xs mt-0.5">Each class is saved as a separate, independent report</p>
+    </div>
+    <button type="button" id="btn-submit-bulk"
+      onclick="submitBulkReports()"
+      class="inline-flex items-center gap-2 bg-white text-brand-700 font-semibold text-sm px-5 py-2.5 rounded-xl shadow transition hover:bg-brand-50 active:scale-95 flex-shrink-0">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/>
+      </svg>
+      <span id="bulk-submit-text">Save 2 Reports</span>
+    </button>
+  </div>
+</div>
+<% } %>
 
 <script>
 /* ═══════════════════════════════════════════════════════════════
@@ -1187,7 +1238,709 @@ if (rosterStudentsEl) {
     if (backLink)  backLink.addEventListener('click',  function (e) { guardNav(e, '<%= _cancelUrl %>'); });
 
     window.addEventListener('beforeunload', function (e) {
-      if (dirty) { e.preventDefault(); e.returnValue = ''; }
+      if (dirty && !window.__bulkSubmitting) { e.preventDefault(); e.returnValue = ''; }
     });
   })();
 </script>
+
+<% if (!_isEdit) { %>
+<script id="bulk-teaching-types-json" type="application/json"><%- JSON.stringify(typeof teachingTypes !== 'undefined' ? teachingTypes : []) %></script>
+<script id="bulk-is-admin-json" type="application/json"><%- JSON.stringify((_isAdmin) || false) %></script>
+<script id="bulk-teachers-json" type="application/json"><%- JSON.stringify((typeof teachers !== 'undefined' && Array.isArray(teachers) && teachers.length > 0) ? teachers.map(function(t){ return { _id: String(t._id), displayName: t.displayName, username: t.username }; }) : []) %></script>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   BULK ADD: Multi-Class Entry Management
+   Each extra card is a fully independent report entry.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+// Server-side data injected for use in dynamically-built cards
+var _bulkTeachingTypes = JSON.parse(document.getElementById('bulk-teaching-types-json').textContent);
+var _bulkIsAdmin       = JSON.parse(document.getElementById('bulk-is-admin-json').textContent);
+var _bulkTeachers      = JSON.parse(document.getElementById('bulk-teachers-json').textContent);
+var _bulkToday         = '<%= new Date().toISOString().substring(0,10) %>';
+
+var _bulkIdCounter = 0;
+var _bulkIds       = []; // ordered list of active entry IDs
+var _bulkStates    = {}; // { id: { sessionType, sessionMode, selectedGroup, studentStates, acTags, absentTags } }
+
+/* ─── Add / Remove entries ──────────────────────────────────────────── */
+function addBulkEntry() {
+  var id  = ++_bulkIdCounter;
+  var num = _bulkIds.length + 2; // +2 because entry #1 is the main form
+  _bulkIds.push(id);
+  _bulkStates[id] = { sessionType: 'group', sessionMode: 'offline', selectedGroup: null, studentStates: {}, acTags: [], absentTags: [] };
+
+  var container = document.getElementById('bulk-extra-entries');
+  var wrapper   = document.createElement('div');
+  wrapper.innerHTML = _buildEntryHtml(id, num);
+  container.appendChild(wrapper.firstElementChild);
+
+  _initBulkEntry(id);
+  _updateBulkUI();
+
+  // Smooth scroll to new entry
+  document.getElementById('bulk-entry-' + id).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function removeBulkEntry(id) {
+  var el = document.getElementById('bulk-entry-' + id);
+  if (el) { el.style.opacity = '0'; el.style.transform = 'scale(0.97)'; el.style.transition = 'all 0.15s'; setTimeout(function() { el.remove(); }, 150); }
+  _bulkIds     = _bulkIds.filter(function(x) { return x !== id; });
+  delete _bulkStates[id];
+  setTimeout(function() { _renumberEntries(); _updateBulkUI(); }, 160);
+}
+
+function _renumberEntries() {
+  _bulkIds.forEach(function(id, idx) {
+    var numEl   = document.getElementById('bulk-entry-' + id + '-num');
+    var titleEl = document.getElementById('bulk-entry-' + id + '-title');
+    var st      = _bulkStates[id];
+    var newNum  = idx + 2;
+    if (numEl) numEl.textContent = newNum;
+    if (titleEl && !(st && st.selectedGroup)) titleEl.textContent = 'Class ' + newNum;
+  });
+}
+
+/* ─── UI update (button text, submit bar) ───────────────────────────── */
+function _updateBulkUI() {
+  var total       = 1 + _bulkIds.length;
+  var submitBar   = document.getElementById('bulk-submit-bar');
+  var countEl     = document.getElementById('bulk-total-count');
+  var bulkBtnText = document.getElementById('bulk-submit-text');
+  var mainBtnText = document.getElementById('btn-submit-text');
+
+  if (_bulkIds.length > 0) {
+    if (submitBar)   submitBar.classList.remove('hidden');
+    if (countEl)     countEl.textContent     = total;
+    if (bulkBtnText) bulkBtnText.textContent = 'Save ' + total + ' Reports';
+    if (mainBtnText) mainBtnText.textContent = 'Save ' + total + ' Reports';
+  } else {
+    if (submitBar)   submitBar.classList.add('hidden');
+    if (mainBtnText) mainBtnText.textContent = '<%= _submitText %>';
+  }
+}
+
+/* ─── Session Type ──────────────────────────────────────────────────── */
+function setEntrySessionType(id, type) {
+  var st = _bulkStates[id]; if (!st) return;
+  st.sessionType = type;
+  var inact = 'flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+  var btnG = document.getElementById('bulk-entry-' + id + '-btn-group');
+  var btnP = document.getElementById('bulk-entry-' + id + '-btn-private');
+  var btnC = document.getElementById('bulk-entry-' + id + '-btn-competition');
+  if (btnG) btnG.className = inact;
+  if (btnP) btnP.className = inact;
+  if (btnC) btnC.className = inact;
+  if (type === 'group'       && btnG) btnG.className = 'flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition border-brand-500 bg-brand-50 text-brand-700';
+  if (type === 'private'     && btnP) btnP.className = 'flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition border-purple-400 bg-purple-50 text-purple-700';
+  if (type === 'competition' && btnC) btnC.className = 'flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition border-orange-500 bg-orange-50 text-orange-700';
+}
+
+/* ─── Session Mode ──────────────────────────────────────────────────── */
+function setEntryMode(id, mode) {
+  var st = _bulkStates[id]; if (!st) return;
+  st.sessionMode = mode;
+  var inact  = 'flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
+  var btnOff = document.getElementById('bulk-entry-' + id + '-btn-offline');
+  var btnOn  = document.getElementById('bulk-entry-' + id + '-btn-online');
+  var piWrap = document.getElementById('bulk-entry-' + id + '-pi-wrap');
+  if (mode === 'online') {
+    if (btnOn)  btnOn.className  = 'flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition border-blue-500 bg-blue-50 text-blue-700';
+    if (btnOff) btnOff.className = inact;
+    if (piWrap) piWrap.classList.remove('hidden');
+  } else {
+    if (btnOff) btnOff.className = 'flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition border-slate-700 bg-slate-700 text-white';
+    if (btnOn)  btnOn.className  = inact;
+    if (piWrap) piWrap.classList.add('hidden');
+    var pic = document.getElementById('bulk-entry-' + id + '-pi-check');
+    if (pic) pic.checked = false;
+  }
+}
+
+/* ─── Autocomplete ──────────────────────────────────────────────────── */
+function _entryClassFocus(id) {
+  var inp  = document.getElementById('bulk-entry-' + id + '-class-name'); if (!inp) return;
+  var q    = inp.value.trim().toLowerCase();
+  var list = q ? groupsData.filter(function(g){ return g.group_name.toLowerCase().includes(q); }) : groupsData;
+  if (list.length) _renderEntryDropdown(id, list);
+}
+
+function _entryClassInput(id, val) {
+  var st = _bulkStates[id]; if (!st) return;
+  if (st.selectedGroup && val !== st.selectedGroup.group_name) {
+    st.selectedGroup = null; st.studentStates = {};
+    _hideEntryRoster(id);
+    var cb = document.getElementById('bulk-entry-' + id + '-clear-btn');
+    if (cb) cb.classList.add('hidden');
+    _entryHintDefault(id);
+  }
+  if (!val.trim()) { _hideEntryDropdown(id); return; }
+  var list = groupsData.filter(function(g){ return g.group_name.toLowerCase().includes(val.trim().toLowerCase()); });
+  list.length ? _renderEntryDropdown(id, list) : _hideEntryDropdown(id);
+}
+
+function _renderEntryDropdown(id, groups) {
+  var dd = document.getElementById('bulk-entry-' + id + '-dropdown'); if (!dd) return;
+  dd.innerHTML = groups.slice(0, 8).map(function(g) {
+    var tcls = g.type === 'GROUP' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700';
+    var tlbl = g.type === 'GROUP' ? 'Group' : 'Private';
+    return '<button type="button" onclick="selectEntryGroup(' + id + ',\'' + escHtml(g._id) + '\')" class="w-full text-left px-4 py-3 hover:bg-brand-50 transition flex items-center justify-between gap-3">' +
+      '<div class="flex-1 min-w-0"><p class="text-sm font-semibold text-slate-800 truncate">' + escHtml(g.group_name) + '</p>' +
+      '<div class="flex items-center gap-1.5 mt-0.5"><span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full ' + tcls + '">' + tlbl + '</span>' +
+      (g.level ? '<span class="text-[10px] font-mono text-slate-400">' + escHtml(g.level) + '</span>' : '') + '</div></div>' +
+      '<span class="text-xs text-slate-400 flex-shrink-0">' + g.students.length + ' student(s)</span></button>';
+  }).join('');
+  dd.classList.remove('hidden');
+}
+
+function _hideEntryDropdown(id) {
+  var dd = document.getElementById('bulk-entry-' + id + '-dropdown');
+  if (dd) dd.classList.add('hidden');
+}
+
+function selectEntryGroup(id, groupId) {
+  var st = _bulkStates[id]; if (!st) return;
+  var g  = groupsData.find(function(x){ return x._id === groupId; }); if (!g) return;
+
+  st.selectedGroup  = g;
+  st.studentStates  = {};
+  g.students.forEach(function(s){ st.studentStates[s] = { state: null, acCount: 0 }; });
+
+  var inp = document.getElementById('bulk-entry-' + id + '-class-name');
+  if (inp) inp.value = g.group_name;
+  _hideEntryDropdown(id);
+
+  var cb = document.getElementById('bulk-entry-' + id + '-clear-btn');
+  if (cb) cb.classList.remove('hidden');
+
+  var rn = document.getElementById('bulk-entry-' + id + '-roster-name');
+  if (rn) rn.textContent = g.group_name;
+
+  var titleEl = document.getElementById('bulk-entry-' + id + '-title');
+  if (titleEl) titleEl.textContent = g.group_name;
+
+  setEntrySessionType(id, g.type === 'PRIVATE' ? 'private' : 'group');
+  _renderEntryRoster(id);
+  _showEntryRoster(id);
+  _entryHintSelected(id);
+}
+
+function clearEntryGroup(id) {
+  var st = _bulkStates[id]; if (!st) return;
+  st.selectedGroup = null; st.studentStates = {}; st.acTags = []; st.absentTags = [];
+  var inp = document.getElementById('bulk-entry-' + id + '-class-name');
+  if (inp) { inp.value = ''; inp.focus(); }
+  var cb = document.getElementById('bulk-entry-' + id + '-clear-btn');
+  if (cb) cb.classList.add('hidden');
+  _hideEntryRoster(id);
+  _renderEntryTagBox(id, 'ac');
+  _renderEntryTagBox(id, 'absent');
+  _entryHintDefault(id);
+  var idx     = _bulkIds.indexOf(id);
+  var titleEl = document.getElementById('bulk-entry-' + id + '-title');
+  if (titleEl) titleEl.textContent = 'Class ' + (idx + 2);
+}
+
+function _showEntryRoster(id) {
+  var r = document.getElementById('bulk-entry-' + id + '-roster');
+  var m = document.getElementById('bulk-entry-' + id + '-manual');
+  if (r) r.classList.remove('hidden');
+  if (m) m.classList.add('hidden');
+}
+function _hideEntryRoster(id) {
+  var r = document.getElementById('bulk-entry-' + id + '-roster');
+  var m = document.getElementById('bulk-entry-' + id + '-manual');
+  if (r) r.classList.add('hidden');
+  if (m) m.classList.remove('hidden');
+}
+function _entryHintDefault(id) {
+  var h = document.getElementById('bulk-entry-' + id + '-hint');
+  if (h) { h.textContent = 'Type a name or select from your groups list.'; h.className = 'text-xs text-slate-400'; }
+}
+function _entryHintSelected(id) {
+  var h = document.getElementById('bulk-entry-' + id + '-hint');
+  if (h) {
+    h.innerHTML = '<span class="inline-flex items-center gap-1 text-brand-600 font-semibold"><svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>Group selected — mark students below</span>';
+    h.className = 'text-xs';
+  }
+}
+
+/* ─── Student Roster ────────────────────────────────────────────────── */
+function _renderEntryRoster(id) {
+  var st = _bulkStates[id]; if (!st || !st.selectedGroup) return;
+  var c  = document.getElementById('bulk-entry-' + id + '-roster-students'); if (!c) return;
+  c.innerHTML = st.selectedGroup.students.map(function(s){ return _renderEntryStudentRow(id, s); }).join('');
+  _updateEntryRosterSummary(id);
+}
+
+function _renderEntryStudentRow(id, student) {
+  var st     = _bulkStates[id];
+  var stObj  = (st && st.studentStates[student]) || { state: null, acCount: 0 };
+  var state  = stObj.state;
+  var acCnt  = stObj.acCount || 0;
+  var MAX_AC = 10;
+
+  var rowCls = 'flex items-center justify-between py-2.5 px-3 rounded-xl border transition-all duration-200 ' +
+    (state === 'ac' ? 'bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200 shadow-sm shadow-emerald-100/50' :
+     state === 'absent' ? 'bg-red-50 border-red-200' : 'bg-white border-slate-100 hover:border-slate-200');
+
+  var nameCls = 'text-sm ' + (state === 'ac' ? 'text-emerald-800 font-semibold' : state === 'absent' ? 'text-red-700 font-medium' : 'text-slate-700');
+
+  var icon = state === 'ac'
+    ? '<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500 text-white flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z" clip-rule="evenodd"/></svg></span>'
+    : state === 'absent'
+    ? '<span class="flex items-center justify-center w-5 h-5 rounded-full bg-red-100 text-red-500 flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg></span>'
+    : '<span class="flex items-center justify-center w-5 h-5 rounded-full bg-slate-100 flex-shrink-0"><span class="w-1.5 h-1.5 rounded-full bg-slate-300"></span></span>';
+
+  var acHtml = state === 'ac'
+    ? '<div class="inline-flex items-center rounded-full bg-emerald-500 shadow-sm overflow-hidden">' +
+        '<button type="button" ' + (acCnt > 1 ? '' : 'disabled ') + 'class="w-7 h-7 flex items-center justify-center text-sm font-bold ' + (acCnt > 1 ? 'text-white/90 hover:bg-emerald-600' : 'text-emerald-300 cursor-not-allowed') + '" data-beid="' + id + '" data-student="' + escHtml(student) + '" data-role="remove">−</button>' +
+        '<span class="px-1.5 text-[11px] font-bold text-white border-x border-emerald-400/40 min-w-[38px] text-center leading-7">' + acCnt + ' AC</span>' +
+        '<button type="button" ' + (acCnt < MAX_AC ? '' : 'disabled ') + 'class="w-7 h-7 flex items-center justify-center text-sm font-bold ' + (acCnt < MAX_AC ? 'text-white/90 hover:bg-emerald-600' : 'text-emerald-300 cursor-not-allowed') + '" data-beid="' + id + '" data-student="' + escHtml(student) + '" data-role="add">+</button>' +
+      '</div>' +
+      '<button type="button" class="w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:bg-red-50 hover:text-red-500" data-beid="' + id + '" data-student="' + escHtml(student) + '" data-role="clear-ac"><svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg></button>'
+    : '<button type="button" class="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full border border-emerald-200 bg-white text-emerald-600 hover:bg-emerald-500 hover:text-white hover:border-emerald-500 active:scale-95 transition-all" data-beid="' + id + '" data-student="' + escHtml(student) + '" data-role="ac">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z" clip-rule="evenodd"/></svg>' +
+        'AC</button>';
+
+  var absCls = 'inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full transition-all duration-200 ' +
+    (state === 'absent' ? 'bg-red-500 text-white shadow-sm border border-red-500' : 'border border-slate-200 bg-white text-slate-400 hover:border-red-300 hover:text-red-500 active:scale-95');
+
+  return '<div class="' + rowCls + '">' +
+    '<div class="flex items-center gap-2 min-w-0">' + icon + '<span class="' + nameCls + ' truncate">' + escHtml(student) + '</span></div>' +
+    '<div class="flex items-center gap-1.5 flex-shrink-0">' + acHtml +
+      '<button type="button" class="' + absCls + '" data-beid="' + id + '" data-student="' + escHtml(student) + '" data-role="absent">Absent</button>' +
+    '</div></div>';
+}
+
+function toggleEntryStudent(id, student, role) {
+  var st   = _bulkStates[id]; if (!st) return;
+  var stObj = st.studentStates[student] || { state: null, acCount: 0 };
+  if (role === 'ac')       { stObj.state = 'ac'; stObj.acCount = 1; }
+  else if (role === 'add') { if (stObj.state === 'ac' && stObj.acCount < 10) stObj.acCount++; }
+  else if (role === 'remove') { if (stObj.state === 'ac' && stObj.acCount > 1) stObj.acCount--; }
+  else if (role === 'clear-ac') { stObj.state = null; stObj.acCount = 0; }
+  else if (role === 'absent') { stObj.state = stObj.state === 'absent' ? null : 'absent'; stObj.acCount = 0; }
+  st.studentStates[student] = stObj;
+  _renderEntryRoster(id);
+}
+
+function markAllEntry(id, role) {
+  var st = _bulkStates[id]; if (!st || !st.selectedGroup) return;
+  st.selectedGroup.students.forEach(function(s) {
+    if (role === 'clear')  st.studentStates[s] = { state: null, acCount: 0 };
+    else if (role === 'ac') st.studentStates[s] = { state: 'ac', acCount: 1 };
+    else if (role === 'absent') st.studentStates[s] = { state: 'absent', acCount: 0 };
+  });
+  _renderEntryRoster(id);
+}
+
+function _updateEntryRosterSummary(id) {
+  var st   = _bulkStates[id]; if (!st) return;
+  var vals = Object.values(st.studentStates);
+  var acCnt   = vals.filter(function(v){ return v.state === 'ac'; }).length;
+  var totalAc = vals.reduce(function(s,v){ return s + (v.state==='ac' ? v.acCount : 0); }, 0);
+  var absCnt  = vals.filter(function(v){ return v.state === 'absent'; }).length;
+  var el = document.getElementById('bulk-entry-' + id + '-roster-summary'); if (!el) return;
+  var parts = [];
+  if (acCnt > 0) { var t = acCnt + ' AC'; if (totalAc > acCnt) t += ' (' + totalAc + ' total)'; parts.push('<span class="text-emerald-600 font-semibold">' + t + '</span>'); }
+  if (absCnt > 0) parts.push('<span class="text-red-500 font-semibold">' + absCnt + ' Absent</span>');
+  el.innerHTML = parts.length ? parts.join(' · ') : '<span class="text-slate-400">No marks yet</span>';
+}
+
+/* ─── Tag inputs (manual AC/Absent) ────────────────────────────────── */
+function _initBulkTagInput(id, type) {
+  var inp = document.getElementById('bulk-entry-' + id + '-' + type + '-input'); if (!inp) return;
+  function tryAdd() {
+    var val = inp.value.replace(/,/g, '').trim(); if (!val) return;
+    var st  = _bulkStates[id]; if (!st) return;
+    var arr = type === 'ac' ? st.acTags : st.absentTags;
+    if (type === 'absent' && arr.indexOf(val) !== -1) { inp.value = ''; return; }
+    arr.push(val); inp.value = ''; _renderEntryTagBox(id, type);
+  }
+  inp.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); tryAdd(); }
+    else if (e.key === ',') { e.preventDefault(); tryAdd(); }
+    else if (e.key === 'Backspace' && inp.value === '') {
+      var st = _bulkStates[id]; if (!st) return;
+      var arr = type === 'ac' ? st.acTags : st.absentTags;
+      if (arr.length) { arr.pop(); _renderEntryTagBox(id, type); }
+    }
+  });
+  inp.addEventListener('blur', function(){ if (inp.value.trim()) tryAdd(); });
+}
+
+function _renderEntryTagBox(id, type) {
+  var box  = document.getElementById('bulk-entry-' + id + '-' + type + '-box');
+  var cntEl = document.getElementById('bulk-entry-' + id + '-' + type + '-count');
+  var st   = _bulkStates[id]; if (!st || !box) return;
+  var arr  = type === 'ac' ? st.acTags : st.absentTags;
+  var cls  = type === 'ac' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600';
+  box.innerHTML = arr.map(function(tag, i) {
+    return '<span class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ' + cls + '">' +
+      escHtml(tag) + ' <button type="button" class="ml-0.5 leading-none opacity-60 hover:opacity-100 transition text-sm" data-be-rm-id="' + id + '" data-be-rm-type="' + type + '" data-be-rm-idx="' + i + '">×</button></span>';
+  }).join('');
+  if (cntEl) cntEl.textContent = arr.length;
+  box.querySelectorAll('button[data-be-rm-id]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var bId  = parseInt(btn.getAttribute('data-be-rm-id'));
+      var bTyp = btn.getAttribute('data-be-rm-type');
+      var bIdx = parseInt(btn.getAttribute('data-be-rm-idx'));
+      var bSt  = _bulkStates[bId]; if (!bSt) return;
+      var bArr = bTyp === 'ac' ? bSt.acTags : bSt.absentTags;
+      bArr.splice(bIdx, 1); _renderEntryTagBox(bId, bTyp);
+    });
+  });
+}
+
+/* ─── Entry init ────────────────────────────────────────────────────── */
+function _initBulkEntry(id) {
+  setEntrySessionType(id, 'group');
+  setEntryMode(id, 'offline');
+  _initBulkTagInput(id, 'ac');
+  _initBulkTagInput(id, 'absent');
+
+  // Roster click delegation
+  var rosterEl = document.getElementById('bulk-entry-' + id + '-roster-students');
+  if (rosterEl) {
+    rosterEl.addEventListener('click', function(e) {
+      var btn = e.target.closest('button');
+      if (!btn || btn.disabled) return;
+      var beid    = parseInt(btn.getAttribute('data-beid'));
+      var student = btn.getAttribute('data-student');
+      var role    = btn.getAttribute('data-role');
+      if (!isNaN(beid) && student && role) toggleEntryStudent(beid, student, role);
+    });
+  }
+
+  // Close dropdown on outside click
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('#bulk-entry-' + id + '-group-wrap')) _hideEntryDropdown(id);
+  });
+}
+
+/* ─── Collect entry data ────────────────────────────────────────────── */
+function _getEntryData(id) {
+  var st = _bulkStates[id]; if (!st) return null;
+  var inp       = document.getElementById('bulk-entry-' + id + '-class-name');
+  var className = inp ? inp.value.trim() : '';
+  if (st.selectedGroup) className = st.selectedGroup.group_name;
+
+  var acStudents = [], absentStudents = [];
+  if (st.selectedGroup) {
+    Object.keys(st.studentStates).forEach(function(s) {
+      var stObj = st.studentStates[s];
+      if (stObj.state === 'ac')     { for (var i = 0; i < stObj.acCount; i++) acStudents.push(s); }
+      else if (stObj.state === 'absent') absentStudents.push(s);
+    });
+  } else {
+    acStudents     = st.acTags.slice();
+    absentStudents = st.absentTags.slice();
+  }
+
+  var dateEl    = document.getElementById('bulk-entry-' + id + '-date');
+  var typeEl    = document.getElementById('bulk-entry-' + id + '-teaching-type');
+  var durEl     = document.getElementById('bulk-entry-' + id + '-duration');
+  var teacherEl = document.getElementById('bulk-entry-' + id + '-teacher');
+  var subjEl    = document.getElementById('bulk-entry-' + id + '-subject');
+  var notesEl   = document.getElementById('bulk-entry-' + id + '-notes');
+  var piCheck   = document.getElementById('bulk-entry-' + id + '-pi-check');
+
+  return {
+    date:                   dateEl    ? dateEl.value    : _bulkToday,
+    teaching_type:          typeEl    ? typeEl.value    : '',
+    duration:               durEl     ? durEl.value     : '',
+    teacher:                teacherEl ? teacherEl.value : '',
+    class_name:             className,
+    session_type:           st.sessionType,
+    session_mode:           st.sessionMode,
+    uses_personal_internet: piCheck ? piCheck.checked : false,
+    subject:                subjEl  ? subjEl.value.trim()  : '',
+    notes:                  notesEl ? notesEl.value.trim() : '',
+    ac_students:            acStudents,
+    absent_students:        absentStudents,
+    competition_groups:     []
+  };
+}
+
+function _getMainEntryData() {
+  var form = document.getElementById('report-form'); if (!form) return null;
+  var sessionType = (document.getElementById('session_type_input') || {}).value || 'group';
+  var sessionMode = (document.getElementById('session_mode_input') || {}).value || 'offline';
+  var className   = '';
+  if (sessionType === 'private') {
+    var pvInp = document.getElementById('private_name_input');
+    className = pvInp ? pvInp.value.trim() : '';
+  } else {
+    var cnInp = document.getElementById('class_name');
+    className = cnInp ? cnInp.value.trim() : '';
+  }
+  var piCheck    = document.getElementById('personal_internet_check');
+  var subjectEl  = document.getElementById('subject');
+  var notesEl    = document.getElementById('notes');
+  var acHidden   = document.getElementById('ac-hidden');
+  var absHidden  = document.getElementById('absent-hidden');
+  var compHidden = document.getElementById('competition_groups_hidden');
+  var csrfEl     = form.querySelector('[name="_csrf"]');
+  var dateEl     = form.querySelector('[name="date"]');
+  var typeEl     = form.querySelector('[name="teaching_type"]');
+  var durEl      = form.querySelector('[name="duration"]');
+  var teacherEl  = form.querySelector('[name="teacher"]');
+  return {
+    _csrf:                  csrfEl    ? csrfEl.value    : '',
+    date:                   dateEl    ? dateEl.value    : '',
+    teaching_type:          typeEl    ? typeEl.value    : '',
+    duration:               durEl     ? durEl.value     : '',
+    teacher:                teacherEl ? teacherEl.value : '',
+    class_name:             className,
+    session_type:           sessionType,
+    session_mode:           sessionMode,
+    uses_personal_internet: piCheck ? piCheck.checked : false,
+    subject:                subjectEl ? subjectEl.value.trim() : '',
+    notes:                  notesEl   ? notesEl.value.trim()   : '',
+    ac_students:            acHidden  ? acHidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [],
+    absent_students:        absHidden ? absHidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [],
+    competition_groups:     compHidden ? compHidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : []
+  };
+}
+
+/* ─── Bulk Submit ───────────────────────────────────────────────────── */
+async function submitBulkReports() {
+  var bulkBtn  = document.getElementById('btn-submit-bulk');
+  var mainBtn  = document.getElementById('btn-main-submit');
+  var total    = 1 + _bulkIds.length;
+  var saving   = 'Saving\u2026';
+  if (bulkBtn) { bulkBtn.disabled = true; document.getElementById('bulk-submit-text').textContent = saving; }
+  if (mainBtn) { mainBtn.disabled = true; document.getElementById('btn-submit-text').textContent  = saving; }
+
+  var mainData  = _getMainEntryData();
+  var extraData = _bulkIds.map(function(id){ return _getEntryData(id); });
+  var errors    = [];
+
+  // Validate main entry
+  if (!mainData.class_name)    errors.push('Report 1: Class name is required.');
+  if (!mainData.teaching_type) errors.push('Report 1: Teaching type is required.');
+  if (!mainData.duration)      errors.push('Report 1: Duration is required.');
+
+  // Validate each extra entry independently
+  extraData.forEach(function(d, i) {
+    var label = 'Report ' + (i + 2);
+    if (!d || !d.class_name)    errors.push(label + ': Class name is required.');
+    if (!d || !d.teaching_type) errors.push(label + ': Teaching type is required.');
+    if (!d || !d.duration)      errors.push(label + ': Duration is required.');
+  });
+
+  if (errors.length) {
+    _showBulkErrors(errors);
+    if (bulkBtn) { bulkBtn.disabled = false; document.getElementById('bulk-submit-text').textContent = 'Save ' + total + ' Reports'; }
+    if (mainBtn) { mainBtn.disabled = false; document.getElementById('btn-submit-text').textContent  = 'Save ' + total + ' Reports'; }
+    return;
+  }
+
+  // Hide previous errors
+  var errEl = document.getElementById('bulk-errors'); if (errEl) errEl.classList.add('hidden');
+
+  try {
+    // Each entry carries its own date / teaching_type / duration / teacher
+    var res = await fetch('/reports/bulk', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': mainData._csrf },
+      body:    JSON.stringify({ entries: [mainData].concat(extraData) })
+    });
+    var json = await res.json();
+    if (json.ok) {
+      window.__bulkSubmitting = true;
+      window.location.href = '/reports';
+    } else {
+      _showBulkErrors(json.errors || ['An error occurred. Please try again.']);
+      if (bulkBtn) { bulkBtn.disabled = false; document.getElementById('bulk-submit-text').textContent = 'Save ' + total + ' Reports'; }
+      if (mainBtn) { mainBtn.disabled = false; document.getElementById('btn-submit-text').textContent  = 'Save ' + total + ' Reports'; }
+    }
+  } catch (err) {
+    _showBulkErrors(['Network error. Please try again.']);
+    if (bulkBtn) { bulkBtn.disabled = false; document.getElementById('bulk-submit-text').textContent = 'Save ' + total + ' Reports'; }
+    if (mainBtn) { mainBtn.disabled = false; document.getElementById('btn-submit-text').textContent  = 'Save ' + total + ' Reports'; }
+  }
+}
+
+function _showBulkErrors(errors) {
+  var el   = document.getElementById('bulk-errors');
+  var list = document.getElementById('bulk-error-list');
+  if (!el || !list) return;
+  list.innerHTML = errors.map(function(e){ return '<li>' + escHtml(String(e)) + '</li>'; }).join('');
+  el.classList.remove('hidden');
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+/* ─── Intercept main form submit when extra entries exist ───────────── */
+document.getElementById('report-form').addEventListener('submit', function(e) {
+  if (_bulkIds.length > 0) {
+    e.preventDefault();
+    submitBulkReports();
+  }
+});
+
+/* ─── HTML template for extra entry cards ───────────────────────────── */
+function _buildEntryHtml(id, num) {
+  // Build teaching type <option> list from server data
+  var typeOpts = '<option value="" disabled selected>\u2014 Select type \u2014</option>' +
+    _bulkTeachingTypes.map(function(t) {
+      return '<option value="' + escHtml(t) + '">' + escHtml(t) + '</option>';
+    }).join('');
+
+  // Build teacher selector (admin only)
+  var teacherBlock = '';
+  if (_bulkIsAdmin && _bulkTeachers.length > 0) {
+    var teacherOpts = '<option value="" disabled selected>\u2014 Select teacher \u2014</option>' +
+      _bulkTeachers.map(function(t) {
+        return '<option value="' + escHtml(t._id) + '">' + escHtml(t.displayName || t.username) + '</option>';
+      }).join('');
+    teacherBlock =
+      '<div class="space-y-1.5">' +
+        '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Teacher <span class="text-red-500">*</span></label>' +
+        '<select id="bulk-entry-' + id + '-teacher" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition">' +
+          teacherOpts +
+        '</select>' +
+      '</div>';
+  }
+
+  return '<div id="bulk-entry-' + id + '" class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden" style="transition:opacity 0.2s,transform 0.2s">' +
+
+    /* \u2500\u2500 Header \u2500\u2500 */
+    '<div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">' +
+      '<div class="flex items-center gap-2.5">' +
+        '<span id="bulk-entry-' + id + '-num" class="w-7 h-7 rounded-full bg-brand-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">' + num + '</span>' +
+        '<div>' +
+          '<p class="text-sm font-semibold text-slate-800" id="bulk-entry-' + id + '-title">Report ' + num + '</p>' +
+          '<p class="text-xs text-slate-400 mt-0.5">Fill in all fields for this class</p>' +
+        '</div>' +
+      '</div>' +
+      '<button type="button" onclick="removeBulkEntry(' + id + ')" class="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-red-500 transition px-2.5 py-1.5 rounded-lg hover:bg-red-50">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>Remove' +
+      '</button>' +
+    '</div>' +
+
+    /* \u2500\u2500 Body \u2500\u2500 */
+    '<div class="px-6 py-5 space-y-5">' +
+
+      /* \u2500\u2500 Date / Teaching Type / Duration \u2500\u2500 */
+      '<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">' +
+        '<div class="space-y-1.5">' +
+          '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Teaching Date <span class="text-red-500">*</span></label>' +
+          '<input type="date" id="bulk-entry-' + id + '-date" value="' + _bulkToday + '"' +
+            ' class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 font-mono focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"/>' +
+        '</div>' +
+        '<div class="space-y-1.5">' +
+          '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Teaching Type <span class="text-red-500">*</span></label>' +
+          '<select id="bulk-entry-' + id + '-teaching-type"' +
+            ' class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition">' +
+            typeOpts +
+          '</select>' +
+        '</div>' +
+        '<div class="space-y-1.5">' +
+          '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Duration <span class="text-red-500">*</span></label>' +
+          '<div class="relative">' +
+            '<input type="number" id="bulk-entry-' + id + '-duration" min="1" max="480" placeholder="e.g: 60"' +
+              ' class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 pr-14 text-sm text-slate-800 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"/>' +
+            '<span class="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">min</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+      /* \u2500\u2500 Teacher (admin only) \u2500\u2500 */
+      (teacherBlock ? '<div class="sm:max-w-xs">' + teacherBlock + '</div>' : '') +
+
+      /* \u2500\u2500 Divider \u2500\u2500 */
+      '<div class="border-t border-slate-100"></div>' +
+
+      /* \u2500\u2500 Class Name \u2500\u2500 */
+      '<div class="space-y-1.5">' +
+        '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Group / Class Name <span class="text-red-500">*</span></label>' +
+        '<div id="bulk-entry-' + id + '-group-wrap" class="relative">' +
+          '<input type="text" id="bulk-entry-' + id + '-class-name" placeholder="Type to search groups\u2026" autocomplete="off"' +
+            ' class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"' +
+            ' oninput="_entryClassInput(' + id + ', this.value)" onfocus="_entryClassFocus(' + id + ')" onkeydown="if(event.key===\'Escape\'||event.key===\'Tab\') _hideEntryDropdown(' + id + ')"/>' +
+          '<button type="button" id="bulk-entry-' + id + '-clear-btn" onclick="clearEntryGroup(' + id + ')" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>' +
+          '</button>' +
+          '<div id="bulk-entry-' + id + '-dropdown" class="hidden absolute z-30 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden divide-y divide-slate-50 max-h-56 overflow-y-auto"></div>' +
+        '</div>' +
+        '<p id="bulk-entry-' + id + '-hint" class="text-xs text-slate-400">Type a name or select from your groups list.</p>' +
+      '</div>' +
+
+      /* \u2500\u2500 Session Type & Mode \u2500\u2500 */
+      '<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">' +
+        '<div class="space-y-2"><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Session Type</label>' +
+          '<div class="flex gap-2">' +
+            '<button type="button" id="bulk-entry-' + id + '-btn-group"       onclick="setEntrySessionType(' + id + ',\'group\')"       class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Group</button>' +
+            '<button type="button" id="bulk-entry-' + id + '-btn-private"     onclick="setEntrySessionType(' + id + ',\'private\')"     class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Private</button>' +
+            '<button type="button" id="bulk-entry-' + id + '-btn-competition" onclick="setEntrySessionType(' + id + ',\'competition\')" class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Comp</button>' +
+          '</div></div>' +
+        '<div class="space-y-2"><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Class Mode</label>' +
+          '<div class="flex gap-2">' +
+            '<button type="button" id="bulk-entry-' + id + '-btn-offline" onclick="setEntryMode(' + id + ',\'offline\')" class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Offline</button>' +
+            '<button type="button" id="bulk-entry-' + id + '-btn-online"  onclick="setEntryMode(' + id + ',\'online\')"  class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Online</button>' +
+          '</div></div>' +
+      '</div>' +
+
+      /* \u2500\u2500 Personal Internet \u2500\u2500 */
+      '<div id="bulk-entry-' + id + '-pi-wrap" class="hidden">' +
+        '<label class="flex items-center gap-3 cursor-pointer bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">' +
+          '<input type="checkbox" id="bulk-entry-' + id + '-pi-check" class="w-4 h-4 rounded border-blue-300 text-blue-600 focus:ring-blue-200 flex-shrink-0">' +
+          '<div><p class="text-sm font-semibold text-blue-700">Personal Internet</p><p class="text-xs text-blue-400 mt-0.5">Using own data / wifi</p></div>' +
+        '</label>' +
+      '</div>' +
+
+      /* \u2500\u2500 Subject \u2500\u2500 */
+      '<div class="space-y-1.5">' +
+        '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Material <span class="ml-1 font-normal normal-case text-slate-400">\u2014 optional</span></label>' +
+        '<input type="text" id="bulk-entry-' + id + '-subject" placeholder="e.g: Folder AA-BB" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"/>' +
+      '</div>' +
+
+      /* \u2500\u2500 Notes \u2500\u2500 */
+      '<div class="space-y-1.5">' +
+        '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Notes</label>' +
+        '<textarea id="bulk-entry-' + id + '-notes" rows="2" placeholder="Notes for this class\u2026" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition resize-none"></textarea>' +
+      '</div>' +
+
+      /* \u2500\u2500 Student Roster \u2500\u2500 */
+      '<div id="bulk-entry-' + id + '-roster" class="hidden">' +
+        '<div class="rounded-2xl border border-brand-200 bg-brand-50/30 overflow-hidden">' +
+          '<div class="px-5 py-3.5 border-b border-brand-100 flex items-center justify-between flex-wrap gap-2">' +
+            '<div><p class="text-xs font-semibold text-brand-500 uppercase tracking-wider">Students from</p><h3 id="bulk-entry-' + id + '-roster-name" class="text-sm font-bold text-slate-800 mt-0.5"></h3></div>' +
+            '<div class="flex items-center gap-1.5">' +
+              '<span id="bulk-entry-' + id + '-roster-summary" class="text-xs text-slate-500 mr-1"></span>' +
+              '<button type="button" onclick="markAllEntry(' + id + ',\'ac\')"     class="text-xs font-semibold bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-2.5 py-1.5 rounded-lg transition">All AC</button>' +
+              '<button type="button" onclick="markAllEntry(' + id + ',\'absent\')" class="text-xs font-semibold bg-red-100 hover:bg-red-200 text-red-600 px-2.5 py-1.5 rounded-lg transition">All Absent</button>' +
+              '<button type="button" onclick="markAllEntry(' + id + ',\'clear\')"  class="text-xs font-semibold bg-white hover:bg-slate-100 text-slate-500 border border-slate-200 px-2.5 py-1.5 rounded-lg transition">Clear</button>' +
+            '</div>' +
+          '</div>' +
+          '<div id="bulk-entry-' + id + '-roster-students" class="px-4 py-3 space-y-1.5 max-h-72 overflow-y-auto"></div>' +
+        '</div>' +
+      '</div>' +
+
+      /* \u2500\u2500 Manual AC / Absent \u2500\u2500 */
+      '<div id="bulk-entry-' + id + '-manual">' +
+        '<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">' +
+          '<div class="space-y-1.5">' +
+            '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Achievement Card (AC)</label>' +
+            '<p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd> to add</p>' +
+            '<div id="bulk-entry-' + id + '-ac-box" class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition" onclick="document.getElementById(\'bulk-entry-' + id + '-ac-input\').focus()"></div>' +
+            '<input type="text" id="bulk-entry-' + id + '-ac-input" placeholder="e.g: Darren" autocomplete="off" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition"/>' +
+            '<p class="text-xs text-slate-400"><span id="bulk-entry-' + id + '-ac-count">0</span> student(s) added</p>' +
+          '</div>' +
+          '<div class="space-y-1.5">' +
+            '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Absent</label>' +
+            '<p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd> to add</p>' +
+            '<div id="bulk-entry-' + id + '-absent-box" class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition" onclick="document.getElementById(\'bulk-entry-' + id + '-absent-input\').focus()"></div>' +
+            '<input type="text" id="bulk-entry-' + id + '-absent-input" placeholder="e.g: Michael" autocomplete="off" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition"/>' +
+            '<p class="text-xs text-slate-400"><span id="bulk-entry-' + id + '-absent-count">0</span> student(s) added</p>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+    '</div>' + // end body
+  '</div>'; // end card
+}
+</script>
+<% } %>

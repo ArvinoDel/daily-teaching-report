@@ -260,6 +260,82 @@ exports.create = async (req, res) => {
   }
 };
 
+// POST /reports/bulk — Create multiple reports at once (multi-class bulk add)
+exports.createBulk = async (req, res) => {
+  const isAdmin = req.session.user && (req.session.user.role === 'admin' || req.session.user.role === 'superadmin');
+  try {
+    const { entries } = req.body;
+
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return res.status(400).json({ ok: false, errors: ['No class entries provided.'] });
+    }
+
+    const allErrors = [];
+    const reportsToInsert = [];
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+
+      // Each entry carries its own date, teaching_type, duration, and teacher
+      const teacherId = isAdmin && entry.teacher ? entry.teacher : req.session.user._id;
+      const ac_students     = Array.isArray(entry.ac_students)     ? entry.ac_students     : parseStudentList(entry.ac_students || '');
+      const absent_students = Array.isArray(entry.absent_students) ? entry.absent_students : parseStudentList(entry.absent_students || '');
+      const competition_groups = entry.session_type === 'competition'
+        ? (Array.isArray(entry.competition_groups) ? entry.competition_groups : parseStudentList(entry.competition_groups || ''))
+        : [];
+
+      const errs = validateReportInput({
+        date:          entry.date,
+        teaching_type: entry.teaching_type,
+        duration:      entry.duration,
+        class_name:    entry.class_name,
+        subject:       entry.subject,
+        notes:         entry.notes,
+        ac_students, absent_students,
+        session_mode:  entry.session_mode,
+        session_type:  entry.session_type,
+        teacher:       isAdmin ? teacherId : undefined,
+      });
+
+      if (errs.length > 0) {
+        errs.forEach(e => allErrors.push(`Report ${i + 1}: ${e}`));
+      } else {
+        reportsToInsert.push({
+          date:                   entry.date,
+          subject:                (entry.subject || '').trim(),
+          class_name:             entry.class_name.trim(),
+          duration:               Number(entry.duration),
+          teaching_type:          entry.teaching_type,
+          notes:                  (entry.notes || '').trim(),
+          ac_students, absent_students,
+          teacher:                teacherId,
+          session_mode:           entry.session_mode   || 'offline',
+          uses_personal_internet: entry.uses_personal_internet === true || entry.uses_personal_internet === 'true',
+          session_type:           entry.session_type   || 'group',
+          competition_groups,
+        });
+      }
+    }
+
+    if (allErrors.length > 0) {
+      return res.status(400).json({ ok: false, errors: allErrors });
+    }
+
+    await Report.insertMany(reportsToInsert);
+    const count = reportsToInsert.length;
+    req.session.flash = `${count} report${count > 1 ? 's' : ''} have been created!`;
+    return res.json({ ok: true, count });
+
+  } catch (err) {
+    console.error('createBulk error:', err);
+    const errors = err.errors
+      ? Object.values(err.errors).map(e => e.message)
+      : ['An error occurred. Please try again.'];
+    return res.status(500).json({ ok: false, errors });
+  }
+};
+
+
 exports.show = async (req, res) => {
   try {
     const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
