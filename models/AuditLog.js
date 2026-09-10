@@ -12,17 +12,17 @@ const auditLogSchema = new mongoose.Schema({
   },
   action: {
     type: String,
-    enum: ['update', 'delete'],
+    enum: ['update', 'delete', 'salary_generate', 'salary_publish', 'salary_update'],
     required: true,
   },
   targetType: {
     type: String,
-    enum: ['report', 'user', 'group'], // 🟢 added 'group'
+    enum: ['report', 'user', 'group', 'salary'], // 🟢 added 'salary'
     required: true,
   },
   targetId: {
     type: mongoose.Schema.Types.ObjectId,
-    required: true,
+    default: null,
   },
   targetLabel: {
     type: String,

@@ -129,7 +129,7 @@ exports.salaryGenerate = async (req, res) => {
       admin:     req.session.user?._id,
       adminName: req.session.user?.displayName || req.session.user?.username,
       action: 'salary_generate',
-      targetType: 'Salary',
+      targetType: 'salary',
       targetLabel: `${m}/${y}`,
       meta: { month: m, year: y, count: saved.length },
     });
@@ -159,7 +159,7 @@ exports.salaryPublish = async (req, res) => {
       admin:     req.session.user?._id,
       adminName: req.session.user?.displayName || req.session.user?.username,
       action: 'salary_publish',
-      targetType: 'Salary',
+      targetType: 'salary',
       targetLabel: `${m}/${y}`,
       meta: { month: m, year: y, publishedCount: count },
     });
@@ -262,7 +262,7 @@ exports.salaryUpdate = async (req, res) => {
       admin:     req.session.user?._id,
       adminName: req.session.user?.displayName || req.session.user?.username,
       action: 'salary_update',
-      targetType: 'Salary',
+      targetType: 'salary',
       targetId: salary._id,
       targetLabel: `${salary.month}/${salary.year}`,
       meta: { month: salary.month, year: salary.year },
