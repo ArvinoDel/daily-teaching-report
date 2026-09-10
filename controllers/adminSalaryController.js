@@ -83,6 +83,9 @@ exports.salaryIndex = async (req, res) => {
       };
     });
 
+    const flash = req.session.flash || null;
+    delete req.session.flash;
+
     res.render('admin/salaries/index', {
       rows, year, month,
       monthLabel, prevMonth, nextMonth, isCurrentMonth, selectedMonthStr,
@@ -91,6 +94,7 @@ exports.salaryIndex = async (req, res) => {
       totalNet:             formatIDR(totalNet),
       draftCount, publishedCount,
       totalTeachers:        rows.length,
+      flash,
     });
   } catch (err) {
     console.error('[salary] index error:', err);
@@ -122,9 +126,11 @@ exports.salaryGenerate = async (req, res) => {
     });
 
     await AuditLog.create({
-      actor: req.session.userId,
+      admin:     req.session.user?._id,
+      adminName: req.session.user?.displayName || req.session.user?.username,
       action: 'salary_generate',
-      target: 'Salary',
+      targetType: 'Salary',
+      targetLabel: `${m}/${y}`,
       meta: { month: m, year: y, count: saved.length },
     });
 
@@ -150,9 +156,11 @@ exports.salaryPublish = async (req, res) => {
     const count = await salaryService.publishSalaries(m, y, ids);
 
     await AuditLog.create({
-      actor: req.session.userId,
+      admin:     req.session.user?._id,
+      adminName: req.session.user?.displayName || req.session.user?.username,
       action: 'salary_publish',
-      target: 'Salary',
+      targetType: 'Salary',
+      targetLabel: `${m}/${y}`,
       meta: { month: m, year: y, publishedCount: count },
     });
 
@@ -251,11 +259,13 @@ exports.salaryUpdate = async (req, res) => {
     await salary.save();
 
     await AuditLog.create({
-      actor: req.session.userId,
+      admin:     req.session.user?._id,
+      adminName: req.session.user?.displayName || req.session.user?.username,
       action: 'salary_update',
-      target: 'Salary',
+      targetType: 'Salary',
       targetId: salary._id,
-      meta: { teacher: salary.teacher, month: salary.month, year: salary.year },
+      targetLabel: `${salary.month}/${salary.year}`,
+      meta: { month: salary.month, year: salary.year },
     });
 
     req.session.flash = { type: 'success', msg: 'Salary updated successfully.' };
