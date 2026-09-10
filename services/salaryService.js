@@ -216,8 +216,18 @@ async function generateSalariesForPeriod(opts) {
       salary.payDate      = pd;
       salary.payDateLabel = payDateLabel;
 
-      // Only update teaching reward if not yet manually overridden
-      // (we treat a "0" with 0 sessions as non-overridden)
+      // ── Sync attendance days from live report data ──
+      // We refresh the day COUNTS from reports but keep whatever rate the admin set.
+      const existingMealRate      = salary.mealFullRate  || mealFullRate;
+      const existingTransportRate = salary.transportRate  || transportRate;
+      salary.mealFullDays   = distinctDays;
+      salary.mealFullRate   = existingMealRate;
+      salary.mealFullTotal  = distinctDays * existingMealRate;
+      salary.transportDays  = distinctDays;
+      salary.transportRate  = existingTransportRate;
+      salary.transportTotal = distinctDays * existingTransportRate;
+
+      // ── Sync teaching reward ──
       if (!salary._adminOverriddenTeachingReward) {
         salary.teachingReward = teachingReward;
       }
