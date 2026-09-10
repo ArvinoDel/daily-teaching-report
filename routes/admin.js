@@ -7,6 +7,7 @@ const feedbackCtrl = require('../controllers/feedbackController');
 const { requireAuth }  = require('../middleware/auth');
 const { requireAdmin, requireSuperAdmin } = require('../middleware/adminAuth');
 const achievementsCtrl = require('../controllers/adminStudentAchievementsController');
+const salaryCtrl = require('../controllers/adminSalaryController');
 
 router.use(requireAuth, requireAdmin);
 
@@ -44,6 +45,15 @@ router.delete('/groups/:id',      groupCtrl.groupDelete);
 
 // Commission
 router.get('/commission', ctrl.commissionIndex);
+
+// Salaries — named routes BEFORE /:id wildcards
+router.get('/salaries',              salaryCtrl.salaryIndex);
+router.post('/salaries/generate',    salaryCtrl.salaryGenerate);
+router.post('/salaries/publish',     salaryCtrl.salaryPublish);
+router.get('/salaries/export',       salaryCtrl.salaryExport);
+router.get('/salaries/:id/slip',     salaryCtrl.salarySlip);
+router.get('/salaries/:id/edit',     salaryCtrl.salaryEditForm);
+router.post('/salaries/:id',         salaryCtrl.salaryUpdate);
 
 // Feedbacks
 router.get('/feedbacks',              requireSuperAdmin, feedbackCtrl.adminList);

@@ -39,6 +39,26 @@ const userSchema = new mongoose.Schema({
     halfPrime:     { type: Number, default: 0, min: 0 },
     assistant:     { type: Number, default: 0, min: 0 },
   },
+  // Default salary profile — pre-fills monthly payroll; every field is fully editable per month
+  salaryProfile: {
+    // Fixed / recurring earnings
+    basicSalary:        { type: Number, default: 0, min: 0 },
+    monthlyIncentive:   { type: Number, default: 0, min: 0 },
+    healthAllowance:    { type: Number, default: 0, min: 0 },
+    positionAllowance:  { type: Number, default: 0, min: 0 },
+    loyaltyAllowance:   { type: Number, default: 0, min: 0 },
+    wifeChildAllowance: { type: Number, default: 0, min: 0 },
+    // Daily attendance rates
+    mealRateFull:  { type: Number, default: 22500, min: 0 },
+    mealRateHalf:  { type: Number, default: 0,     min: 0 },
+    transportRate: { type: Number, default: 22500, min: 0 },
+    // Default deductions
+    bpjsKetenagakerjaan: { type: Number, default: 0, min: 0 },
+    tax:                 { type: Number, default: 0, min: 0 },
+    // Stage-unlock thresholds (months of tenure required)
+    positionAllowanceMonthsRequired: { type: Number, default: 3,  min: 0 },
+    teachingRewardMonthsRequired:    { type: Number, default: 6,  min: 0 },
+  },
   profilePicture: {
     type: String,
     default: null,

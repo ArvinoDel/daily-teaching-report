@@ -284,6 +284,24 @@ exports.userUpdate = async (req, res) => {
       else commValues[field] = Math.round(val);
     }
 
+    // Parse salary profile defaults (all optional, default 0)
+    const spNum = (key) => Math.max(0, Math.round(parseFloat(req.body[key]) || 0));
+    const salaryProfileValues = {
+      basicSalary:        spNum('sp_basicSalary'),
+      monthlyIncentive:   spNum('sp_monthlyIncentive'),
+      healthAllowance:    spNum('sp_healthAllowance'),
+      positionAllowance:  spNum('sp_positionAllowance'),
+      loyaltyAllowance:   spNum('sp_loyaltyAllowance'),
+      wifeChildAllowance: spNum('sp_wifeChildAllowance'),
+      mealRateFull:       spNum('sp_mealRateFull')  || 22500,
+      mealRateHalf:       spNum('sp_mealRateHalf'),
+      transportRate:      spNum('sp_transportRate') || 22500,
+      bpjsKetenagakerjaan:              spNum('sp_bpjsKetenagakerjaan'),
+      tax:                              spNum('sp_tax'),
+      positionAllowanceMonthsRequired:  Math.max(0, parseInt(req.body.sp_positionMonthsRequired) || 3),
+      teachingRewardMonthsRequired:     Math.max(0, parseInt(req.body.sp_rewardMonthsRequired)   || 6),
+    };
+
     if (password && password.length > 0 && password.length < 6) {
       errors.push('Password must be at least 6 characters.');
     }
@@ -310,6 +328,7 @@ exports.userUpdate = async (req, res) => {
       halfPrime:     commValues.halfPrime     ?? 0,
       assistant:     commValues.assistant     ?? 0,
     };
+    user.salaryProfile = salaryProfileValues;
     if (password && password.length >= 6) user.password = password;
 
     await user.save();

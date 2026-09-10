@@ -174,6 +174,116 @@
       </div>
     </div>
 
+    <!-- Salary Default Profile -->
+    <div id="salary-profile-section" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-5 scroll-mt-6">
+      <%
+        const sp = user.salaryProfile || {};
+        function spVal(key, def) { return (sp[key] !== undefined && sp[key] !== null) ? sp[key] : (def || 0); }
+      %>
+      <div>
+        <h2 class="text-sm font-bold text-slate-700 uppercase tracking-wider">Salary Default Profile</h2>
+        <p class="text-xs text-slate-400 mt-1">
+          Sets the default values auto-filled when generating monthly salary. Every field is still fully editable per month.
+        </p>
+      </div>
+
+      <!-- Fixed Earnings -->
+      <div class="space-y-3">
+        <p class="text-xs font-bold text-emerald-700 uppercase tracking-wide">Fixed Earnings</p>
+        <% const earningDefaults = [
+          { name: 'sp_basicSalary',        label: '1. Basic Salary (Gaji Pokok)' },
+          { name: 'sp_monthlyIncentive',   label: '2. Monthly Incentive' },
+          { name: 'sp_healthAllowance',    label: '3. Health Allowance' },
+          { name: 'sp_positionAllowance',  label: '4. Position Allowance' },
+          { name: 'sp_loyaltyAllowance',   label: '5. Loyalty Allowance' },
+          { name: 'sp_wifeChildAllowance', label: '6. Wife / Child Allowance' },
+        ]; %>
+        <% earningDefaults.forEach(function(f) { %>
+          <div class="flex items-center gap-3">
+            <label class="text-xs font-medium text-slate-500 flex-shrink-0 w-52"><%= f.label %></label>
+            <div class="relative flex-1">
+              <span class="absolute inset-y-0 left-3 flex items-center text-xs text-slate-400 font-medium pointer-events-none">Rp</span>
+              <input type="number" name="<%= f.name %>"
+                value="<%= spVal(f.name.replace('sp_','')) %>"
+                min="0" step="500"
+                class="w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-4 py-2.5 text-sm font-mono text-slate-800 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition">
+            </div>
+          </div>
+        <% }); %>
+      </div>
+
+      <!-- Attendance Rates -->
+      <div class="space-y-3 border-t border-slate-100 pt-4">
+        <p class="text-xs font-bold text-sky-700 uppercase tracking-wide">Daily Attendance Rates (per day)</p>
+        <% const rateDefaults = [
+          { name: 'sp_mealRateFull',  label: 'Meal Rate (Full)',  def: 22500 },
+          { name: 'sp_mealRateHalf',  label: 'Meal Rate (Half)',  def: 0 },
+          { name: 'sp_transportRate', label: 'Transport Rate',    def: 22500 },
+        ]; %>
+        <% rateDefaults.forEach(function(f) { %>
+          <div class="flex items-center gap-3">
+            <label class="text-xs font-medium text-slate-500 flex-shrink-0 w-52"><%= f.label %></label>
+            <div class="relative flex-1">
+              <span class="absolute inset-y-0 left-3 flex items-center text-xs text-slate-400 font-medium pointer-events-none">Rp</span>
+              <input type="number" name="<%= f.name %>"
+                value="<%= spVal(f.name.replace('sp_',''), f.def) || f.def %>"
+                min="0" step="500"
+                class="w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-4 py-2.5 text-sm font-mono text-slate-800 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition">
+            </div>
+          </div>
+        <% }); %>
+      </div>
+
+      <!-- Default Deductions -->
+      <div class="space-y-3 border-t border-slate-100 pt-4">
+        <p class="text-xs font-bold text-red-600 uppercase tracking-wide">Default Deductions</p>
+        <% const deductDefaults = [
+          { name: 'sp_bpjsKetenagakerjaan', label: 'BPJS Ketenagakerjaan' },
+          { name: 'sp_tax',                  label: 'Default Tax (PPH)' },
+        ]; %>
+        <% deductDefaults.forEach(function(f) { %>
+          <div class="flex items-center gap-3">
+            <label class="text-xs font-medium text-slate-500 flex-shrink-0 w-52"><%= f.label %></label>
+            <div class="relative flex-1">
+              <span class="absolute inset-y-0 left-3 flex items-center text-xs text-slate-400 font-medium pointer-events-none">Rp</span>
+              <input type="number" name="<%= f.name %>"
+                value="<%= spVal(f.name.replace('sp_','')) %>"
+                min="0" step="500"
+                class="w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-4 py-2.5 text-sm font-mono text-slate-800 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition">
+            </div>
+          </div>
+        <% }); %>
+      </div>
+
+      <!-- Stage-Unlock Thresholds -->
+      <div class="space-y-3 border-t border-slate-100 pt-4">
+        <p class="text-xs font-bold text-amber-600 uppercase tracking-wide">Stage Unlock Rules (months of tenure)</p>
+        <p class="text-xs text-slate-400">Admin can always override these on any month.</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1.5">Position Allowance after</label>
+            <div class="relative">
+              <input type="number" name="sp_positionMonthsRequired"
+                value="<%= sp.positionAllowanceMonthsRequired !== undefined ? sp.positionAllowanceMonthsRequired : 3 %>"
+                min="0" step="1"
+                class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-mono text-slate-800 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition pr-16">
+              <span class="absolute inset-y-0 right-3 flex items-center text-xs text-slate-400 pointer-events-none">months</span>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1.5">Teaching Reward after</label>
+            <div class="relative">
+              <input type="number" name="sp_rewardMonthsRequired"
+                value="<%= sp.teachingRewardMonthsRequired !== undefined ? sp.teachingRewardMonthsRequired : 6 %>"
+                min="0" step="1"
+                class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-mono text-slate-800 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition pr-16">
+              <span class="absolute inset-y-0 right-3 flex items-center text-xs text-slate-400 pointer-events-none">months</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Change Password -->
     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-5">
       <div>

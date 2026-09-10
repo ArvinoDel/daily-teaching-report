@@ -1,0 +1,334 @@
+<%- include('../../partials/header', { title: 'Admin — Salaries' }) %>
+
+<%
+  const statusBadge = {
+    draft:     'badge-slate',
+    published: 'badge-emerald',
+    paid:      'badge-sky',
+  };
+  const statusLabel = { draft: 'Draft', published: 'Sent', paid: 'Paid' };
+
+  function fmtIDR(n) {
+    if (!n || n === 0) return '—';
+    return 'Rp\u00a0' + Number(n).toLocaleString('en-US');
+  }
+%>
+
+<!-- ── Page Header ── -->
+<div class="mb-6 flex items-center gap-3">
+  <a href="/admin" class="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+  </a>
+  <div>
+    <h1 class="text-2xl font-bold text-slate-900">Payroll</h1>
+    <p class="text-slate-500 text-sm mt-0.5">CV Fond of English — Monthly salary management.</p>
+  </div>
+</div>
+
+<!-- ── Flash ── -->
+<% if (typeof flash !== 'undefined' && flash) { %>
+  <div class="mb-5 flex items-center gap-3 <%= flash.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700' %> border px-4 py-3 rounded-xl text-sm font-medium">
+    <%= flash.msg %>
+  </div>
+<% } %>
+
+<!-- ── Month Nav + Export + Bulk Actions ── -->
+<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+  <!-- Month switcher -->
+  <div class="flex items-center gap-2">
+    <a href="/admin/salaries?month=<%= prevMonth %>"
+      class="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 transition shadow-sm">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5"/></svg>
+    </a>
+    <span class="text-sm font-semibold text-slate-700 min-w-[130px] text-center"><%= monthLabel %></span>
+    <% if (!isCurrentMonth) { %>
+      <a href="/admin/salaries?month=<%= nextMonth %>"
+        class="w-8 h-8 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 transition shadow-sm">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+      </a>
+    <% } else { %>
+      <span class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-50 border border-slate-100 text-slate-300 cursor-not-allowed">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+      </span>
+    <% } %>
+  </div>
+
+  <!-- Action buttons -->
+  <div class="flex items-center gap-2 flex-wrap">
+    <!-- Generate -->
+    <button onclick="document.getElementById('modal-generate').classList.remove('hidden')"
+      class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold shadow-sm transition">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+      Generate / Sync
+    </button>
+    <!-- Bulk Publish -->
+    <% if (rows && rows.length > 0) { %>
+    <button onclick="document.getElementById('modal-publish').classList.remove('hidden')"
+      class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"/></svg>
+      Send to Teachers
+    </button>
+    <% } %>
+    <!-- Excel Export -->
+    <% if (rows && rows.length > 0) { %>
+    <a href="/admin/salaries/export?month=<%= selectedMonthStr %>"
+      class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-semibold shadow-sm transition">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+      Export Excel
+    </a>
+    <% } %>
+  </div>
+</div>
+
+<!-- ── KPI Cards ── -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Gross Payout</p>
+    <p class="text-2xl font-bold text-brand-600 font-mono"><%= totalGross %></p>
+  </div>
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Deductions</p>
+    <p class="text-2xl font-bold text-red-500 font-mono"><%= totalDeductions %></p>
+  </div>
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Net Payroll</p>
+    <p class="text-2xl font-bold text-slate-900 font-mono"><%= totalNet %></p>
+  </div>
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Status</p>
+    <p class="text-2xl font-bold text-emerald-600"><%= publishedCount %><span class="text-slate-300 text-lg"> / <%= totalTeachers %></span></p>
+    <p class="text-xs text-slate-400 mt-0.5">sent to teachers</p>
+  </div>
+</div>
+
+<!-- ── Salary Table ── -->
+<% if (!rows || rows.length === 0) { %>
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm py-16 text-center">
+    <p class="text-slate-400 text-sm mb-3">No salary records for <strong><%= monthLabel %></strong> yet.</p>
+    <button onclick="document.getElementById('modal-generate').classList.remove('hidden')"
+      class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold transition">
+      Generate Salaries
+    </button>
+  </div>
+<% } else { %>
+<form id="bulk-form" method="POST" action="/admin/salaries/publish">
+  <input type="hidden" name="month" value="<%= month %>">
+  <input type="hidden" name="year" value="<%= year %>">
+
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs font-semibold text-slate-400 uppercase tracking-wider bg-slate-50">
+            <th class="pl-4 py-3.5 text-left w-8">
+              <input type="checkbox" id="select-all" class="rounded border-slate-300 text-brand-600 cursor-pointer" title="Select all">
+            </th>
+            <th class="px-4 py-3.5 text-left">Teacher</th>
+            <th class="px-4 py-3.5 text-center hidden md:table-cell">Tenure</th>
+            <th class="px-4 py-3.5 text-right hidden lg:table-cell">Gross</th>
+            <th class="px-4 py-3.5 text-right hidden lg:table-cell">Deductions</th>
+            <th class="px-4 py-3.5 text-right">Net Salary</th>
+            <th class="px-4 py-3.5 text-center">Status</th>
+            <th class="px-4 py-3.5 text-center">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-50">
+          <% rows.forEach(function(s) { %>
+            <tr class="hover:bg-slate-50/60 transition">
+              <!-- Checkbox -->
+              <td class="pl-4 py-3.5">
+                <input type="checkbox" name="teacherIds" value="<%= s.teacher._id %>"
+                  class="row-check rounded border-slate-300 text-brand-600 cursor-pointer">
+              </td>
+              <!-- Teacher Info -->
+              <td class="px-4 py-3.5">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 text-xs font-bold flex-shrink-0">
+                    <%= s.teacher.displayName[0].toUpperCase() %>
+                  </div>
+                  <div>
+                    <p class="font-semibold text-slate-800"><%= s.teacher.displayName %></p>
+                    <p class="text-xs text-slate-400">@<%= s.teacher.username %></p>
+                  </div>
+                </div>
+              </td>
+              <!-- Tenure -->
+              <td class="px-4 py-3.5 text-center hidden md:table-cell">
+                <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
+                  <%= s.teacherTenureAtPeriod || '—' %>
+                </span>
+              </td>
+              <!-- Gross -->
+              <td class="px-4 py-3.5 text-right font-mono text-sm hidden lg:table-cell text-slate-700">
+                <%= s.subtotalIncomesFormatted %>
+              </td>
+              <!-- Deductions -->
+              <td class="px-4 py-3.5 text-right font-mono text-sm hidden lg:table-cell text-red-500">
+                - <%= s.subtotalDeductionsFormatted %>
+              </td>
+              <!-- Net Salary -->
+              <td class="px-4 py-3.5 text-right font-mono text-sm font-bold text-brand-600">
+                <%= s.totalSalaryFormatted %>
+              </td>
+              <!-- Status -->
+              <td class="px-4 py-3.5 text-center">
+                <span class="text-xs font-semibold px-2.5 py-1 rounded-full
+                  <%= s.status === 'published' ? 'bg-emerald-100 text-emerald-700' : s.status === 'paid' ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-500' %>">
+                  <%= statusLabel[s.status] || s.status %>
+                </span>
+              </td>
+              <!-- Actions -->
+              <td class="px-4 py-3.5 text-center">
+                <div class="flex items-center justify-center gap-1">
+                  <!-- Edit -->
+                  <a href="/admin/salaries/<%= s._id %>/edit"
+                    class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition" title="Edit salary">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z"/></svg>
+                  </a>
+                  <!-- Slip -->
+                  <a href="/admin/salaries/<%= s._id %>/slip"
+                    class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition" title="View payslip">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/></svg>
+                  </a>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+
+        <!-- Grand Total Footer -->
+        <tfoot>
+          <tr class="border-t-2 border-slate-200 bg-slate-50">
+            <td class="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider" colspan="3">Grand Total</td>
+            <td class="px-4 py-4 text-right font-mono text-sm font-bold text-slate-700 hidden lg:table-cell"><%= totalGross %></td>
+            <td class="px-4 py-4 text-right font-mono text-sm font-bold text-red-500 hidden lg:table-cell">- <%= totalDeductions %></td>
+            <td class="px-4 py-4 text-right font-mono text-base font-bold text-brand-600"><%= totalNet %></td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</form>
+<% } %>
+
+
+<!-- ══════════════════════════════════
+     MODAL: Generate / Sync Salaries
+══════════════════════════════════ -->
+<div id="modal-generate" class="hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+    <h2 class="text-lg font-bold text-slate-900 mb-1">Generate / Sync Salaries</h2>
+    <p class="text-sm text-slate-500 mb-5">Pre-fill salary drafts from each teacher's default profile + auto-detected report data.</p>
+
+    <form method="POST" action="/admin/salaries/generate" class="space-y-4">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 mb-1.5">Month</label>
+          <select name="month" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-brand-400">
+            <% ['January','February','March','April','May','June','July','August','September','October','November','December'].forEach(function(m, i) { %>
+              <option value="<%= i+1 %>" <%= (i+1) === month ? 'selected' : '' %>><%= m %></option>
+            <% }); %>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 mb-1.5">Year</label>
+          <input type="number" name="year" value="<%= year %>" min="2020" max="2100"
+            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-brand-400 font-mono">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1.5">Period Start (cut-off)</label>
+        <input type="date" name="periodStart"
+          class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-brand-400">
+        <p class="text-xs text-slate-400 mt-1">Leave blank to use 1st of the month.</p>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1.5">Period End (cut-off)</label>
+        <input type="date" name="periodEnd"
+          class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-brand-400">
+        <p class="text-xs text-slate-400 mt-1">Leave blank to use last day of the month.</p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 mb-1.5">Pay Date</label>
+          <input type="date" name="payDate"
+            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-brand-400">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 mb-1.5">Pay Date Label</label>
+          <input type="text" name="payDateLabel" placeholder="e.g. 26-Aug"
+            class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-brand-400">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1.5">Period Label (optional)</label>
+        <input type="text" name="periodLabel" placeholder="e.g. 26 Jul – 25 Aug 2026"
+          class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-brand-400">
+      </div>
+
+      <div class="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+        <input type="checkbox" id="preserve-edits" name="preserveEdits" value="true" checked
+          class="rounded border-amber-300 text-amber-600">
+        <label for="preserve-edits" class="text-xs text-amber-700 font-medium">
+          Preserve manual edits in existing drafts (only refresh auto-calculated fields)
+        </label>
+      </div>
+
+      <div class="flex gap-3 pt-2">
+        <button type="button" onclick="document.getElementById('modal-generate').classList.add('hidden')"
+          class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition">
+          Cancel
+        </button>
+        <button type="submit"
+          class="flex-1 px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold transition">
+          Generate
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     MODAL: Bulk Publish Confirmation
+══════════════════════════════════ -->
+<div id="modal-publish" class="hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+    <div class="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"/></svg>
+    </div>
+    <h2 class="text-lg font-bold text-slate-900 mb-2">Send to Teachers?</h2>
+    <p class="text-sm text-slate-500 mb-6">
+      Selected teachers will be able to view their salary slip.<br>This action cannot be undone.
+    </p>
+    <div class="flex gap-3">
+      <button type="button" onclick="document.getElementById('modal-publish').classList.add('hidden')"
+        class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition">
+        Cancel
+      </button>
+      <button type="button" onclick="submitPublish()"
+        class="flex-1 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition">
+        Send Now
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Select-all checkbox
+  document.getElementById('select-all')?.addEventListener('change', function() {
+    document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
+  });
+
+  // Submit bulk-publish form with checked teacher IDs
+  function submitPublish() {
+    document.getElementById('modal-publish').classList.add('hidden');
+    document.getElementById('bulk-form').submit();
+  }
+</script>
+
+<%- include('../../partials/footer') %>

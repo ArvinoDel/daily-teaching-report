@@ -1,0 +1,398 @@
+<%- include('../../partials/header', { title: 'Admin — Edit Salary' }) %>
+
+<%
+  function fmtIDR(n) {
+    if (!n || n === 0) return '—';
+    return 'Rp\u00a0' + Number(n).toLocaleString('en-US');
+  }
+  const sp = salary;
+  const t  = teacher;
+%>
+
+<!-- ── Header ── -->
+<div class="mb-6 flex items-center gap-3">
+  <a href="/admin/salaries?month=<%= sp.year %>-<%= String(sp.month).padStart(2,'0') %>"
+    class="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+  </a>
+  <div>
+    <h1 class="text-2xl font-bold text-slate-900">Edit Salary</h1>
+    <p class="text-slate-500 text-sm mt-0.5">
+      <span class="font-semibold text-slate-700"><%= t.displayName %></span>
+      <% if (sp.teacherTenureAtPeriod) { %>
+        <span class="ml-2 text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium"><%= sp.teacherTenureAtPeriod %></span>
+      <% } %>
+      &mdash; <%= sp.periodLabel || (sp.month + '/' + sp.year) %>
+    </p>
+  </div>
+  <!-- View Slip -->
+  <a href="/admin/salaries/<%= sp._id %>/slip" target="_blank"
+    class="ml-auto inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold shadow-sm transition">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+    Preview Slip
+  </a>
+</div>
+
+<!-- Alert -->
+<% if (success) { %>
+  <div class="mb-5 flex items-center gap-3 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-xl text-sm font-medium">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+    <%= success %>
+  </div>
+<% } %>
+
+<form id="salary-form" method="POST" action="/admin/salaries/<%= sp._id %>">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- ══════════════════ LEFT: Period Meta ══════════════════ -->
+    <div class="space-y-6">
+      <!-- Period settings -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
+        <h2 class="text-sm font-bold text-slate-700 uppercase tracking-wider">Pay Period</h2>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 mb-1.5">Period Label</label>
+          <input type="text" name="periodLabel" value="<%= sp.periodLabel || '' %>" placeholder="e.g. 26 Jul – 25 Aug 2026"
+            class="input-std">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1.5">Period Start</label>
+            <input type="date" name="periodStart"
+              value="<%= sp.periodStart ? new Date(sp.periodStart).toISOString().substring(0,10) : '' %>"
+              class="input-std">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1.5">Period End</label>
+            <input type="date" name="periodEnd"
+              value="<%= sp.periodEnd ? new Date(sp.periodEnd).toISOString().substring(0,10) : '' %>"
+              class="input-std">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1.5">Pay Date</label>
+            <input type="date" name="payDate"
+              value="<%= sp.payDate ? new Date(sp.payDate).toISOString().substring(0,10) : '' %>"
+              class="input-std">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1.5">Pay Date Label</label>
+            <input type="text" name="payDateLabel" value="<%= sp.payDateLabel || '' %>" placeholder="e.g. 26-Aug"
+              class="input-std">
+          </div>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
+        <h2 class="text-sm font-bold text-slate-700 uppercase tracking-wider">Notes</h2>
+        <textarea name="notes" rows="4" placeholder="Remarks, adjustments..." maxlength="500"
+          class="input-std resize-none"><%= sp.notes || '' %></textarea>
+      </div>
+
+      <!-- Live Total Card -->
+      <div class="bg-brand-50 border border-brand-200 rounded-2xl p-5 sticky top-20">
+        <p class="text-xs font-bold text-brand-500 uppercase tracking-wider mb-3">Live Totals</p>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between"><span class="text-slate-600">Gross</span><span id="live-gross" class="font-mono font-bold text-slate-800">—</span></div>
+          <div class="flex justify-between"><span class="text-slate-600">Deductions</span><span id="live-deduct" class="font-mono font-bold text-red-500">—</span></div>
+          <div class="h-px bg-brand-200 my-1"></div>
+          <div class="flex justify-between"><span class="text-brand-700 font-bold">Net Salary</span><span id="live-net" class="font-mono font-bold text-brand-700 text-lg">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════ RIGHT: Salary Sheet ══════════════════ -->
+    <div class="lg:col-span-2 space-y-6">
+
+      <!-- Earnings -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
+        <h2 class="text-sm font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75"/></svg>
+          Earnings
+        </h2>
+
+        <!-- Simple money fields -->
+        <% const earningFields = [
+          { label: '1. Basic Salary (Gaji Pokok)',   key: 'basicSalary'        },
+          { label: '5. Monthly Incentive',           key: 'monthlyIncentive'   },
+          { label: '6. Health Allowance',            key: 'healthAllowance'    },
+          { label: '7. Position Allowance',          key: 'positionAllowance'  },
+          { label: '8. Loyalty Allowance',           key: 'loyaltyAllowance'   },
+          { label: '9. Wife / Child Allowance',      key: 'wifeChildAllowance' },
+          { label: '10. Teaching Reward',            key: 'teachingReward'     },
+          { label: '11. Game Reward',                key: 'gameReward'         },
+          { label: '12. Student Commission',         key: 'studentCommission'  },
+          { label: '13. Internet / Electricity',     key: 'internetCompensation'},
+          { label: '14. Overtime / Lembur',          key: 'overtime'           },
+        ]; %>
+        <% earningFields.forEach(function(f) { %>
+          <div class="flex items-center gap-3">
+            <label class="text-xs font-medium text-slate-500 w-52 flex-shrink-0"><%= f.label %></label>
+            <div class="relative flex-1">
+              <span class="absolute left-3 inset-y-0 flex items-center text-slate-400 text-xs font-mono pointer-events-none">Rp</span>
+              <input type="number" name="<%= f.key %>" id="<%= f.key %>"
+                value="<%= sp[f.key] || 0 %>" min="0" step="500"
+                oninput="recalculate()"
+                class="input-money w-full pl-9 earning-field">
+            </div>
+          </div>
+        <% }); %>
+
+        <!-- Meal Allowance Full (days × rate) -->
+        <div class="bg-slate-50 rounded-xl p-4 space-y-3">
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wide">2. Meal Allowance (Full)</p>
+          <div class="flex items-center gap-2">
+            <div class="flex-1">
+              <label class="text-xs text-slate-400 mb-1 block">Days</label>
+              <input type="number" name="mealFullDays" id="mealFullDays" value="<%= sp.mealFullDays || 0 %>" min="0" step="1"
+                oninput="recalculate()" class="input-money w-full">
+            </div>
+            <span class="text-slate-400 text-sm mt-4">×</span>
+            <div class="flex-1">
+              <label class="text-xs text-slate-400 mb-1 block">Rate / day</label>
+              <input type="number" name="mealFullRate" id="mealFullRate" value="<%= sp.mealFullRate || 22500 %>" min="0" step="500"
+                oninput="recalculate()" class="input-money w-full">
+            </div>
+            <span class="text-slate-400 text-sm mt-4">=</span>
+            <div class="flex-1">
+              <label class="text-xs text-slate-400 mb-1 block">Total</label>
+              <p id="mealFullTotal" class="font-mono text-sm font-bold text-emerald-700 px-3 py-2.5 bg-emerald-50 rounded-xl">—</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Meal Allowance Half -->
+        <div class="bg-slate-50 rounded-xl p-4 space-y-3">
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wide">3. Meal Allowance (Half)</p>
+          <div class="flex items-center gap-2">
+            <div class="flex-1">
+              <label class="text-xs text-slate-400 mb-1 block">Days</label>
+              <input type="number" name="mealHalfDays" id="mealHalfDays" value="<%= sp.mealHalfDays || 0 %>" min="0" step="1"
+                oninput="recalculate()" class="input-money w-full">
+            </div>
+            <span class="text-slate-400 text-sm mt-4">×</span>
+            <div class="flex-1">
+              <label class="text-xs text-slate-400 mb-1 block">Rate / day</label>
+              <input type="number" name="mealHalfRate" id="mealHalfRate" value="<%= sp.mealHalfRate || 0 %>" min="0" step="500"
+                oninput="recalculate()" class="input-money w-full">
+            </div>
+            <span class="text-slate-400 text-sm mt-4">=</span>
+            <div class="flex-1">
+              <label class="text-xs text-slate-400 mb-1 block">Total</label>
+              <p id="mealHalfTotal" class="font-mono text-sm font-bold text-emerald-700 px-3 py-2.5 bg-emerald-50 rounded-xl">—</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Transport -->
+        <div class="bg-slate-50 rounded-xl p-4 space-y-3">
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wide">4. Transport Allowance</p>
+          <div class="flex items-center gap-2">
+            <div class="flex-1">
+              <label class="text-xs text-slate-400 mb-1 block">Days</label>
+              <input type="number" name="transportDays" id="transportDays" value="<%= sp.transportDays || 0 %>" min="0" step="1"
+                oninput="recalculate()" class="input-money w-full">
+            </div>
+            <span class="text-slate-400 text-sm mt-4">×</span>
+            <div class="flex-1">
+              <label class="text-xs text-slate-400 mb-1 block">Rate / day</label>
+              <input type="number" name="transportRate" id="transportRate" value="<%= sp.transportRate || 22500 %>" min="0" step="500"
+                oninput="recalculate()" class="input-money w-full">
+            </div>
+            <span class="text-slate-400 text-sm mt-4">=</span>
+            <div class="flex-1">
+              <label class="text-xs text-slate-400 mb-1 block">Total</label>
+              <p id="transportTotal" class="font-mono text-sm font-bold text-emerald-700 px-3 py-2.5 bg-emerald-50 rounded-xl">—</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dynamic other incomes -->
+        <div>
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">15. Other Incomes</p>
+          <div id="other-incomes-list" class="space-y-2">
+            <% (sp.otherIncomes || []).forEach(function(item) { %>
+              <div class="flex gap-2 other-income-row">
+                <input type="text" name="otherIncomeLabel[]" value="<%= item.label %>" placeholder="Label"
+                  class="input-std flex-1">
+                <input type="number" name="otherIncomeAmount[]" value="<%= item.amount || 0 %>" min="0" step="500"
+                  oninput="recalculate()" placeholder="Amount" class="input-money w-36 other-income-amt">
+                <button type="button" onclick="this.closest('.other-income-row').remove(); recalculate();"
+                  class="w-8 h-10 flex items-center justify-center text-red-400 hover:text-red-600 transition rounded-lg hover:bg-red-50">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+                </button>
+              </div>
+            <% }); %>
+          </div>
+          <button type="button" onclick="addOtherIncome()"
+            class="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+            Add income row
+          </button>
+        </div>
+
+        <!-- Subtotal Incomes -->
+        <div class="flex justify-between items-center border-t border-slate-100 pt-3">
+          <span class="text-sm font-bold text-slate-600">Subtotal Earnings</span>
+          <span id="subtotal-income" class="font-mono font-bold text-emerald-700 text-base">—</span>
+        </div>
+      </div>
+
+      <!-- Deductions -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
+        <h2 class="text-sm font-bold text-red-600 uppercase tracking-wider flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15"/></svg>
+          Deductions
+        </h2>
+
+        <% const deductFields = [
+          { label: '16. Instalment / Kasbon',        key: 'instalment'             },
+          { label: '17. Miscellaneous Deduction',    key: 'miscellaneousDeduction' },
+          { label: '18. BPJS Ketenagakerjaan',       key: 'bpjsKetenagakerjaan'    },
+          { label: '19. Last Month\'s Tax (PPH)',     key: 'tax'                    },
+        ]; %>
+        <% deductFields.forEach(function(f) { %>
+          <div class="flex items-center gap-3">
+            <label class="text-xs font-medium text-slate-500 w-52 flex-shrink-0"><%= f.label %></label>
+            <div class="relative flex-1">
+              <span class="absolute left-3 inset-y-0 flex items-center text-red-400 text-xs font-mono pointer-events-none">Rp</span>
+              <input type="number" name="<%= f.key %>" id="<%= f.key %>"
+                value="<%= sp[f.key] || 0 %>" min="0" step="500"
+                oninput="recalculate()"
+                class="input-money w-full pl-9 deduct-field">
+            </div>
+          </div>
+        <% }); %>
+
+        <!-- Dynamic other deductions -->
+        <div>
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">20. Other Deductions</p>
+          <div id="other-deductions-list" class="space-y-2">
+            <% (sp.otherDeductions || []).forEach(function(item) { %>
+              <div class="flex gap-2 other-deduction-row">
+                <input type="text" name="otherDeductionLabel[]" value="<%= item.label %>" placeholder="Label"
+                  class="input-std flex-1">
+                <input type="number" name="otherDeductionAmount[]" value="<%= item.amount || 0 %>" min="0" step="500"
+                  oninput="recalculate()" placeholder="Amount" class="input-money w-36 other-deduct-amt">
+                <button type="button" onclick="this.closest('.other-deduction-row').remove(); recalculate();"
+                  class="w-8 h-10 flex items-center justify-center text-red-400 hover:text-red-600 transition rounded-lg hover:bg-red-50">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+                </button>
+              </div>
+            <% }); %>
+          </div>
+          <button type="button" onclick="addOtherDeduction()"
+            class="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-red-500 hover:text-red-600 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+            Add deduction row
+          </button>
+        </div>
+
+        <!-- Subtotal Deductions -->
+        <div class="flex justify-between items-center border-t border-slate-100 pt-3">
+          <span class="text-sm font-bold text-slate-600">Subtotal Deductions</span>
+          <span id="subtotal-deduct" class="font-mono font-bold text-red-600 text-base">—</span>
+        </div>
+      </div>
+
+      <!-- Save -->
+      <div class="flex justify-end gap-3">
+        <a href="/admin/salaries?month=<%= sp.year %>-<%= String(sp.month).padStart(2,'0') %>"
+          class="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition">
+          Cancel
+        </a>
+        <button type="submit"
+          class="px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold shadow-sm transition">
+          Save Salary
+        </button>
+      </div>
+    </div>
+  </div>
+</form>
+
+<style>
+  .input-std {
+    @apply w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-800
+           focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition;
+  }
+  .input-money {
+    @apply px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-mono text-slate-800
+           focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition;
+  }
+</style>
+
+<script>
+  function n(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
+  function fmt(v) { return 'Rp\u00a0' + Math.round(v).toLocaleString('en-US'); }
+
+  function sumInputsByClass(cls) {
+    return Array.from(document.querySelectorAll('.' + cls))
+      .reduce((s, el) => s + (parseFloat(el.value) || 0), 0);
+  }
+
+  function recalculate() {
+    const mealFull  = n('mealFullDays')  * n('mealFullRate');
+    const mealHalf  = n('mealHalfDays')  * n('mealHalfRate');
+    const transport = n('transportDays') * n('transportRate');
+
+    document.getElementById('mealFullTotal').textContent  = fmt(mealFull);
+    document.getElementById('mealHalfTotal').textContent  = fmt(mealHalf);
+    document.getElementById('transportTotal').textContent = fmt(transport);
+
+    const fixedEarnings = [
+      'basicSalary','monthlyIncentive','healthAllowance','positionAllowance',
+      'loyaltyAllowance','wifeChildAllowance','teachingReward','gameReward',
+      'studentCommission','internetCompensation','overtime',
+    ].reduce((s, k) => s + n(k), 0);
+
+    const otherIncome  = sumInputsByClass('other-income-amt');
+    const gross = fixedEarnings + mealFull + mealHalf + transport + otherIncome;
+
+    const otherDeduct = sumInputsByClass('other-deduct-amt');
+    const deductions  = ['instalment','miscellaneousDeduction','bpjsKetenagakerjaan','tax']
+      .reduce((s, k) => s + n(k), 0) + otherDeduct;
+
+    const net = gross - deductions;
+
+    document.getElementById('subtotal-income').textContent = fmt(gross);
+    document.getElementById('subtotal-deduct').textContent = fmt(deductions);
+    document.getElementById('live-gross').textContent  = fmt(gross);
+    document.getElementById('live-deduct').textContent = fmt(deductions);
+    document.getElementById('live-net').textContent    = fmt(net);
+  }
+
+  function addOtherIncome() {
+    const row = document.createElement('div');
+    row.className = 'flex gap-2 other-income-row';
+    row.innerHTML = `
+      <input type="text" name="otherIncomeLabel[]" placeholder="Label" class="input-std flex-1" style="padding:0.625rem 1rem;border-radius:0.75rem;border:1px solid #e2e8f0;font-size:0.875rem;color:#1e293b;">
+      <input type="number" name="otherIncomeAmount[]" value="0" min="0" step="500" oninput="recalculate()" placeholder="Amount" class="other-income-amt" style="width:9rem;padding:0.625rem 0.75rem;border-radius:0.75rem;border:1px solid #e2e8f0;background:#f8fafc;font-size:0.875rem;font-family:monospace;color:#1e293b;">
+      <button type="button" onclick="this.closest('.other-income-row').remove();recalculate();"
+        class="w-8 h-10 flex items-center justify-center text-red-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+      </button>`;
+    document.getElementById('other-incomes-list').appendChild(row);
+  }
+
+  function addOtherDeduction() {
+    const row = document.createElement('div');
+    row.className = 'flex gap-2 other-deduction-row';
+    row.innerHTML = `
+      <input type="text" name="otherDeductionLabel[]" placeholder="Label" class="input-std flex-1" style="padding:0.625rem 1rem;border-radius:0.75rem;border:1px solid #e2e8f0;font-size:0.875rem;color:#1e293b;">
+      <input type="number" name="otherDeductionAmount[]" value="0" min="0" step="500" oninput="recalculate()" placeholder="Amount" class="other-deduct-amt" style="width:9rem;padding:0.625rem 0.75rem;border-radius:0.75rem;border:1px solid #e2e8f0;background:#f8fafc;font-size:0.875rem;font-family:monospace;color:#1e293b;">
+      <button type="button" onclick="this.closest('.other-deduction-row').remove();recalculate();"
+        class="w-8 h-10 flex items-center justify-center text-red-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+      </button>`;
+    document.getElementById('other-deductions-list').appendChild(row);
+  }
+
+  // Run on load
+  recalculate();
+</script>
+
+<%- include('../../partials/footer') %>
