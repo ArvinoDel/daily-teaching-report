@@ -6,7 +6,7 @@
     return 'Rp\u00a0' + Number(n).toLocaleString('en-US');
   }
   const sp = salary;
-  const t  = teacher;
+  const t  = teacher || { displayName: 'Teacher', username: '—' };
 
   const earningLines = [
     { label: '1. Basic Salary (Gaji Pokok)',                       value: sp.basicSalary },
@@ -27,11 +27,11 @@
   ];
 
   const deductLines = [
-    { label: '14. Instalment / Kasbon',         value: sp.instalment },
-    { label: '15. Miscellaneous Deduction',      value: sp.miscellaneousDeduction },
-    { label: '16. BPJS Ketenagakerjaan',         value: sp.bpjsKetenagakerjaan },
-    { label: '17. Last Month\'s Tax (PPH)',       value: sp.tax },
-    ...(sp.otherDeductions || []).map(function(i, idx) { return { label: (18 + idx) + '. ' + (i.label || 'Other Deduction'), value: i.amount }; }),
+    { label: '16. Instalment / Kasbon',         value: sp.instalment },
+    { label: '17. Miscellaneous Deduction',      value: sp.miscellaneousDeduction },
+    { label: '18. BPJS Ketenagakerjaan',         value: sp.bpjsKetenagakerjaan },
+    { label: '19. Last Month\'s Tax (PPH)',       value: sp.tax },
+    ...(sp.otherDeductions || []).map(function(i, idx) { return { label: (20 + idx) + '. ' + (i.label || 'Other Deduction'), value: i.amount }; }),
   ];
 %>
 
@@ -195,7 +195,7 @@
   @media print {
     body { background: white !important; }
     .no-print { display: none !important; }
-    nav, main > *:not(#payslip) { display: none !important; }
+    nav, footer, main > *:not(#payslip) { display: none !important; }
     #payslip {
       box-shadow: none !important;
       border: none !important;

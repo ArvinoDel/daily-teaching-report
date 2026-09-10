@@ -9,6 +9,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+const mongoose = require('mongoose');
 const Salary = require('../models/Salary');
 
 function formatIDR(n) {
@@ -56,9 +57,13 @@ exports.mySalarySlip = async (req, res) => {
   try {
     const teacherId = req.session.user._id;
 
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).render('error', { message: 'Salary slip not found.' });
+    }
+
     const salary = await Salary.findById(req.params.id).populate('teacher');
-    if (!salary) {
-      return res.render('error', { message: 'Salary slip not found.' });
+    if (!salary || !salary.teacher) {
+      return res.status(404).render('error', { message: 'Salary slip not found.' });
     }
 
     // Security: teacher can only view their own published/paid slips

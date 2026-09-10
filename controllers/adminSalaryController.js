@@ -15,6 +15,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+const mongoose    = require('mongoose');
 const Salary      = require('../models/Salary');
 const User        = require('../models/User');
 const AuditLog    = require('../models/AuditLog');
@@ -62,8 +63,10 @@ exports.salaryIndex = async (req, res) => {
     // Fetch all salary docs for this month, populated with teacher
     const salaries = await Salary.find({ year, month })
       .populate('teacher', 'displayName username joinDate')
-      .sort({ 'teacher.displayName': 1 })
       .lean();
+
+    // Sort alphabetically by teacher display name in JS (since populate sort cannot be done at DB query level)
+    salaries.sort((a, b) => (a.teacher?.displayName || '').localeCompare(b.teacher?.displayName || ''));
 
     // KPI totals
     let totalGross  = 0, totalDeductions = 0, totalNet = 0;
@@ -109,20 +112,42 @@ exports.salaryGenerate = async (req, res) => {
   try {
     const { month, year, periodStart, periodEnd, payDate, payDateLabel, periodLabel, preserveEdits } = req.body;
 
-    const m   = parseInt(month, 10);
-    const y   = parseInt(year,  10);
-    const ps  = periodStart  ? new Date(periodStart)  : new Date(y, m - 1, 1);
-    const pe  = periodEnd    ? new Date(periodEnd)    : new Date(y, m, 0, 23, 59, 59);
+    const m = parseInt(month, 10);
+    const y = parseInt(year,  10);
+    if (isNaN(m) || m < 1 || m > 12 || isNaN(y) || y < 2000 || y > 2100) {
+      req.session.flash = { type: 'error', msg: 'Invalid month or year selected.' };
+      return res.redirect('/admin/salaries');
+    }
+
+    // Set full-day bounds so reports on the start/end dates are never cut off by time zones or 00:00:00 hours
+    let ps, pe;
+    if (periodStart) {
+      ps = new Date(periodStart);
+      ps.setHours(0, 0, 0, 0);
+    } else {
+      ps = new Date(y, m - 1, 1, 0, 0, 0, 0);
+    }
+
+    if (periodEnd) {
+      pe = new Date(periodEnd);
+      pe.setHours(23, 59, 59, 999);
+    } else {
+      pe = new Date(y, m, 0, 23, 59, 59, 999);
+    }
+
     const pd  = payDate      ? new Date(payDate)      : null;
     const pl  = periodLabel  || salaryService.buildPeriodLabel(ps, pe);
     const pdl = payDateLabel || '';
+
+    // Checkbox unchecked in HTML sends undefined -> properly handle boolean
+    const shouldPreserve = preserveEdits === 'true' || preserveEdits === 'on' || preserveEdits === true;
 
     const saved = await salaryService.generateSalariesForPeriod({
       month: m, year: y,
       periodStart: ps, periodEnd: pe,
       payDate: pd, payDateLabel: pdl,
       periodLabel: pl,
-      preserveEdits: preserveEdits !== 'false',
+      preserveEdits: shouldPreserve,
     });
 
     await AuditLog.create({
@@ -149,9 +174,19 @@ exports.salaryGenerate = async (req, res) => {
 exports.salaryPublish = async (req, res) => {
   try {
     const { month, year, teacherIds } = req.body;
-    const m   = parseInt(month, 10);
-    const y   = parseInt(year,  10);
-    const ids = Array.isArray(teacherIds) ? teacherIds : (teacherIds ? [teacherIds] : null);
+    const m = parseInt(month, 10);
+    const y = parseInt(year,  10);
+    if (isNaN(m) || m < 1 || m > 12 || isNaN(y)) {
+      req.session.flash = { type: 'error', msg: 'Invalid month or year selected.' };
+      return res.redirect('/admin/salaries');
+    }
+
+    let ids = null;
+    if (teacherIds) {
+      const rawIds = Array.isArray(teacherIds) ? teacherIds : [teacherIds];
+      ids = rawIds.filter(id => mongoose.Types.ObjectId.isValid(id));
+      if (ids.length === 0) ids = null;
+    }
 
     const count = await salaryService.publishSalaries(m, y, ids);
 
@@ -178,8 +213,12 @@ exports.salaryPublish = async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 exports.salaryEditForm = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).render('error', { message: 'Invalid salary record ID.' });
+    }
+
     const salary = await Salary.findById(req.params.id).populate('teacher');
-    if (!salary) return res.render('error', { message: 'Salary record not found.' });
+    if (!salary) return res.status(404).render('error', { message: 'Salary record not found.' });
 
     res.render('admin/salaries/edit', {
       salary,
@@ -200,18 +239,27 @@ exports.salaryEditForm = async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 exports.salaryUpdate = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      req.session.flash = { type: 'error', msg: 'Invalid salary record ID.' };
+      return res.redirect('/admin/salaries');
+    }
+
     const salary = await Salary.findById(req.params.id);
-    if (!salary) return res.render('error', { message: 'Salary record not found.' });
+    if (!salary) {
+      req.session.flash = { type: 'error', msg: 'Salary record not found.' };
+      return res.redirect('/admin/salaries');
+    }
 
     const n = (v) => Math.max(0, parseFloat(v) || 0);
 
     /* ── Map body fields → salary doc ── */
     // Period meta
-    if (req.body.periodLabel)  salary.periodLabel  = req.body.periodLabel.trim();
-    if (req.body.periodStart)  salary.periodStart  = new Date(req.body.periodStart);
-    if (req.body.periodEnd)    salary.periodEnd    = new Date(req.body.periodEnd);
-    if (req.body.payDate)      salary.payDate      = new Date(req.body.payDate);
-    if (req.body.payDateLabel) salary.payDateLabel = req.body.payDateLabel.trim();
+    if (req.body.periodLabel !== undefined)  salary.periodLabel  = req.body.periodLabel.trim();
+    if (req.body.periodStart)                salary.periodStart  = new Date(req.body.periodStart);
+    if (req.body.periodEnd)                  salary.periodEnd    = new Date(req.body.periodEnd);
+    if (req.body.payDate)                    salary.payDate      = new Date(req.body.payDate);
+    else if (req.body.payDate === '')        salary.payDate      = null;
+    if (req.body.payDateLabel !== undefined) salary.payDateLabel = req.body.payDateLabel.trim();
 
     // Earnings
     salary.basicSalary          = n(req.body.basicSalary);
@@ -238,18 +286,22 @@ exports.salaryUpdate = async (req, res) => {
     salary.bpjsKetenagakerjaan    = n(req.body.bpjsKetenagakerjaan);
     salary.tax                    = n(req.body.tax);
 
-    // Other incomes (dynamic rows)
-    const oiLabels  = [].concat(req.body['otherIncomeLabel[]']  || []);
-    const oiAmounts = [].concat(req.body['otherIncomeAmount[]'] || []);
+    // Other incomes (dynamic rows — supports qs array syntax or brackets)
+    const rawOiLabels  = req.body.otherIncomeLabel ?? req.body['otherIncomeLabel[]'] ?? [];
+    const rawOiAmounts = req.body.otherIncomeAmount ?? req.body['otherIncomeAmount[]'] ?? [];
+    const oiLabels  = [].concat(rawOiLabels);
+    const oiAmounts = [].concat(rawOiAmounts);
     salary.otherIncomes = oiLabels
-      .map((label, i) => ({ label: label.trim(), amount: n(oiAmounts[i]) }))
+      .map((label, i) => ({ label: (label || '').trim(), amount: n(oiAmounts[i]) }))
       .filter(item => item.label || item.amount > 0);
 
-    // Other deductions (dynamic rows)
-    const odLabels  = [].concat(req.body['otherDeductionLabel[]']  || []);
-    const odAmounts = [].concat(req.body['otherDeductionAmount[]'] || []);
+    // Other deductions (dynamic rows — supports qs array syntax or brackets)
+    const rawOdLabels  = req.body.otherDeductionLabel ?? req.body['otherDeductionLabel[]'] ?? [];
+    const rawOdAmounts = req.body.otherDeductionAmount ?? req.body['otherDeductionAmount[]'] ?? [];
+    const odLabels  = [].concat(rawOdLabels);
+    const odAmounts = [].concat(rawOdAmounts);
     salary.otherDeductions = odLabels
-      .map((label, i) => ({ label: label.trim(), amount: n(odAmounts[i]) }))
+      .map((label, i) => ({ label: (label || '').trim(), amount: n(odAmounts[i]) }))
       .filter(item => item.label || item.amount > 0);
 
     salary.notes = (req.body.notes || '').trim().slice(0, 500);
@@ -284,6 +336,11 @@ exports.salaryUpdate = async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 exports.salaryRetract = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      req.session.flash = { type: 'error', msg: 'Invalid salary record ID.' };
+      return res.redirect('/admin/salaries');
+    }
+
     const salary = await Salary.findById(req.params.id).populate('teacher', 'displayName');
     if (!salary) {
       req.session.flash = { type: 'error', msg: 'Salary record not found.' };
@@ -298,6 +355,7 @@ exports.salaryRetract = async (req, res) => {
     const prevStatus = salary.status;
     salary.status      = 'draft';
     salary.publishedAt = null;
+    salary.paidAt      = null;
     await salary.save();
 
     await AuditLog.create({
@@ -328,8 +386,12 @@ exports.salaryRetract = async (req, res) => {
 ══════════════════════════════════════════════════════════════ */
 exports.salarySlip = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).render('error', { message: 'Invalid salary record ID.' });
+    }
+
     const salary = await Salary.findById(req.params.id).populate('teacher');
-    if (!salary) return res.render('error', { message: 'Salary record not found.' });
+    if (!salary) return res.status(404).render('error', { message: 'Salary record not found.' });
 
     // Pre-format all IDR values for the template
     const fmt = (v) => formatIDR(v);
@@ -355,6 +417,9 @@ exports.salaryExport = async (req, res) => {
     const salaries = await Salary.find({ year, month })
       .populate('teacher', 'displayName username')
       .lean();
+
+    // Sort alphabetically by teacher display name
+    salaries.sort((a, b) => (a.teacher?.displayName || '').localeCompare(b.teacher?.displayName || ''));
 
     const wb = new ExcelJS.Workbook();
     wb.creator = 'CV Fond of English';

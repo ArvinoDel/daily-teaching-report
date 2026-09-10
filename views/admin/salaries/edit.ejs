@@ -6,7 +6,7 @@
     return 'Rp\u00a0' + Number(n).toLocaleString('en-US');
   }
   const sp = salary;
-  const t  = teacher;
+  const t  = teacher || { displayName: 'Teacher', username: '—' };
 %>
 
 <!-- ── Header ── -->
@@ -316,12 +316,34 @@
 
 <style>
   .input-std {
-    @apply w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-medium text-slate-800
-           focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition;
+    width: 100%;
+    padding: 0.625rem 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid #e2e8f0;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #1e293b;
+    outline: none;
+    transition: all 0.15s ease-in-out;
+  }
+  .input-std:focus {
+    border-color: #4ade80;
+    box-shadow: 0 0 0 2px #dcfce7;
   }
   .input-money {
-    @apply px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-mono text-slate-800
-           focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition;
+    padding: 0.625rem 0.75rem;
+    border-radius: 0.75rem;
+    border: 1px solid #e2e8f0;
+    background-color: #f8fafc;
+    font-size: 0.875rem;
+    font-family: monospace;
+    color: #1e293b;
+    outline: none;
+    transition: all 0.15s ease-in-out;
+  }
+  .input-money:focus {
+    border-color: #4ade80;
+    box-shadow: 0 0 0 2px #dcfce7;
   }
 </style>
 

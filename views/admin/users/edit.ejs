@@ -226,7 +226,7 @@
             <div class="relative flex-1">
               <span class="absolute inset-y-0 left-3 flex items-center text-xs text-slate-400 font-medium pointer-events-none">Rp</span>
               <input type="number" name="<%= f.name %>"
-                value="<%= spVal(f.name.replace('sp_',''), f.def) || f.def %>"
+                value="<%= spVal(f.name.replace('sp_',''), f.def) %>"
                 min="0" step="500"
                 class="w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-4 py-2.5 text-sm font-mono text-slate-800 focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition">
             </div>

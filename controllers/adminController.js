@@ -1,5 +1,6 @@
 const User     = require('../models/User');
 const Report   = require('../models/Report');
+const Salary   = require('../models/Salary');
 const AuditLog = require('../models/AuditLog'); // 🟢 Audit log
 const Group    = require('../models/Group');
 
@@ -286,6 +287,15 @@ exports.userUpdate = async (req, res) => {
 
     // Parse salary profile defaults (all optional, default 0)
     const spNum = (key) => Math.max(0, Math.round(parseFloat(req.body[key]) || 0));
+    const mealRateFullVal = (req.body.sp_mealRateFull !== undefined && req.body.sp_mealRateFull !== '')
+      ? spNum('sp_mealRateFull') : 22500;
+    const transportRateVal = (req.body.sp_transportRate !== undefined && req.body.sp_transportRate !== '')
+      ? spNum('sp_transportRate') : 22500;
+    const posMonthsReq = (req.body.sp_positionMonthsRequired !== undefined && req.body.sp_positionMonthsRequired !== '')
+      ? Math.max(0, parseInt(req.body.sp_positionMonthsRequired, 10) || 0) : 3;
+    const rewMonthsReq = (req.body.sp_rewardMonthsRequired !== undefined && req.body.sp_rewardMonthsRequired !== '')
+      ? Math.max(0, parseInt(req.body.sp_rewardMonthsRequired, 10) || 0) : 6;
+
     const salaryProfileValues = {
       basicSalary:        spNum('sp_basicSalary'),
       monthlyIncentive:   spNum('sp_monthlyIncentive'),
@@ -293,13 +303,13 @@ exports.userUpdate = async (req, res) => {
       positionAllowance:  spNum('sp_positionAllowance'),
       loyaltyAllowance:   spNum('sp_loyaltyAllowance'),
       wifeChildAllowance: spNum('sp_wifeChildAllowance'),
-      mealRateFull:       spNum('sp_mealRateFull')  || 22500,
+      mealRateFull:       mealRateFullVal,
       mealRateHalf:       spNum('sp_mealRateHalf'),
-      transportRate:      spNum('sp_transportRate') || 22500,
+      transportRate:      transportRateVal,
       bpjsKetenagakerjaan:              spNum('sp_bpjsKetenagakerjaan'),
       tax:                              spNum('sp_tax'),
-      positionAllowanceMonthsRequired:  Math.max(0, parseInt(req.body.sp_positionMonthsRequired) || 3),
-      teachingRewardMonthsRequired:     Math.max(0, parseInt(req.body.sp_rewardMonthsRequired)   || 6),
+      positionAllowanceMonthsRequired:  posMonthsReq,
+      teachingRewardMonthsRequired:     rewMonthsReq,
     };
 
     if (password && password.length > 0 && password.length < 6) {
@@ -355,7 +365,10 @@ exports.userDelete = async (req, res) => {
     }
 
     const label = `${user.displayName} (@${user.username})`;
-    await Report.deleteMany({ teacher: user._id });
+    await Promise.all([
+      Report.deleteMany({ teacher: user._id }),
+      Salary.deleteMany({ teacher: user._id }),
+    ]);
     await user.deleteOne();
     await logAudit(req, 'delete', 'user', user._id, label); // 🟢 log
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
@@ -388,7 +401,10 @@ exports.usersBulkDelete = async (req, res) => {
       }
     }
 
-    await Report.deleteMany({ teacher: { $in: ids } });
+    await Promise.all([
+      Report.deleteMany({ teacher: { $in: ids } }),
+      Salary.deleteMany({ teacher: { $in: ids } }),
+    ]);
     const result = await User.deleteMany({ _id: { $in: ids } });
     await logAudit(req, 'delete', 'user', ids[0], `Bulk delete — ${result.deletedCount} user(s)`);
     return res.status(200).json({ ok: true, deleted: result.deletedCount });
@@ -619,8 +635,10 @@ exports.auditLogIndex = async (req, res) => {
     const skip  = (page - 1) * limit;
 
     const filter = {};
-    if (req.query.action     && ['update', 'delete'].includes(req.query.action))   filter.action     = req.query.action;
-    if (req.query.targetType && ['report', 'user'].includes(req.query.targetType)) filter.targetType = req.query.targetType;
+    const allowedActions = ['update', 'delete', 'salary_generate', 'salary_publish', 'salary_update'];
+    const allowedTargets = ['report', 'user', 'group', 'salary'];
+    if (req.query.action     && allowedActions.includes(req.query.action))     filter.action     = req.query.action;
+    if (req.query.targetType && allowedTargets.includes(req.query.targetType)) filter.targetType = req.query.targetType;
 
     const [logs, totalCount] = await Promise.all([
       AuditLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),

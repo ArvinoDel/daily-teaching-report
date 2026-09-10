@@ -187,7 +187,7 @@
   @media print {
     body { background: white !important; }
     .no-print { display: none !important; }
-    nav, main > *:not(#payslip) { display: none !important; }
+    nav, footer, main > *:not(#payslip) { display: none !important; }
     #payslip {
       box-shadow: none !important;
       border: none !important;
@@ -195,6 +195,7 @@
       max-width: 100% !important;
       margin: 0 !important;
     }
+    .print-page { page-break-after: avoid; }
     main { padding: 0 !important; max-width: 100% !important; }
   }
 </style>

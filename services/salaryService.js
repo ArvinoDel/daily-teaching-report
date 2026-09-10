@@ -199,8 +199,8 @@ async function generateSalariesForPeriod(opts) {
     // Auto-values
     const distinctDays    = daysMap[tid] || 0;
     const teachingReward  = rewardEligible ? calcTeachingReward(sessionMap, teacher) : 0;
-    const mealFullRate    = sp.mealRateFull  || 22500;
-    const transportRate   = sp.transportRate || 22500;
+    const mealFullRate    = sp.mealRateFull  ?? 22500;
+    const transportRate   = sp.transportRate ?? 22500;
 
     // Try to find an existing record
     let salary = await Salary.findOne({ teacher: teacher._id, year, month });
@@ -218,8 +218,8 @@ async function generateSalariesForPeriod(opts) {
 
       // ── Sync attendance days from live report data ──
       // We refresh the day COUNTS from reports but keep whatever rate the admin set.
-      const existingMealRate      = salary.mealFullRate  || mealFullRate;
-      const existingTransportRate = salary.transportRate  || transportRate;
+      const existingMealRate      = salary.mealFullRate  ?? mealFullRate;
+      const existingTransportRate = salary.transportRate ?? transportRate;
       salary.mealFullDays   = distinctDays;
       salary.mealFullRate   = existingMealRate;
       salary.mealFullTotal  = distinctDays * existingMealRate;
@@ -228,9 +228,7 @@ async function generateSalariesForPeriod(opts) {
       salary.transportTotal = distinctDays * existingTransportRate;
 
       // ── Sync teaching reward ──
-      if (!salary._adminOverriddenTeachingReward) {
-        salary.teachingReward = teachingReward;
-      }
+      salary.teachingReward = teachingReward;
     } else {
       // ── Fresh draft — no existing record for this month (or preserveEdits=false) ──
       //
