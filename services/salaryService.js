@@ -232,7 +232,27 @@ async function generateSalariesForPeriod(opts) {
         salary.teachingReward = teachingReward;
       }
     } else {
-      // Create fresh draft from defaults
+      // ── Fresh draft — no existing record for this month (or preserveEdits=false) ──
+      //
+      // Seeding priority:
+      //   1. Most recent previous salary for this teacher (carry forward admin-set values)
+      //   2. salaryProfile defaults (used only when no prior salary exists at all)
+      //
+      // Dynamic fields (meal/transport days, teaching reward) ALWAYS come from
+      // live report data regardless of seed source.
+
+      const prevSalary = await Salary.findOne({
+        teacher: teacher._id,
+        $or: [
+          { year: { $lt: year } },
+          { year, month: { $lt: month } },
+        ],
+      }).sort({ year: -1, month: -1 }).lean();
+
+      // Helper: prefer prevSalary field, then salaryProfile field, then fallback
+      const seed = (prevField, spField, fallback = 0) =>
+        prevSalary ? (prevSalary[prevField] ?? fallback) : (sp[spField] ?? fallback);
+
       const baseData = {
         teacher:       teacher._id,
         month, year,
@@ -241,31 +261,53 @@ async function generateSalariesForPeriod(opts) {
         teacherTenureAtPeriod: tenureStr,
         status: 'draft',
 
-        // Earnings — from salaryProfile defaults
-        basicSalary:        sp.basicSalary        || 0,
-        monthlyIncentive:   sp.monthlyIncentive   || 0,
-        healthAllowance:    sp.healthAllowance     || 0,
-        positionAllowance:  positionEligible ? (sp.positionAllowance || 0) : 0,
-        loyaltyAllowance:   sp.loyaltyAllowance    || 0,
-        wifeChildAllowance: sp.wifeChildAllowance  || 0,
+        // ── 1. Basic Salary ──────────────────────────────────────────
+        basicSalary: seed('basicSalary', 'basicSalary'),
 
-        // Attendance — auto from reports
-        mealFullDays:  distinctDays, mealFullRate,  mealFullTotal:  distinctDays * mealFullRate,
-        mealHalfDays:  0,            mealHalfRate:  sp.mealRateHalf || 0, mealHalfTotal: 0,
-        transportDays: distinctDays, transportRate, transportTotal: distinctDays * transportRate,
+        // ── 2-3. Meal Allowance ──────────────────────────────────────
+        // Days always come from reports; rates + half-days carry forward
+        mealFullDays:  distinctDays,
+        mealFullRate:  seed('mealFullRate',  'mealRateFull',  22500),
+        mealFullTotal: 0, // recompute() will calculate
+        mealHalfDays:  seed('mealHalfDays',  null, 0),  // manual — carry forward
+        mealHalfRate:  seed('mealHalfRate',  'mealRateHalf', 0),
+        mealHalfTotal: 0,
 
-        teachingReward,
-        gameReward:           0,
-        studentCommission:    0,
-        internetCompensation: 0,
-        overtime:             0,
-        otherIncomes:         [],
+        // ── 4. Transport ─────────────────────────────────────────────
+        transportDays:  distinctDays,
+        transportRate:  seed('transportRate', 'transportRate', 22500),
+        transportTotal: 0,
 
-        // Deductions — from salaryProfile defaults
-        instalment:             0,
+        // ── 5-9. Fixed allowances ────────────────────────────────────
+        monthlyIncentive:   seed('monthlyIncentive',   'monthlyIncentive'),
+        healthAllowance:    seed('healthAllowance',    'healthAllowance'),
+        // Position allowance: honour stage rule on first create,
+        // but if previous salary had it > 0 the teacher is already past the threshold
+        positionAllowance:  positionEligible
+          ? seed('positionAllowance', 'positionAllowance')
+          : 0,
+        loyaltyAllowance:   seed('loyaltyAllowance',   'loyaltyAllowance'),
+        wifeChildAllowance: seed('wifeChildAllowance', 'wifeChildAllowance'),
+
+        // ── 10. Teaching Reward ──────────────────────────────────────
+        // Always recalculated from live sessions (stage rule still applies)
+        teachingReward: rewardEligible ? teachingReward : 0,
+
+        // ── 11-14. Variable monthly items ───────────────────────────
+        // Carry forward from previous month so admin doesn't re-enter
+        // recurring items (e.g. ongoing internet compensation), but each
+        // is fully editable and can be zeroed out.
+        gameReward:           seed('gameReward',           null, 0),
+        studentCommission:    seed('studentCommission',    null, 0),
+        internetCompensation: seed('internetCompensation', null, 0),
+        overtime:             seed('overtime',             null, 0),
+        otherIncomes:         [], // dynamic — don't carry forward one-off items
+
+        // ── Deductions ───────────────────────────────────────────────
+        instalment:             0,  // kasbon resets each month
         miscellaneousDeduction: 0,
-        bpjsKetenagakerjaan:    sp.bpjsKetenagakerjaan || 0,
-        tax:                    sp.tax                  || 0,
+        bpjsKetenagakerjaan:    seed('bpjsKetenagakerjaan', 'bpjsKetenagakerjaan'),
+        tax:                    seed('tax', 'tax'),
         otherDeductions:        [],
       };
 
