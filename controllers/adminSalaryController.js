@@ -278,6 +278,52 @@ exports.salaryUpdate = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════════════════════════
+   RETRACT  POST /admin/salaries/:id/retract
+   Moves a published / paid slip back to draft so the admin
+   can correct it before re-sending.
+══════════════════════════════════════════════════════════════ */
+exports.salaryRetract = async (req, res) => {
+  try {
+    const salary = await Salary.findById(req.params.id).populate('teacher', 'displayName');
+    if (!salary) {
+      req.session.flash = { type: 'error', msg: 'Salary record not found.' };
+      return res.redirect('/admin/salaries');
+    }
+
+    if (salary.status === 'draft') {
+      req.session.flash = { type: 'error', msg: 'This slip is already a draft — nothing to retract.' };
+      return res.redirect(`/admin/salaries?month=${salary.year}-${String(salary.month).padStart(2,'0')}`);
+    }
+
+    const prevStatus = salary.status;
+    salary.status      = 'draft';
+    salary.publishedAt = null;
+    await salary.save();
+
+    await AuditLog.create({
+      admin:      req.session.user?._id,
+      adminName:  req.session.user?.displayName || req.session.user?.username,
+      action:     'salary_update',
+      targetType: 'salary',
+      targetId:   salary._id,
+      targetLabel: `${salary.month}/${salary.year}`,
+      meta: { retracted: true, prevStatus, teacher: salary.teacher?.displayName },
+    });
+
+    const teacherName = salary.teacher?.displayName || 'Teacher';
+    req.session.flash = {
+      type: 'success',
+      msg:  `${teacherName}'s slip has been retracted back to draft.`,
+    };
+    res.redirect(`/admin/salaries?month=${salary.year}-${String(salary.month).padStart(2,'0')}`);
+  } catch (err) {
+    console.error('[salary] retract error:', err);
+    req.session.flash = { type: 'error', msg: 'Failed to retract salary: ' + err.message };
+    res.redirect('/admin/salaries');
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════
    SLIP VIEW  GET /admin/salaries/:id/slip
 ══════════════════════════════════════════════════════════════ */
 exports.salarySlip = async (req, res) => {

@@ -53,6 +53,7 @@ router.post('/salaries/publish',     salaryCtrl.salaryPublish);
 router.get('/salaries/export',       salaryCtrl.salaryExport);
 router.get('/salaries/:id/slip',     salaryCtrl.salarySlip);
 router.get('/salaries/:id/edit',     salaryCtrl.salaryEditForm);
+router.post('/salaries/:id/retract', salaryCtrl.salaryRetract);
 router.post('/salaries/:id',         salaryCtrl.salaryUpdate);
 
 // Feedbacks
