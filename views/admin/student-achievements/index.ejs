@@ -525,12 +525,18 @@ async function runStudentSync() {
   txt.textContent = 'Generating barcodes...';
 
   try {
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var token = (csrfMeta ? csrfMeta.getAttribute('content') : '') || '<%= csrfToken %>';
+
     var res = await fetch('/admin/student-achievements/migrate', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'CSRF-Token': '<%= csrfToken %>'
-      }
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'x-csrf-token': token
+      },
+      body: JSON.stringify({ _csrf: token })
     });
     var data = await res.json();
     if (data.ok) {

@@ -441,11 +441,16 @@
     btnAdd.disabled    = true;
     btnReduce.disabled = true;
 
-    var body = 'barcode=' + encodeURIComponent(currentBarcode) + '&type=' + type;
+    var body = 'barcode=' + encodeURIComponent(currentBarcode) +
+               '&type=' + type +
+               '&_csrf=' + encodeURIComponent('<%= csrfToken %>');
 
     fetch('/admin/scan-ac/transact', {
       method:  'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'x-csrf-token': '<%= csrfToken %>',
+      },
       body:    body,
     })
       .then(function (r) { return r.json(); })

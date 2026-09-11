@@ -279,11 +279,15 @@
       type:       type,
       subject:    ctxSubject.value.trim(),
       class_name: ctxClass.value.trim(),
+      _csrf:      '<%= csrfToken %>',
     });
 
     fetch('/admin/scan-ac/transact', {
       method:  'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'x-csrf-token': '<%= csrfToken %>',
+      },
       body:    body.toString(),
     })
       .then(function (r) { return r.json(); })
@@ -361,7 +365,10 @@
 
   window.undoLog = function (txId) {
     if (!confirm('Undo this AC transaction?')) return;
-    fetch('/admin/scan-ac/transact/' + txId, { method: 'DELETE' })
+    fetch('/admin/scan-ac/transact/' + txId, {
+      method: 'DELETE',
+      headers: { 'x-csrf-token': '<%= csrfToken %>' }
+    })
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (!res.ok) { return showError(res.error || 'Failed to undo.'); }

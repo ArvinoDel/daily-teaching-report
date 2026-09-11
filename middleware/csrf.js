@@ -32,10 +32,19 @@ function csrfProtection(req, res, next) {
   }
 
   // Validate token from body or header
-  const token = req.body._csrf || req.headers['x-csrf-token'];
+  const token = (req.body && req.body._csrf) ||
+                req.headers['x-csrf-token'] ||
+                req.headers['csrf-token'] ||
+                req.headers['x-xsrf-token'];
 
   if (!token || token !== req.session.csrfToken) {
-    if (req.path.includes('/api/') || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+    const isJson = req.path.includes('/api/') ||
+                   req.xhr ||
+                   req.headers['x-requested-with'] === 'XMLHttpRequest' ||
+                   (req.headers.accept && req.headers.accept.includes('application/json')) ||
+                   (req.headers['content-type'] && req.headers['content-type'].includes('application/json'));
+
+    if (isJson) {
       return res.status(403).json({
         error: 'Invalid or expired security token. Please refresh the page and try again.',
       });
@@ -52,7 +61,10 @@ function csrfProtection(req, res, next) {
  * Standalone CSRF verification — use after multer on multipart routes.
  */
 function verifyCsrf(req, res, next) {
-  const token = req.body._csrf || req.headers['x-csrf-token'];
+  const token = (req.body && req.body._csrf) ||
+                req.headers['x-csrf-token'] ||
+                req.headers['csrf-token'] ||
+                req.headers['x-xsrf-token'];
 
   if (!token || token !== req.session.csrfToken) {
     return res.status(403).render('error', {
