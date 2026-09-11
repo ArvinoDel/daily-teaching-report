@@ -7,6 +7,7 @@ const feedbackCtrl = require('../controllers/feedbackController');
 const { requireAuth }  = require('../middleware/auth');
 const { requireAdmin, requireSuperAdmin } = require('../middleware/adminAuth');
 const achievementsCtrl = require('../controllers/adminStudentAchievementsController');
+const acScanCtrl       = require('../controllers/adminAcScanController');
 const salaryCtrl = require('../controllers/adminSalaryController');
 
 router.use(requireAuth, requireAdmin);
@@ -74,5 +75,11 @@ router.delete('/backups/:id',       requireSuperAdmin, backupCtrl.deleteBackup);
 router.get('/student-achievements/scan',         achievementsCtrl.lookupByBarcode);
 router.get('/student-achievements/student/:id',  achievementsCtrl.studentProfile);
 router.get('/student-achievements',              achievementsCtrl.index);
+
+// AC Barcode Scanner
+router.get   ('/scan-ac',                acScanCtrl.scanPage);
+router.get   ('/scan-ac/lookup',         acScanCtrl.lookup);
+router.post  ('/scan-ac/transact',       acScanCtrl.transact);
+router.delete('/scan-ac/transact/:id',   acScanCtrl.undoTransact);
 
 module.exports = router;

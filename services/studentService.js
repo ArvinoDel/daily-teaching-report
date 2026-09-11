@@ -8,9 +8,10 @@
  *  - AC history / total queries
  */
 
-const mongoose = require('mongoose');
-const Student  = require('../models/Student');
-const Report   = require('../models/Report');
+const mongoose      = require('mongoose');
+const Student       = require('../models/Student');
+const Report        = require('../models/Report');
+const AcTransaction = require('../models/AcTransaction');
 const {
   normalizeName,
   extractFullName,
@@ -105,63 +106,142 @@ async function matchOrCreateStudent(rawName) {
 }
 
 /* ─────────────────────────────────────────────────────────────────
- *  getStudentAcTotal(studentOrNames)
+ *  getStudentAcTotal(student)
  *
- *  Returns the integer count of AC bonus cards for a student.
- *  Accepts a Student document or an array of raw name strings
- *  that may have appeared in reports (handles name drift across years).
+ *  Returns the net AC count for a student across BOTH sources:
+ *   - Report.ac_students (historical)
+ *   - AcTransaction (scan-based, add minus reduce)
  * ───────────────────────────────────────────────────────────────── */
 async function getStudentAcTotal(student) {
   const names = buildNameVariants(student);
-  if (!names.length) return 0;
-  const result = await Report.aggregate([
-    { $match:   { ac_students: { $in: names } } },
-    { $unwind:  '$ac_students' },
-    { $match:   { ac_students: { $in: names } } },
-    { $group:   { _id: null, total: { $sum: 1 } } },
-  ]);
-  return result.length ? result[0].total : 0;
+  if (!names.length && !student._id) return 0;
+
+  // 1. From legacy Reports
+  let reportTotal = 0;
+  if (names.length) {
+    const result = await Report.aggregate([
+      { $match:  { ac_students: { $in: names } } },
+      { $unwind: '$ac_students' },
+      { $match:  { ac_students: { $in: names } } },
+      { $group:  { _id: null, total: { $sum: 1 } } },
+    ]);
+    reportTotal = result.length ? result[0].total : 0;
+  }
+
+  // 2. From AcTransaction (net: add - reduce)
+  let txTotal = 0;
+  if (student._id) {
+    const result = await AcTransaction.aggregate([
+      { $match: { student: student._id } },
+      {
+        $group: {
+          _id: null,
+          adds:    { $sum: { $cond: [{ $eq: ['$type', 'add']    }, '$amount', 0] } },
+          reduces: { $sum: { $cond: [{ $eq: ['$type', 'reduce'] }, '$amount', 0] } },
+        },
+      },
+    ]);
+    if (result.length) txTotal = result[0].adds - result[0].reduces;
+  }
+
+  return Math.max(0, reportTotal + txTotal);
 }
 
 /* ─────────────────────────────────────────────────────────────────
  *  getStudentAcHistory(student)
  *
- *  Returns an array of report documents where the student received AC,
- *  sorted most-recent first.
- *  Each item: { date, class_name, subject, teacher, count }
+ *  Returns a merged, date-sorted array of AC events from both:
+ *   - Report.ac_students (historical)
+ *   - AcTransaction (scan-based)
+ *  Each item: { source, date, class_name, subject, teacher, count, type }
  * ───────────────────────────────────────────────────────────────── */
 async function getStudentAcHistory(student) {
   const names = buildNameVariants(student);
-  if (!names.length) return [];
 
-  const reports = await Report.aggregate([
-    { $match:  { ac_students: { $in: names } } },
-    { $unwind: '$ac_students' },
-    { $match:  { ac_students: { $in: names } } },
-    {
-      $group: {
-        _id:        { reportId: '$_id', date: '$date', class_name: '$class_name', subject: '$subject', teacher: '$teacher' },
-        count:      { $sum: 1 },
-        date:       { $first: '$date' },
-        class_name: { $first: '$class_name' },
-        subject:    { $first: '$subject' },
-        teacher:    { $first: '$teacher' },
+  // 1. Report-based history
+  let reportHistory = [];
+  if (names.length) {
+    reportHistory = await Report.aggregate([
+      { $match:  { ac_students: { $in: names } } },
+      { $unwind: '$ac_students' },
+      { $match:  { ac_students: { $in: names } } },
+      {
+        $group: {
+          _id:        { reportId: '$_id', date: '$date', class_name: '$class_name', subject: '$subject', teacher: '$teacher' },
+          count:      { $sum: 1 },
+          date:       { $first: '$date' },
+          class_name: { $first: '$class_name' },
+          subject:    { $first: '$subject' },
+          teacher:    { $first: '$teacher' },
+        },
       },
-    },
-    { $sort:  { date: -1 } },
-    {
-      $project: {
-        _id:        '$_id.reportId',
-        date:       1,
-        class_name: 1,
-        subject:    1,
-        teacher:    1,
-        count:      1,
+      { $sort:  { date: -1 } },
+      {
+        $project: {
+          _id:        '$_id.reportId',
+          date:       1,
+          class_name: 1,
+          subject:    1,
+          teacher:    1,
+          count:      1,
+          source:     { $literal: 'report' },
+          type:       { $literal: 'add' },
+        },
       },
-    },
-  ]);
+    ]);
+  }
 
-  return reports;
+  // 2. AcTransaction-based history
+  let txHistory = [];
+  if (student._id) {
+    const txDocs = await AcTransaction.find({ student: student._id })
+      .sort({ date: -1 })
+      .lean();
+    txHistory = txDocs.map(t => ({
+      _id:        t._id,
+      date:       t.date,
+      class_name: t.class_name || '',
+      subject:    t.subject    || '',
+      teacher:    t.scanned_by_name || '',
+      count:      t.type === 'add' ? t.amount : -t.amount,
+      source:     'scan',
+      type:       t.type,
+      note:       t.note || '',
+    }));
+  }
+
+  // Merge and sort by date descending
+  const combined = [...reportHistory, ...txHistory];
+  combined.sort((a, b) => new Date(b.date) - new Date(a.date));
+  return combined;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ *  recordAcTransaction({ student, type, subject, class_name, note, scanned_by })
+ *
+ *  Creates a new AcTransaction document.
+ *  Returns the saved transaction.
+ * ───────────────────────────────────────────────────────────────── */
+async function recordAcTransaction({ student, type, subject, class_name, note, scanned_by, scanned_by_name }) {
+  if (!student || !student._id) throw new Error('recordAcTransaction: student is required');
+  if (!['add', 'reduce'].includes(type)) throw new Error('recordAcTransaction: type must be add or reduce');
+
+  const tx = await AcTransaction.create({
+    student:          student._id,
+    student_name:     student.full_name || student.raw_name || '',
+    student_code:     student.student_code || '',
+    barcode:          student.barcode || '',
+    type,
+    amount:           1,
+    subject:          (subject    || '').trim(),
+    class_name:       (class_name || '').trim(),
+    note:             (note       || '').trim(),
+    date:             new Date(),
+    scanned_by:       scanned_by      || null,
+    scanned_by_name:  scanned_by_name || '',
+  });
+
+  return tx;
 }
 
 /* ── Internal helpers ─────────────────────────────────────────── */
@@ -185,4 +265,5 @@ module.exports = {
   matchOrCreateStudent,
   getStudentAcTotal,
   getStudentAcHistory,
+  recordAcTransaction,
 };

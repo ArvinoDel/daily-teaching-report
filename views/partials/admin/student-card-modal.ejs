@@ -6,55 +6,48 @@
   Requires JsBarcode to be loaded on the host page.
 -->
 
-<!-- ── Student Card Modal ───────────────────────────────────────── -->
+<!-- ── Student Card Modal ─────────────────────────────────────── -->
 <div id="student-card-overlay"
   class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 backdrop-blur-sm"
   aria-modal="true" role="dialog" aria-labelledby="card-student-name">
 
-  <!-- Dismiss on backdrop click -->
   <div class="absolute inset-0" onclick="closeStudentCard()"></div>
 
-  <!-- Modal panel -->
   <div id="student-card-panel"
-    class="relative w-full max-w-lg mx-4 bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]
-           translate-y-4 opacity-0 transition-all duration-300 ease-out"
-    style="will-change: transform, opacity;">
+    class="relative w-full max-w-md mx-4 bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+    style="transform: translateY(16px); opacity: 0; transition: transform .3s ease, opacity .3s ease; will-change: transform, opacity;">
 
-    <!-- ── Loading state ── -->
+    <!-- Loading -->
     <div id="card-loading" class="flex flex-col items-center justify-center py-20 px-8">
-      <div class="w-10 h-10 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin mb-3"></div>
+      <div class="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-3"></div>
       <p class="text-sm text-slate-400">Loading card…</p>
     </div>
 
-    <!-- ── Error state ── -->
-    <div id="card-error" class="hidden flex flex-col items-center justify-center py-20 px-8 text-center">
+    <!-- Error -->
+    <div id="card-error" class="hidden flex-col items-center justify-center py-20 px-8 text-center">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-red-300 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
       </svg>
-      <p class="text-sm font-semibold text-slate-600" id="card-error-msg">Student not found.</p>
+      <p id="card-error-msg" class="text-sm font-semibold text-slate-600">Student not found.</p>
       <button onclick="closeStudentCard()" class="mt-4 text-xs text-slate-400 hover:text-slate-600 transition">Dismiss</button>
     </div>
 
-    <!-- ── Card content ── -->
-    <div id="card-content" class="hidden flex flex-col overflow-hidden">
+    <!-- Card Content -->
+    <div id="card-content" class="hidden flex-col overflow-hidden">
 
-      <!-- Printable card area -->
-      <div id="printable-card" class="p-6 pb-4">
+      <!-- ── Printable Card Area ── -->
+      <div id="printable-card">
 
-        <!-- Header row -->
-        <div class="flex items-start justify-between gap-3 mb-5">
+        <!-- Header: name + close -->
+        <div class="px-6 pt-6 pb-4 flex items-start justify-between gap-3">
           <div class="flex items-center gap-3">
-            <!-- Avatar -->
             <div id="card-avatar"
-              class="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand-400 to-brand-700 flex items-center justify-center text-white text-2xl font-extrabold flex-shrink-0 shadow">
-              ?
-            </div>
+              class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-400 to-indigo-700 flex items-center justify-center text-white text-xl font-extrabold flex-shrink-0 shadow">?</div>
             <div>
-              <h2 id="card-student-name" class="text-xl font-extrabold text-slate-900 leading-tight"></h2>
-              <div class="flex items-center gap-1.5 mt-1 flex-wrap" id="card-badges"></div>
+              <h2 id="card-student-name" class="text-lg font-extrabold text-slate-900 leading-tight"></h2>
+              <div id="card-badges" class="flex items-center gap-1.5 mt-1 flex-wrap"></div>
             </div>
           </div>
-          <!-- Close button (non-print) -->
           <button onclick="closeStudentCard()"
             class="no-print flex-shrink-0 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition mt-0.5">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
@@ -63,51 +56,50 @@
           </button>
         </div>
 
+        <!-- Barcode — LARGE & front-and-center -->
+        <div class="mx-6 mb-4 bg-white border-2 border-slate-100 rounded-2xl py-5 px-4 flex flex-col items-center">
+          <svg id="card-barcode" class="max-w-full"></svg>
+          <p id="card-student-code" class="text-xs font-mono text-slate-400 mt-2 tracking-widest text-center"></p>
+          <p id="card-barcode-missing" class="hidden text-xs text-slate-400 italic mt-1">No barcode yet — run migration first</p>
+        </div>
+
         <!-- Groups -->
-        <div id="card-groups-section" class="mb-4 hidden">
+        <div id="card-groups-section" class="hidden px-6 mb-3">
           <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Classes</p>
           <div id="card-groups" class="flex flex-wrap gap-1.5"></div>
         </div>
 
-        <!-- AC total banner -->
-        <div class="flex items-center gap-4 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 mb-5">
+        <!-- AC Total banner -->
+        <div class="mx-6 mb-4 flex items-center gap-4 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
           <div class="flex-1">
             <p class="text-xs font-bold text-amber-500 uppercase tracking-wider mb-0.5">Total Achievement Cards</p>
             <p id="card-ac-total" class="text-4xl font-extrabold text-amber-600">0</p>
           </div>
-          <div class="flex-shrink-0 w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <div class="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
             </svg>
           </div>
         </div>
 
-        <!-- Barcode -->
-        <div class="flex flex-col items-center bg-white border border-slate-100 rounded-2xl py-4 px-4 mb-1">
-          <svg id="card-barcode" class="max-w-full"></svg>
-          <p id="card-student-code" class="text-xs font-mono text-slate-400 mt-1.5 tracking-widest"></p>
-        </div>
-
       </div><!-- /printable-card -->
 
       <!-- ── AC History ── -->
-      <div class="border-t border-slate-100 flex-1 overflow-y-auto">
+      <div class="border-t border-slate-100 flex-1 overflow-y-auto no-print">
         <div class="px-6 py-3 flex items-center justify-between">
           <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">AC History</p>
           <span id="card-history-count" class="text-xs font-semibold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">0</span>
         </div>
-        <div id="card-history-empty" class="hidden px-6 pb-6 text-center text-xs text-slate-400">No AC history yet.</div>
-        <div id="card-history-list" class="divide-y divide-slate-50 pb-4"></div>
+        <div id="card-history-empty" class="hidden px-6 pb-5 text-center text-xs text-slate-400">No AC history yet.</div>
+        <div id="card-history-list" class="divide-y divide-slate-50 pb-2"></div>
       </div>
 
       <!-- ── Footer actions ── -->
       <div class="no-print flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50">
         <button onclick="closeStudentCard()"
-          class="text-sm font-semibold text-slate-400 hover:text-slate-600 transition">
-          Close
-        </button>
+          class="text-sm font-semibold text-slate-400 hover:text-slate-600 transition">Close</button>
         <button onclick="printStudentCard()"
-          class="inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl shadow transition active:scale-95">
+          class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl shadow transition active:scale-95">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.056 48.056 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5Zm-3 0h.008v.008H15V10.5Z" />
           </svg>
@@ -119,7 +111,7 @@
   </div><!-- /panel -->
 </div><!-- /overlay -->
 
-<!-- ── Print styles ──────────────────────────────────────────────── -->
+<!-- Print styles -->
 <style>
   @media print {
     body > *:not(#student-card-overlay) { display: none !important; }
@@ -138,98 +130,84 @@
     .no-print { display: none !important; }
     #card-loading, #card-error { display: none !important; }
     #card-content { display: flex !important; flex-direction: column; }
-    #card-history-list { overflow: visible !important; }
   }
 </style>
 
-<!-- ── Modal JS ──────────────────────────────────────────────────── -->
 <script>
 (function () {
-  var overlay    = document.getElementById('student-card-overlay');
-  var panel      = document.getElementById('student-card-panel');
-  var loading    = document.getElementById('card-loading');
-  var errorEl    = document.getElementById('card-error');
-  var errorMsg   = document.getElementById('card-error-msg');
-  var content    = document.getElementById('card-content');
+  var overlay  = document.getElementById('student-card-overlay');
+  var panel    = document.getElementById('student-card-panel');
+  var loading  = document.getElementById('card-loading');
+  var errorEl  = document.getElementById('card-error');
+  var errorMsg = document.getElementById('card-error-msg');
+  var content  = document.getElementById('card-content');
 
-  /* ── open / close ────────────────────────────────────────── */
-  window.openStudentCard = function () {
+  /* ── Open / Close ── */
+  function openOverlay() {
     overlay.classList.remove('hidden');
     overlay.classList.add('flex');
     document.body.style.overflow = 'hidden';
-    // Animate in
     requestAnimationFrame(function () {
       panel.style.transform = 'translateY(0)';
       panel.style.opacity   = '1';
     });
-  };
+  }
 
   window.closeStudentCard = function () {
-    panel.style.transform = 'translateY(8px)';
+    panel.style.transform = 'translateY(16px)';
     panel.style.opacity   = '0';
     setTimeout(function () {
       overlay.classList.add('hidden');
       overlay.classList.remove('flex');
       document.body.style.overflow = '';
-      // Reset states
       loading.classList.remove('hidden');
       errorEl.classList.add('hidden');
       content.classList.add('hidden');
-    }, 250);
+      content.classList.remove('flex');
+    }, 280);
   };
 
-  /* ── Fetch & render from student ID ─────────────────────── */
-  window.showStudentCard = function (studentId) {
-    openStudentCard();
-    loading.classList.remove('hidden');
-    errorEl.classList.add('hidden');
-    content.classList.add('hidden');
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !overlay.classList.contains('hidden')) closeStudentCard();
+  });
 
+  /* ── Public API — open by student _id ── */
+  window.showStudentCard = function (studentId) {
+    openOverlay();
+    resetStates();
     fetch('/admin/student-achievements/student/' + studentId)
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        if (!res.ok) { return showCardError(res.error || 'Not found.'); }
+        if (!res.ok) return showCardError(res.error || 'Not found.');
         renderCard(res.student);
       })
-      .catch(function () { showCardError('Network error. Try again.'); });
+      .catch(function () { showCardError('Network error.'); });
   };
 
-  /* ── Fetch & render from barcode string ──────────────────── */
+  /* ── Public API — open by barcode string ── */
   window.showStudentCardByBarcode = function (barcode) {
-    openStudentCard();
-    loading.classList.remove('hidden');
-    errorEl.classList.add('hidden');
-    content.classList.add('hidden');
-
+    openOverlay();
+    resetStates();
     fetch('/admin/student-achievements/scan?barcode=' + encodeURIComponent(barcode))
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        if (!res.ok) { return showCardError(res.error || 'Not found.'); }
+        if (!res.ok) return showCardError(res.error || 'Not found.');
         renderCard(res.student);
       })
-      .catch(function () { showCardError('Network error. Try again.'); });
+      .catch(function () { showCardError('Network error.'); });
   };
 
-  /* ── Render the card with student data ───────────────────── */
+  /* ── Render ── */
   function renderCard(s) {
-    // Avatar
-    var avatar = document.getElementById('card-avatar');
-    avatar.textContent = (s.full_name || '?').charAt(0).toUpperCase();
-
-    // Name
+    document.getElementById('card-avatar').textContent = (s.full_name || '?').charAt(0).toUpperCase();
     document.getElementById('card-student-name').textContent = s.full_name || s.raw_name || '—';
+    document.getElementById('card-ac-total').textContent = s.acTotal || 0;
 
     // Badges
     var badges = document.getElementById('card-badges');
     badges.innerHTML = '';
     if (s.grade_school) {
-      badges.innerHTML += '<span class="inline-block bg-slate-100 text-slate-600 text-xs font-semibold px-2 py-0.5 rounded-full">'
-        + escH(s.grade_school) + '</span>';
-    }
-    if (s.status && s.status !== 'active') {
-      var statusColor = s.status === 'graduated' ? 'bg-purple-100 text-purple-700' : 'bg-red-100 text-red-700';
-      badges.innerHTML += '<span class="inline-block ' + statusColor + ' text-xs font-semibold px-2 py-0.5 rounded-full capitalize">'
-        + escH(s.status) + '</span>';
+      badges.innerHTML += '<span class="inline-block bg-slate-100 text-slate-600 text-xs font-semibold px-2 py-0.5 rounded-full">' + escH(s.grade_school) + '</span>';
     }
 
     // Groups
@@ -239,93 +217,94 @@
       groupsSec.classList.remove('hidden');
       groupsEl.innerHTML = s.groups.map(function (g) {
         var color = g.type === 'PRIVATE' ? 'bg-purple-100 text-purple-700' : 'bg-emerald-100 text-emerald-700';
-        var level = g.level ? ' · ' + g.level : '';
-        return '<span class="inline-block ' + color + ' text-xs font-semibold px-2.5 py-1 rounded-full">'
-          + escH(g.groupName) + level + '</span>';
+        return '<span class="inline-block ' + color + ' text-xs font-semibold px-2.5 py-1 rounded-full">' + escH(g.groupName) + (g.level ? ' · ' + escH(g.level) : '') + '</span>';
       }).join('');
     } else {
       groupsSec.classList.add('hidden');
     }
 
-    // AC total
-    document.getElementById('card-ac-total').textContent = s.acTotal || 0;
-
     // Barcode
-    var barcodeEl = document.getElementById('card-barcode');
+    var barcodeEl      = document.getElementById('card-barcode');
+    var barcodeMissing = document.getElementById('card-barcode-missing');
+    var studentCode    = document.getElementById('card-student-code');
     if (s.barcode && typeof JsBarcode !== 'undefined') {
       try {
         JsBarcode(barcodeEl, s.barcode, {
-          format:      'CODE128',
-          width:       1.8,
-          height:      60,
-          displayValue: false,
-          margin:      4,
+          format: 'CODE128', width: 2, height: 70,
+          displayValue: false, margin: 6,
         });
         barcodeEl.classList.remove('hidden');
+        barcodeMissing.classList.add('hidden');
       } catch (e) {
         barcodeEl.classList.add('hidden');
+        barcodeMissing.classList.remove('hidden');
       }
     } else {
       barcodeEl.classList.add('hidden');
+      barcodeMissing.classList.remove('hidden');
     }
-    document.getElementById('card-student-code').textContent = s.student_code || s.barcode || '';
+    studentCode.textContent = s.student_code || s.barcode || '';
 
     // AC History
-    var historyList   = document.getElementById('card-history-list');
-    var historyEmpty  = document.getElementById('card-history-empty');
-    var historyCount  = document.getElementById('card-history-count');
-    historyCount.textContent = s.acHistory ? s.acHistory.length : 0;
+    var histList  = document.getElementById('card-history-list');
+    var histEmpty = document.getElementById('card-history-empty');
+    var histCount = document.getElementById('card-history-count');
+    var history   = s.acHistory || [];
+    histCount.textContent = history.length;
 
-    if (!s.acHistory || !s.acHistory.length) {
-      historyEmpty.classList.remove('hidden');
-      historyList.innerHTML = '';
+    if (!history.length) {
+      histEmpty.classList.remove('hidden');
+      histList.innerHTML = '';
     } else {
-      historyEmpty.classList.add('hidden');
-      historyList.innerHTML = s.acHistory.map(function (h) {
+      histEmpty.classList.add('hidden');
+      histList.innerHTML = history.map(function (h) {
         var d = new Date(h.date);
         var dateStr = isNaN(d) ? '—' : d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
-        var countBadge = h.count > 1
-          ? '<span class="text-xs font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full ml-1">×' + h.count + '</span>'
+        var isAdd  = h.type !== 'reduce';
+        var badge  = h.source === 'scan'
+          ? '<span class="text-[10px] font-bold bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded ml-1">SCAN</span>'
           : '';
-        return '<div class="px-6 py-3 flex items-center gap-3">'
-          + '<div class="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-amber-400 mt-0.5"></div>'
-          + '<div class="flex-1 min-w-0">'
-          + '<p class="text-sm font-semibold text-slate-800 truncate">' + escH(h.class_name) + countBadge + '</p>'
-          + (h.subject ? '<p class="text-xs text-slate-400 truncate">' + escH(h.subject) + '</p>' : '')
-          + '</div>'
-          + '<span class="text-xs text-slate-400 flex-shrink-0">' + dateStr + '</span>'
-          + '</div>';
+        var countLabel = !isAdd
+          ? '<span class="text-[10px] font-bold bg-red-100 text-red-500 px-1.5 py-0.5 rounded ml-1">−1</span>'
+          : (h.count > 1 ? '<span class="text-[10px] font-bold bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded ml-1">×' + h.count + '</span>' : '');
+        var dotColor = isAdd ? 'bg-amber-400' : 'bg-red-400';
+        return '<div class="px-6 py-3 flex items-center gap-3">' +
+          '<div class="flex-shrink-0 w-1.5 h-1.5 rounded-full ' + dotColor + ' mt-0.5"></div>' +
+          '<div class="flex-1 min-w-0">' +
+            '<p class="text-sm font-semibold text-slate-800 truncate">' + escH(h.class_name || '—') + badge + countLabel + '</p>' +
+            (h.subject ? '<p class="text-xs text-slate-400 truncate">' + escH(h.subject) + '</p>' : '') +
+          '</div>' +
+          '<span class="text-xs text-slate-400 flex-shrink-0">' + dateStr + '</span>' +
+          '</div>';
       }).join('');
     }
 
-    // Show content
     loading.classList.add('hidden');
     content.classList.remove('hidden');
+    content.classList.add('flex');
   }
 
   function showCardError(msg) {
     loading.classList.add('hidden');
     content.classList.add('hidden');
+    content.classList.remove('flex');
     errorMsg.textContent = msg;
     errorEl.classList.remove('hidden');
+    errorEl.classList.add('flex');
+  }
+
+  function resetStates() {
+    loading.classList.remove('hidden');
+    errorEl.classList.add('hidden');
+    errorEl.classList.remove('flex');
+    content.classList.add('hidden');
+    content.classList.remove('flex');
   }
 
   function escH(str) {
-    return String(str || '')
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  /* ── Print ───────────────────────────────────────────────── */
-  window.printStudentCard = function () {
-    window.print();
-  };
-
-  /* ── ESC key to close ────────────────────────────────────── */
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && !overlay.classList.contains('hidden')) {
-      closeStudentCard();
-    }
-  });
+  window.printStudentCard = function () { window.print(); };
 })();
 </script>
