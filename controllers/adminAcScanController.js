@@ -22,6 +22,14 @@ exports.scanPage = (_req, res) => {
   res.render('admin/scan-ac/index');
 };
 
+/* ══════════════════════════════════════════════════════════════════
+   GET /admin/scan-ac/mobile
+   Mobile-first camera scanner page.
+══════════════════════════════════════════════════════════════════ */
+exports.mobileScanPage = (_req, res) => {
+  res.render('admin/scan-ac/mobile');
+};
+
 /* ═══════════════════════════════════════════════════════════════════
    GET /admin/scan-ac/lookup?barcode=XXXXX
    Resolves a barcode to a student and returns their AC total.

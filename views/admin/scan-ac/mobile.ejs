@@ -1,0 +1,536 @@
+<!--
+  views/admin/scan-ac/mobile.ejs
+  Mobile-first barcode scanner page using the device camera.
+  Uses the ZXing JS library for camera-based barcode scanning (no install needed).
+
+  Flow:
+  1. Teacher opens /admin/scan-ac/mobile on their phone
+  2. Camera viewfinder activates, shows a scan line
+  3. Teacher points phone at student's printed barcode card
+  4. Student info + AC total pops up
+  5. Teacher taps +AC or -AC
+  6. Transaction saved, ready for next scan automatically
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AC Scanner — Mobile</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%; overflow: hidden;
+      font-family: 'Inter', sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ── Layout ── */
+    #app { display: flex; flex-direction: column; height: 100vh; position: relative; }
+
+    /* ── Top bar ── */
+    #topbar {
+      position: relative; z-index: 10;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px;
+      background: rgba(15, 23, 42, .9);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid rgba(255,255,255,.07);
+    }
+    #topbar h1 { font-size: 15px; font-weight: 800; color: #e2e8f0; }
+    #topbar .badge {
+      font-size: 11px; font-weight: 700;
+      background: #6366f1; color: white;
+      padding: 3px 10px; border-radius: 999px;
+    }
+    #topbar a { font-size: 12px; color: #64748b; text-decoration: none; }
+
+    /* ── Camera viewport ── */
+    #camera-wrap {
+      position: relative; flex: 1;
+      overflow: hidden; background: #000;
+    }
+    #camera-video {
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+    /* Scan overlay frame */
+    #scan-frame {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #scan-frame-box {
+      width: min(72vw, 260px); height: min(72vw, 260px);
+      position: relative;
+    }
+    /* Corner brackets */
+    .corner {
+      position: absolute; width: 28px; height: 28px;
+      border-color: #6366f1; border-style: solid;
+    }
+    .corner-tl { top: 0; left: 0;  border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+    .corner-tr { top: 0; right: 0; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+    .corner-bl { bottom: 0; left: 0;  border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+    .corner-br { bottom: 0; right: 0; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+    /* Scan line */
+    #scan-line {
+      position: absolute; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, #6366f1, #a5b4fc, #6366f1, transparent);
+      border-radius: 2px;
+      animation: sweep 2s ease-in-out infinite;
+      top: 0;
+    }
+    @keyframes sweep {
+      0%   { top: 4px;   opacity: 0; }
+      10%  { opacity: 1; }
+      90%  { opacity: 1; }
+      100% { top: calc(100% - 6px); opacity: 0; }
+    }
+    #scan-hint {
+      position: absolute; bottom: calc(50% - min(36vw,130px) - 28px);
+      left: 0; right: 0;
+      text-align: center; font-size: 12px; color: rgba(255,255,255,.55);
+    }
+
+    /* ── Bottom sheet ── */
+    #bottom-sheet {
+      position: relative; z-index: 20;
+      background: #1e293b;
+      border-top: 1px solid rgba(255,255,255,.08);
+      transition: transform .3s cubic-bezier(.4,0,.2,1);
+    }
+
+    /* ── Idle state ── */
+    #state-idle {
+      padding: 20px 20px 28px;
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+    }
+    #state-idle p { font-size: 13px; color: #64748b; text-align: center; }
+
+    /* ── Loading ── */
+    #state-loading {
+      display: none;
+      padding: 24px;
+      align-items: center; justify-content: center; gap-12px;
+      flex-direction: column;
+    }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid #334155;
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Student card ── */
+    #state-student { display: none; }
+
+    #student-info {
+      display: flex; align-items: center; gap: 14px;
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    #s-avatar {
+      width: 52px; height: 52px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; font-weight: 900; color: white;
+      flex-shrink: 0; box-shadow: 0 4px 12px rgba(99,102,241,.4);
+    }
+    #s-name  { font-size: 18px; font-weight: 800; color: #f1f5f9; }
+    #s-grade { font-size: 12px; font-weight: 600; color: #64748b; margin-top: 2px; }
+    #s-total-wrap { margin-left: auto; text-align: right; flex-shrink: 0; }
+    #s-total-label { font-size: 10px; font-weight: 700; color: #f59e0b; text-transform: uppercase; letter-spacing: .04em; }
+    #s-total { font-size: 36px; font-weight: 900; color: #fbbf24; line-height: 1; }
+
+    /* ── Action buttons ── */
+    #action-btns {
+      display: grid; grid-template-columns: 1fr 1fr;
+    }
+    .action-btn {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 6px; padding: 18px 12px 22px;
+      border: none; cursor: pointer;
+      font-family: inherit;
+      transition: filter .15s, transform .1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .action-btn:active { filter: brightness(.85); transform: scale(.96); }
+    #btn-add    { background: #064e3b; border-right: 1px solid rgba(255,255,255,.06); }
+    #btn-reduce { background: #450a0a; }
+    .action-icon {
+      width: 48px; height: 48px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 26px; font-weight: 900;
+    }
+    #btn-add    .action-icon { background: #10b981; color: white; }
+    #btn-reduce .action-icon { background: #ef4444; color: white; }
+    .action-label { font-size: 15px; font-weight: 800; }
+    #btn-add    .action-label { color: #34d399; }
+    #btn-reduce .action-label { color: #fca5a5; }
+    .action-sub { font-size: 11px; color: rgba(255,255,255,.35); }
+
+    /* ── Error ── */
+    #state-error {
+      display: none;
+      padding: 20px;
+      flex-direction: column; align-items: center; gap: 8px; text-align: center;
+    }
+    #error-msg { font-size: 14px; font-weight: 600; color: #fca5a5; }
+    #btn-try-again {
+      font-size: 13px; font-weight: 600; color: #64748b;
+      background: none; border: none; cursor: pointer; padding: 6px 12px;
+      font-family: inherit;
+    }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #1e293b; border: 1px solid rgba(255,255,255,.1);
+      color: #f1f5f9; font-size: 13px; font-weight: 600;
+      padding: 10px 20px; border-radius: 999px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.4);
+      opacity: 0; transition: opacity .2s;
+      pointer-events: none; white-space: nowrap; z-index: 100;
+    }
+    #toast.show { opacity: 1; }
+
+    /* ── Session count pill ── */
+    #session-count-wrap {
+      padding: 8px 20px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-top: 1px solid rgba(255,255,255,.06);
+    }
+    #session-count-wrap p { font-size: 11px; color: #475569; }
+    #session-total { font-size: 11px; font-weight: 700; color: #6366f1; }
+
+    /* Camera error overlay */
+    #cam-error {
+      display: none; position: absolute; inset: 0;
+      background: #0f172a; align-items: center; justify-content: center;
+      flex-direction: column; gap: 12px; text-align: center; padding: 32px;
+      z-index: 5;
+    }
+    #cam-error p { color: #94a3b8; font-size: 14px; }
+    #cam-error strong { color: #f1f5f9; display: block; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Top bar -->
+  <div id="topbar">
+    <div>
+      <h1>📱 AC Scanner</h1>
+    </div>
+    <span id="scan-badge" class="badge">Ready</span>
+    <a href="/admin/scan-ac">💻 Desktop</a>
+  </div>
+
+  <!-- Camera -->
+  <div id="camera-wrap">
+    <video id="camera-video" autoplay playsinline muted></video>
+    <div id="scan-frame">
+      <div id="scan-frame-box">
+        <div class="corner corner-tl"></div>
+        <div class="corner corner-tr"></div>
+        <div class="corner corner-bl"></div>
+        <div class="corner corner-br"></div>
+        <div id="scan-line"></div>
+      </div>
+    </div>
+    <p id="scan-hint">Point camera at student's barcode</p>
+
+    <!-- Camera error -->
+    <div id="cam-error">
+      <strong>Camera not available</strong>
+      <p>Please allow camera permission and reload, or use a barcode scanner device.</p>
+    </div>
+  </div>
+
+  <!-- Bottom sheet -->
+  <div id="bottom-sheet">
+
+    <!-- Idle -->
+    <div id="state-idle">
+      <p>Waiting for barcode scan…</p>
+    </div>
+
+    <!-- Loading -->
+    <div id="state-loading">
+      <div class="spinner"></div>
+    </div>
+
+    <!-- Student card + actions -->
+    <div id="state-student">
+      <div id="student-info">
+        <div id="s-avatar">?</div>
+        <div>
+          <div id="s-name">—</div>
+          <div id="s-grade"></div>
+        </div>
+        <div id="s-total-wrap">
+          <div id="s-total-label">Total AC</div>
+          <div id="s-total">0</div>
+        </div>
+      </div>
+      <div id="action-btns">
+        <button class="action-btn" id="btn-add">
+          <div class="action-icon">+</div>
+          <div class="action-label">Give AC</div>
+          <div class="action-sub">+1 card</div>
+        </button>
+        <button class="action-btn" id="btn-reduce">
+          <div class="action-icon">−</div>
+          <div class="action-label">Take AC</div>
+          <div class="action-sub">−1 card</div>
+        </button>
+      </div>
+      <div id="session-count-wrap">
+        <p>Session transactions: <span id="session-total">0</span></p>
+        <button id="btn-scan-next" style="font-size:12px;font-weight:700;color:#6366f1;background:none;border:none;cursor:pointer;font-family:inherit;">Scan next →</button>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div id="state-error">
+      <p id="error-msg">Student not found.</p>
+      <button id="btn-try-again" onclick="resetToIdle()">Try again</button>
+    </div>
+
+  </div><!-- /bottom-sheet -->
+</div><!-- /app -->
+
+<div id="toast"></div>
+
+<!-- ZXing barcode library (camera-based scanner) -->
+<script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  var currentBarcode = null;
+  var scanning       = true;
+  var sessionCount   = 0;
+  var codeReader     = null;
+
+  /* ── DOM ── */
+  var video       = document.getElementById('camera-video');
+  var scanBadge   = document.getElementById('scan-badge');
+  var stateIdle   = document.getElementById('state-idle');
+  var stateLoad   = document.getElementById('state-loading');
+  var stateStud   = document.getElementById('state-student');
+  var stateErr    = document.getElementById('state-error');
+  var errMsg      = document.getElementById('error-msg');
+  var sAvatar     = document.getElementById('s-avatar');
+  var sName       = document.getElementById('s-name');
+  var sGrade      = document.getElementById('s-grade');
+  var sTotal      = document.getElementById('s-total');
+  var btnAdd      = document.getElementById('btn-add');
+  var btnReduce   = document.getElementById('btn-reduce');
+  var btnNext     = document.getElementById('btn-scan-next');
+  var sessionTot  = document.getElementById('session-total');
+  var camError    = document.getElementById('cam-error');
+  var toast       = document.getElementById('toast');
+
+  /* ── Init camera ── */
+  function initCamera() {
+    if (typeof ZXing === 'undefined') {
+      showCamError('ZXing library failed to load. Check internet connection.');
+      return;
+    }
+
+    codeReader = new ZXing.BrowserMultiFormatReader();
+    codeReader.listVideoInputDevices().then(function (devices) {
+      if (!devices || !devices.length) {
+        showCamError('No camera found on this device.');
+        return;
+      }
+      // Prefer back camera
+      var device = devices.find(function (d) {
+        return d.label.toLowerCase().includes('back') ||
+               d.label.toLowerCase().includes('rear') ||
+               d.label.toLowerCase().includes('environment');
+      }) || devices[devices.length - 1];
+
+      startScanning(device.deviceId);
+    }).catch(function (err) {
+      console.error(err);
+      showCamError('Camera permission denied. Please allow camera access and reload.');
+    });
+  }
+
+  function showCamError(msg) {
+    camError.querySelector('p').textContent = msg;
+    camError.style.display = 'flex';
+  }
+
+  function startScanning(deviceId) {
+    scanning = true;
+    scanBadge.textContent = 'Scanning…';
+    scanBadge.style.background = '#6366f1';
+
+    codeReader.decodeFromVideoDevice(deviceId, video, function (result, err) {
+      if (!scanning) return;
+      if (result) {
+        var barcode = result.getText();
+        if (barcode && barcode !== currentBarcode) {
+          onBarcodeDetected(barcode);
+        }
+      }
+    });
+  }
+
+  function stopScanning() {
+    scanning = false;
+    if (codeReader) {
+      try { codeReader.stopContinuousDecode(); } catch(e) {}
+    }
+    scanBadge.textContent = 'Paused';
+    scanBadge.style.background = '#475569';
+  }
+
+  /* ── Barcode detected ── */
+  function onBarcodeDetected(barcode) {
+    stopScanning();
+    currentBarcode = barcode;
+    setState('loading');
+
+    // Haptic feedback
+    if (navigator.vibrate) navigator.vibrate(80);
+
+    fetch('/admin/scan-ac/lookup?barcode=' + encodeURIComponent(barcode))
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.ok) {
+          showError(res.error || 'Student not found.');
+          return;
+        }
+        renderStudent(res.student);
+      })
+      .catch(function () { showError('Network error. Try again.'); });
+  }
+
+  /* ── Render student ── */
+  function renderStudent(s) {
+    sAvatar.textContent = (s.full_name || '?').charAt(0).toUpperCase();
+    sName.textContent   = s.full_name || '—';
+    sGrade.textContent  = s.grade_school || '';
+    sTotal.textContent  = s.acTotal || 0;
+    setState('student');
+  }
+
+  /* ── Transact ── */
+  btnAdd.addEventListener('click',    function () { doTransact('add');    });
+  btnReduce.addEventListener('click', function () { doTransact('reduce'); });
+  btnNext.addEventListener('click',   function () { resetToIdle(); });
+
+  function doTransact(type) {
+    if (!currentBarcode) return;
+    btnAdd.disabled    = true;
+    btnReduce.disabled = true;
+
+    var body = 'barcode=' + encodeURIComponent(currentBarcode) + '&type=' + type;
+
+    fetch('/admin/scan-ac/transact', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:    body,
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        btnAdd.disabled    = false;
+        btnReduce.disabled = false;
+
+        if (!res.ok) {
+          showToast('⚠️ ' + (res.error || 'Failed'));
+          return;
+        }
+
+        sessionCount++;
+        sessionTot.textContent = sessionCount;
+
+        var delta = type === 'add' ? '+1 AC ✓' : '−1 AC ✓';
+        var color = type === 'add' ? '#34d399'  : '#fca5a5';
+        showToast(delta, color);
+
+        // Update total on screen
+        sTotal.textContent = res.acTotal;
+
+        // Auto-reset after 1.5 s so teacher can scan next student
+        setTimeout(resetToIdle, 1500);
+      })
+      .catch(function () {
+        btnAdd.disabled    = false;
+        btnReduce.disabled = false;
+        showToast('⚠️ Network error');
+      });
+  }
+
+  /* ── State helpers ── */
+  window.resetToIdle = function () {
+    currentBarcode = null;
+    setState('idle');
+    startScanning(null); // resume scanning
+  };
+
+  function setState(s) {
+    stateIdle.style.display  = s === 'idle'    ? 'flex'   : 'none';
+    stateLoad.style.display  = s === 'loading' ? 'flex'   : 'none';
+    stateStud.style.display  = s === 'student' ? 'block'  : 'none';
+    stateErr.style.display   = s === 'error'   ? 'flex'   : 'none';
+  }
+
+  function showError(msg) {
+    errMsg.textContent = msg;
+    setState('error');
+    scanBadge.textContent = 'Error';
+    scanBadge.style.background = '#ef4444';
+  }
+
+  /* ── Toast ── */
+  var toastTimer;
+  function showToast(msg, color) {
+    clearTimeout(toastTimer);
+    toast.textContent   = msg;
+    toast.style.color   = color || '#f1f5f9';
+    toast.classList.add('show');
+    toastTimer = setTimeout(function () { toast.classList.remove('show'); }, 2000);
+  }
+
+  /* ── Restart scanning after stopping ── */
+  var _restartDeviceId = null;
+  var _origStart = startScanning;
+  startScanning = function (deviceId) {
+    if (deviceId) _restartDeviceId = deviceId;
+    var id = deviceId || _restartDeviceId;
+    if (!id) return;
+    scanning = true;
+    scanBadge.textContent = 'Scanning…';
+    scanBadge.style.background = '#6366f1';
+    codeReader.decodeFromVideoDevice(id, video, function (result, err) {
+      if (!scanning) return;
+      if (result) {
+        var barcode = result.getText();
+        if (barcode && barcode !== currentBarcode) onBarcodeDetected(barcode);
+      }
+    });
+  };
+
+  /* ── Boot ── */
+  initCamera();
+})();
+</script>
+</body>
+</html>

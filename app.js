@@ -53,7 +53,9 @@ app.use(helmet({
           "data:",
           "https://cdn.tailwindcss.com",
           "https://*.tailwindcss.com",
-          "https://cdn.jsdelivr.net"
+          "https://cdn.jsdelivr.net",
+          "https://cdnjs.cloudflare.com",
+          "https://unpkg.com"
         ],
         workerSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net"],
         childSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net"],
@@ -202,4 +204,8 @@ app.use((err, req, res, next) => {
   res.status(500).render('error', { message: 'Internal server error.' });
 });
 
-app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+}
+
+module.exports = app;

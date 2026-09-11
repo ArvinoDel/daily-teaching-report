@@ -77,6 +77,7 @@ router.get('/student-achievements/student/:id',  achievementsCtrl.studentProfile
 router.get('/student-achievements',              achievementsCtrl.index);
 
 // AC Barcode Scanner
+router.get   ('/scan-ac/mobile',         acScanCtrl.mobileScanPage);
 router.get   ('/scan-ac',                acScanCtrl.scanPage);
 router.get   ('/scan-ac/lookup',         acScanCtrl.lookup);
 router.post  ('/scan-ac/transact',       acScanCtrl.transact);
