@@ -15,7 +15,40 @@ const { parse } = require('csv-parse/sync');
 /* ── shared helpers ─────────────────────────────────────────────── */
 
 const DAY_RE  = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tues|wed)\b/i;
-const TIME_RE = /\d{1,2}[.:]\d{2}\s*(am|pm)\b/i;
+const TIME_RE = /\d{1,2}[.:]?\d{0,2}\s*(am|pm)\b/i;
+
+/**
+ * Split a raw CSV student name into its display name and grade/school annotation.
+ * "Lionel 11 SPB"  → { full_name: "Lionel",          grade_school: "11 SPB" }
+ * "Michelle 12 CS" → { full_name: "Michelle",         grade_school: "12 CS"  }
+ * "Lionel"         → { full_name: "Lionel",           grade_school: ""       }
+ *
+ * Exported for use by the import engine.
+ */
+function extractNameParts(raw) {
+  if (!raw) return { full_name: '', grade_school: '' };
+  const cleaned = raw.trim()
+    .replace(/\s*\([^)]*\)\s*$/, '')   // remove trailing (Aug), (Off...) etc.
+    .replace(/\*.*$/, '');             // remove trailing asterisk notes
+  const gradeMatch = cleaned.match(
+    /\s+(\d{1,2}\s+[A-Z][A-Z0-9+\-]*(?:\s+[A-Z][A-Z0-9+\-]*)*)\s*$/i
+  );
+  const grade_school = gradeMatch ? gradeMatch[1].trim() : '';
+  const full_name    = gradeMatch
+    ? cleaned.slice(0, cleaned.length - gradeMatch[0].length).trim()
+    : cleaned.trim();
+  return { full_name: full_name || cleaned.trim(), grade_school };
+}
+
+/**
+ * Normalize a raw student name for deduplication across imports.
+ * Strips grade/school annotations and lowercases.
+ * "Lionel 11 SPB" and "Lionel 12 SPB" both → "lionel"
+ */
+function normalizeStudentName(raw) {
+  const { full_name } = extractNameParts(raw);
+  return full_name.toLowerCase().trim();
+}
 
 function isBlank(v) {
   return !v || !v.trim();
@@ -245,4 +278,6 @@ module.exports = {
   parseGroupsCsvFromString,
   parsePrivateCsvFromString,
   buildGroupRecords,
+  extractNameParts,
+  normalizeStudentName,
 };

@@ -1,5 +1,11 @@
-const Report = require('../models/Report');
-const Group  = require('../models/Group');
+const Report   = require('../models/Report');
+const Group    = require('../models/Group');
+const Student  = require('../models/Student');
+const { normalizeName } = require('../models/Student');
+const {
+  getStudentAcTotal,
+  getStudentAcHistory,
+} = require('../services/studentService');
 
 function safeJson(data) {
   return JSON.stringify(data)
@@ -113,13 +119,34 @@ exports.index = async (req, res) => {
     const tierGold   = Math.ceil(topCount * 0.66);
     const tierSilver = Math.ceil(topCount * 0.33);
 
-    const studentsWithTier = students.map(s => ({
-      ...s,
-      tier: s.count >= tierGold ? 'gold' : s.count >= tierSilver ? 'silver' : 'bronze',
-      lastSeenFormatted: s.lastSeen
-        ? new Date(s.lastSeen).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
-        : '—',
-    }));
+    // --- 9. Load Student identity records to attach barcode + student_code ---
+    // Build a map from normalized name → student identity
+    const allStudentDocs = await Student.find({}).lean();
+    const studentIdentityMap = {}; // normalizedName → { barcode, student_code, _id }
+    for (const sd of allStudentDocs) {
+      if (sd.normalized_name) {
+        studentIdentityMap[sd.normalized_name] = {
+          studentId:    String(sd._id),
+          barcode:      sd.barcode,
+          student_code: sd.student_code,
+        };
+      }
+    }
+
+    const studentsWithTier = students.map(s => {
+      const nkey    = normalizeName(s.name);
+      const identity = studentIdentityMap[nkey] || {};
+      return {
+        ...s,
+        studentId:    identity.studentId    || null,
+        barcode:      identity.barcode      || null,
+        student_code: identity.student_code || null,
+        tier: s.count >= tierGold ? 'gold' : s.count >= tierSilver ? 'silver' : 'bronze',
+        lastSeenFormatted: s.lastSeen
+          ? new Date(s.lastSeen).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+          : '—',
+      };
+    });
 
     const flashMessage = req.session.flash || null;
     delete req.session.flash;
@@ -141,5 +168,107 @@ exports.index = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.render('error', { message: 'Failed to load student achievements.' });
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   GET /admin/student-achievements/scan?barcode=XXX
+   JSON endpoint — called via AJAX when a barcode is scanned.
+════════════════════════════════════════════════════════════════ */
+exports.lookupByBarcode = async (req, res) => {
+  try {
+    const { barcode } = req.query;
+    if (!barcode) return res.status(400).json({ ok: false, error: 'No barcode provided.' });
+
+    const student = await Student.findOne({ barcode: barcode.trim() }).lean();
+    if (!student) return res.status(404).json({ ok: false, error: 'Student not found for that barcode.' });
+
+    const [acTotal, acHistory] = await Promise.all([
+      getStudentAcTotal(student),
+      getStudentAcHistory(student),
+    ]);
+
+    // Fetch group names
+    const groups = await Group.find({ student_ids: student._id })
+      .select('group_name type level')
+      .lean();
+
+    return res.json({
+      ok: true,
+      student: {
+        _id:          String(student._id),
+        student_code: student.student_code,
+        barcode:      student.barcode,
+        full_name:    student.full_name,
+        raw_name:     student.raw_name,
+        grade_school: student.grade_school,
+        status:       student.status,
+        groups:       groups.map(g => ({
+          groupId:   String(g._id),
+          groupName: g.group_name,
+          type:      g.type,
+          level:     g.level || '',
+        })),
+        acTotal,
+        acHistory: acHistory.map(h => ({
+          date:       h.date,
+          class_name: h.class_name,
+          subject:    h.subject,
+          count:      h.count,
+        })),
+      },
+    });
+  } catch (err) {
+    console.error('lookupByBarcode error:', err);
+    return res.status(500).json({ ok: false, error: 'Server error.' });
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   GET /admin/student-achievements/student/:id
+   JSON endpoint — called via AJAX when "View Card" is clicked.
+════════════════════════════════════════════════════════════════ */
+exports.studentProfile = async (req, res) => {
+  try {
+    const student = await Student.findById(req.params.id).lean();
+    if (!student) return res.status(404).json({ ok: false, error: 'Student not found.' });
+
+    const [acTotal, acHistory] = await Promise.all([
+      getStudentAcTotal(student),
+      getStudentAcHistory(student),
+    ]);
+
+    const groups = await Group.find({ student_ids: student._id })
+      .select('group_name type level')
+      .lean();
+
+    return res.json({
+      ok: true,
+      student: {
+        _id:          String(student._id),
+        student_code: student.student_code,
+        barcode:      student.barcode,
+        full_name:    student.full_name,
+        raw_name:     student.raw_name,
+        grade_school: student.grade_school,
+        status:       student.status,
+        groups:       groups.map(g => ({
+          groupId:   String(g._id),
+          groupName: g.group_name,
+          type:      g.type,
+          level:     g.level || '',
+        })),
+        acTotal,
+        acHistory: acHistory.map(h => ({
+          date:       h.date,
+          class_name: h.class_name,
+          subject:    h.subject,
+          count:      h.count,
+        })),
+      },
+    });
+  } catch (err) {
+    console.error('studentProfile error:', err);
+    return res.status(500).json({ ok: false, error: 'Server error.' });
   }
 };

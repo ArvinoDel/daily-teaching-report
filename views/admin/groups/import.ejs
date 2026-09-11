@@ -61,14 +61,14 @@
   </a>
 </div>
 
-<!-- Warning Banner -->
-<div class="mb-6 flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-medium">
-  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mt-0.5 flex-shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+<!-- Smart Import Banner -->
+<div class="mb-6 flex items-start gap-3 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm font-medium">
+  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 mt-0.5 flex-shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
   </svg>
   <div>
-    <strong>This will replace ALL existing groups.</strong>
-    The current groups are backed up automatically before deletion. Use "Preview" first to verify the data.
+    <strong>Smart Non-Destructive Import.</strong>
+    New students are added with unique barcodes and student codes. Existing students keep their identity, barcode, and full Achievement Card history — nothing is deleted.
   </div>
 </div>
 
@@ -224,14 +224,14 @@
         return showError(res.error, res.validationErrors);
       }
 
-      showPreview(res.summary, res.sample);
+      showPreview(res.summary, res.sample, res.preview);
       importBtn.disabled = false;
     });
   });
 
   // ── Import (live) ────────────────────────────────────────
   importBtn.addEventListener('click', function () {
-    if (!confirm('⚠️ This will DELETE all existing groups and replace them with the parsed CSV data.\n\nAre you sure?')) return;
+    if (!confirm('This will add new students and update groups based on the CSV data.\n\nExisting students keep their barcodes and AC history.\n\nProceed with import?')) return;
 
     importBtn.disabled = true;
     previewBtn.disabled = true;
@@ -271,7 +271,7 @@
     resultsPanel.classList.remove('hidden');
   }
 
-  function showPreview(summary, sample) {
+  function showPreview(summary, sample, preview) {
     var html = '<div class="result-card space-y-5">'
       + '<div class="bg-indigo-50 border border-indigo-200 rounded-2xl p-6">'
       + '<h3 class="font-bold text-indigo-900 text-lg mb-4 flex items-center gap-2">'
@@ -285,6 +285,14 @@
     html += statCard('Private', summary.privateCount, 'text-purple-600');
     html += statCard('Student Slots', summary.studentSlots, 'text-indigo-600');
     html += '</div>';
+
+    // Student identity preview
+    if (preview) {
+      html += '<div class="grid grid-cols-2 gap-3 mb-5">';
+      html += statCard('New Students (get barcodes)', preview.wouldCreate, 'text-emerald-600');
+      html += statCard('Existing Students (kept)', preview.wouldRetain, 'text-amber-600');
+      html += '</div>';
+    }
 
     // Sample table
     if (sample && sample.length) {
@@ -323,17 +331,18 @@
     var html = '<div class="result-card bg-emerald-50 border border-emerald-200 rounded-2xl p-6">'
       + '<h3 class="font-bold text-emerald-900 text-lg mb-4 flex items-center gap-2">'
       + '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>'
-      + 'Import Complete</h3>';
+      + 'Import Complete ✓</h3>';
 
     html += '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">';
-    html += statCard('Backed Up', summary.existingCount || 0, 'text-amber-600');
-    html += statCard('Deleted', summary.deletedCount || 0, 'text-red-600');
-    html += statCard('Inserted', summary.insertedCount || 0, 'text-emerald-600');
-    html += statCard('Student Slots', summary.studentSlots || 0, 'text-indigo-600');
+    html += statCard('New Students', summary.newStudentsAdded || 0, 'text-emerald-600');
+    html += statCard('Kept Students', summary.existingStudentsKept || 0, 'text-amber-600');
+    html += statCard('Groups Created', summary.groupsCreated || 0, 'text-indigo-600');
+    html += statCard('Groups Updated', summary.groupsUpdated || 0, 'text-slate-600');
     html += '</div>';
 
     html += '<p class="mt-4 text-sm text-emerald-700">'
-      + 'All groups have been replaced successfully. '
+      + 'Import successful. New students have been assigned unique barcodes and student codes. '
+      + 'Existing student identities and Achievement Card histories are fully preserved. '
       + '<a href="/admin/groups" class="underline font-semibold hover:text-emerald-900">View Groups →</a></p>';
 
     html += '</div>';

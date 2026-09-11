@@ -1,5 +1,8 @@
 <%- include('../../partials/header', { title: 'AC Bonus' }) %>
 
+<!-- JsBarcode for rendering barcodes in the card modal -->
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+
 <style>
   @keyframes sk-shimmer {
     0%   { background-position: -600px 0; }
@@ -17,6 +20,15 @@
     border-radius: 6px;
   }
   .group-bucket { animation: fadeSlideIn .25s ease both; }
+
+  /* Barcode scanner pulse ring */
+  @keyframes scanner-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(99,102,241,.4); }
+    50%       { box-shadow: 0 0 0 6px rgba(99,102,241,0); }
+  }
+  #barcode-scanner-input:focus {
+    animation: scanner-pulse 1.4s ease infinite;
+  }
 </style>
 
 <!-- Page Header -->
@@ -33,6 +45,24 @@
     <h1 class="text-2xl font-bold text-slate-900">Student AC Bonus</h1>
     <p class="text-slate-500 mt-0.5 text-sm">Students grouped by class — showing total AC bonus count per student.</p>
   </div>
+</div>
+
+<!-- ── Barcode Scanner Input ─────────────────────────────────── -->
+<div class="mb-6 bg-white rounded-2xl border border-indigo-100 shadow-sm px-4 py-3.5 flex items-center gap-3">
+  <div class="flex-shrink-0 w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 9.375v-4.5Z" />
+      <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75ZM6.75 16.5h.75v.75h-.75v-.75ZM16.5 6.75h.75v.75h-.75v-.75ZM13.5 13.5h.75v.75h-.75v-.75ZM13.5 19.5h.75v.75h-.75v-.75ZM19.5 13.5h.75v.75h-.75v-.75ZM19.5 19.5h.75v.75h-.75v-.75ZM16.5 16.5h.75v.75h-.75v-.75Z" />
+    </svg>
+  </div>
+  <div class="flex-1">
+    <p class="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-0.5">Barcode Scanner</p>
+    <input type="text" id="barcode-scanner-input"
+      placeholder="Scan or type a student barcode, then press Enter…"
+      autocomplete="off" spellcheck="false"
+      class="w-full text-sm font-mono text-slate-800 bg-transparent border-0 outline-none placeholder-slate-300" />
+  </div>
+  <span class="text-xs text-slate-300 hidden sm:block">Press Enter to open card</span>
 </div>
 
 <!-- Stats -->
@@ -270,6 +300,20 @@
           <div class="hidden md:block flex-shrink-0">
             <span class="text-[11px] text-slate-400"><%= s.lastSeenFormatted %></span>
           </div>
+          <!-- View Card button (only shows if student has a barcode identity) -->
+          <% if (s.studentId) { %>
+          <div class="flex-shrink-0">
+            <button type="button"
+              onclick="showStudentCard('<%= s.studentId %>')"
+              class="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-lg transition active:scale-95"
+              title="View Achievement Card">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5Z" />
+              </svg>
+              Card
+            </button>
+          </div>
+          <% } %>
         </div>
       <% }); %>
     </div>
@@ -422,3 +466,35 @@
 </script>
 
 <%- include('../../partials/footer') %>
+
+<!-- Student Achievement Card Modal -->
+<%- include('../../partials/admin/student-card-modal') %>
+
+<!-- Barcode scanner input handler -->
+<script>
+(function () {
+  var scanInput = document.getElementById('barcode-scanner-input');
+  if (!scanInput) return;
+
+  // Focus the scanner input when user presses / outside other inputs
+  document.addEventListener('keydown', function (e) {
+    if (e.key === '/' && document.activeElement !== scanInput &&
+        document.activeElement.tagName !== 'INPUT' &&
+        document.activeElement.tagName !== 'SELECT' &&
+        document.activeElement.tagName !== 'TEXTAREA') {
+      e.preventDefault();
+      scanInput.focus();
+    }
+  });
+
+  scanInput.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    var val = this.value.trim();
+    if (!val) return;
+    e.preventDefault();
+    this.value = '';
+    // Try barcode lookup first (if it looks like a barcode), else search by name
+    showStudentCardByBarcode(val);
+  });
+})();
+</script>

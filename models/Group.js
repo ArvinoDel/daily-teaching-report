@@ -46,6 +46,14 @@ const groupSchema = new mongoose.Schema({
     type:    [String],
     default: [],
   },
+  // Relational references to the Student collection.
+  // Populated incrementally during CSV imports.
+  // students:[String] is kept for full backward compatibility with
+  // existing Reports (ac_students, absent_students) and all views.
+  student_ids: {
+    type:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'Student' }],
+    default: [],
+  },
 }, { timestamps: true });
 
 const Group = mongoose.model('Group', groupSchema);

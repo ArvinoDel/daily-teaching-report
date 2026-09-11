@@ -70,7 +70,9 @@ router.get('/backups/export',       requireSuperAdmin, backupCtrl.exportDirect);
 router.get('/backups/:id/download', requireSuperAdmin, backupCtrl.downloadBackup);
 router.delete('/backups/:id',       requireSuperAdmin, backupCtrl.deleteBackup);
 
-// Student Achievements
-router.get('/student-achievements', achievementsCtrl.index);
+// Student Achievements — named routes BEFORE the main index
+router.get('/student-achievements/scan',         achievementsCtrl.lookupByBarcode);
+router.get('/student-achievements/student/:id',  achievementsCtrl.studentProfile);
+router.get('/student-achievements',              achievementsCtrl.index);
 
 module.exports = router;
