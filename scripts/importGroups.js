@@ -27,6 +27,7 @@
  */
 
 require('dotenv').config();
+require('dotenv').config({ path: '.env.local', override: true });
 const path     = require('path');
 const mongoose = require('mongoose');
 const Group    = require('../models/Group');

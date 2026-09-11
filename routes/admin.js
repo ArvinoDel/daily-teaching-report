@@ -74,6 +74,7 @@ router.delete('/backups/:id',       requireSuperAdmin, backupCtrl.deleteBackup);
 // Student Achievements — named routes BEFORE the main index
 router.get('/student-achievements/scan',         achievementsCtrl.lookupByBarcode);
 router.get('/student-achievements/student/:id',  achievementsCtrl.studentProfile);
+router.post('/student-achievements/migrate',     achievementsCtrl.migrateStudents);
 router.get('/student-achievements',              achievementsCtrl.index);
 
 // AC Barcode Scanner

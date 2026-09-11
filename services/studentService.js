@@ -259,6 +259,59 @@ function buildNameVariants(student) {
   return [...variants];
 }
 
+/* ─────────────────────────────────────────────────────────────────
+ *  migrateExistingStudents()
+ *  One-click migration: finds all students across Groups and Reports,
+ *  creates unique persistent Student identities with barcodes, and links
+ *  Group.student_ids. Safe to call repeatedly.
+ * ───────────────────────────────────────────────────────────────── */
+async function migrateExistingStudents() {
+  const Group = require('../models/Group');
+  const [groups, acStudentDocs] = await Promise.all([
+    Group.find({}),
+    Report.distinct('ac_students'),
+  ]);
+
+  const rawNames = new Set();
+  for (const g of groups) {
+    for (const s of (g.students || [])) {
+      const trimmed = (s || '').trim();
+      if (trimmed) rawNames.add(trimmed);
+    }
+  }
+  for (const s of acStudentDocs) {
+    const trimmed = (s || '').trim();
+    if (trimmed) rawNames.add(trimmed);
+  }
+
+  let created = 0;
+  let skipped = 0;
+  const studentMap = new Map();
+
+  for (const raw of rawNames) {
+    const res = await matchOrCreateStudent(raw);
+    if (!res) continue;
+    if (res.created) created++;
+    else skipped++;
+    studentMap.set(res.student.normalized_name, res.student._id);
+  }
+
+  let groupsUpdated = 0;
+  for (const g of groups) {
+    const ids = [];
+    for (const s of (g.students || [])) {
+      const key = normalizeName(s);
+      const id = studentMap.get(key);
+      if (id) ids.push(id);
+    }
+    g.student_ids = ids;
+    await g.save();
+    groupsUpdated++;
+  }
+
+  return { created, skipped, groupsUpdated, totalStudents: studentMap.size };
+}
+
 module.exports = {
   generateStudentCode,
   generateBarcode,
@@ -266,4 +319,5 @@ module.exports = {
   getStudentAcTotal,
   getStudentAcHistory,
   recordAcTransaction,
+  migrateExistingStudents,
 };

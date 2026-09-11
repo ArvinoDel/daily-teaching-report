@@ -5,6 +5,7 @@ const { normalizeName } = require('../models/Student');
 const {
   getStudentAcTotal,
   getStudentAcHistory,
+  migrateExistingStudents,
 } = require('../services/studentService');
 
 function safeJson(data) {
@@ -270,5 +271,23 @@ exports.studentProfile = async (req, res) => {
   } catch (err) {
     console.error('studentProfile error:', err);
     return res.status(500).json({ ok: false, error: 'Server error.' });
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   POST /admin/student-achievements/migrate
+   One-click migration triggered by Admin UI
+════════════════════════════════════════════════════════════════ */
+exports.migrateStudents = async (req, res) => {
+  try {
+    const result = await migrateExistingStudents();
+    return res.json({
+      ok: true,
+      message: `Migration completed! Created ${result.created} new students, linked ${result.groupsUpdated} classes.`,
+      ...result,
+    });
+  } catch (err) {
+    console.error('migrateStudents error:', err);
+    return res.status(500).json({ ok: false, error: err.message || 'Migration failed.' });
   }
 };

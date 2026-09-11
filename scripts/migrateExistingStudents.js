@@ -15,6 +15,7 @@
  */
 
 require('dotenv').config();
+require('dotenv').config({ path: '.env.local', override: true });
 const mongoose = require('mongoose');
 const Group    = require('../models/Group');
 const Report   = require('../models/Report');
@@ -25,7 +26,16 @@ const {
   generateStudentCode,
 } = require('../services/studentService');
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/daily_teaching_report';
+require('dotenv').config();
+if (process.env.MONGO_URI === '[SENSITIVE]' || !process.env.MONGO_URI) {
+  // Try fallback without .env.local placeholder
+}
+
+const uriArg = process.argv.find(a => a.startsWith('--uri='));
+let MONGO_URI = uriArg ? uriArg.slice(6) : process.env.MONGO_URI;
+if (!MONGO_URI || MONGO_URI === '[SENSITIVE]' || (!MONGO_URI.startsWith('mongodb://') && !MONGO_URI.startsWith('mongodb+srv://'))) {
+  MONGO_URI = 'mongodb://localhost:27017/daily_teaching_report';
+}
 const DRY_RUN   = process.argv.includes('--dry-run');
 
 /* ─────────────────────────────────────────────────────────────────
