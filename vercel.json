@@ -8,7 +8,8 @@
         "includeFiles": [
           "views/**",
           "public/**"
-        ]
+        ],
+        "maxDuration": 60
       }
     }
   ],
