@@ -30,7 +30,7 @@ if (!SESSION_SECRET) {
   process.exit(1);
 }
 
-mongoose.connect(MONGO_URI)
+mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 8000 })
   .then(() => {
     console.log('✅ MongoDB connected');
     // Initialize weekly backup scheduler

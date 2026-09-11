@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Report   = require('../models/Report');
 const Group    = require('../models/Group');
 const Student  = require('../models/Student');
@@ -280,6 +281,12 @@ exports.studentProfile = async (req, res) => {
 ════════════════════════════════════════════════════════════════ */
 exports.migrateStudents = async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      console.log('Mongoose not ready (state=' + mongoose.connection.readyState + '). Connecting...');
+      await mongoose.connect(process.env.MONGO_URI, {
+        serverSelectionTimeoutMS: 8000,
+      });
+    }
     const result = await migrateExistingStudents();
     return res.json({
       ok: true,
@@ -288,6 +295,10 @@ exports.migrateStudents = async (req, res) => {
     });
   } catch (err) {
     console.error('migrateStudents error:', err);
-    return res.status(500).json({ ok: false, error: err.message || 'Migration failed.' });
+    let errMsg = err.message || 'Migration failed.';
+    if (err.name === 'MongooseServerSelectionError' || errMsg.includes('Server selection timed out')) {
+      errMsg = 'Database connection timed out. In MongoDB Atlas, go to "Network Access" and ensure "0.0.0.0/0" (Allow Access from Anywhere) is active.';
+    }
+    return res.status(500).json({ ok: false, error: errMsg });
   }
 };
