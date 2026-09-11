@@ -1,12 +1,9 @@
 <!--
   Partial: views/partials/admin/student-card-modal.ejs
-  Usage:   <%- include('../partials/admin/student-card-modal') %>
+  Include this partial before the closing body tag of any page that needs
+  the student Achievement Card modal (barcode, AC total, history, print).
 
-  Renders:
-  - A slide-in modal for displaying a student's Achievement Card
-  - Barcode rendered via JsBarcode (loaded by the including page)
-  - Total AC count, group memberships, AC history timeline
-  - Print-friendly card layout (uses @media print to isolate the card)
+  Requires JsBarcode to be loaded on the host page.
 -->
 
 <!-- ── Student Card Modal ───────────────────────────────────────── -->
