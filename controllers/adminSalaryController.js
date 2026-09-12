@@ -250,7 +250,7 @@ exports.salaryUpdate = async (req, res) => {
       return res.redirect('/admin/salaries');
     }
 
-    const n = (v) => Math.max(0, parseFloat(v) || 0);
+    const n = (v) => Math.max(0, parseFloat(String(v ?? '').replace(/,/g, '')) || 0);
 
     /* ── Map body fields → salary doc ── */
     // Period meta

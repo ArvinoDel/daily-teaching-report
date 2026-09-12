@@ -5,6 +5,10 @@
     if (!n || n === 0) return '—';
     return 'Rp\u00a0' + Number(n).toLocaleString('en-US');
   }
+  function fmtNum(n) {
+    if (n === undefined || n === null || n === '') return '0';
+    return Number(n).toLocaleString('en-US');
+  }
   const sp = salary;
   const t  = teacher || { displayName: 'Teacher', username: '—' };
 %>
@@ -131,105 +135,123 @@
         ]; %>
         <% earningFields.forEach(function(f) { %>
           <div class="flex items-center gap-3">
-            <label class="text-xs font-medium text-slate-500 w-52 flex-shrink-0"><%= f.label %></label>
+            <label for="<%= f.key %>" class="text-xs font-medium text-slate-500 w-52 flex-shrink-0 cursor-pointer"><%= f.label %></label>
             <div class="relative flex-1">
-              <span class="absolute left-3 inset-y-0 flex items-center text-slate-400 text-xs font-mono pointer-events-none">Rp</span>
-              <input type="number" name="<%= f.key %>" id="<%= f.key %>"
-                value="<%= sp[f.key] || 0 %>" min="0" step="500"
-                oninput="recalculate()"
-                class="input-money w-full pl-9 earning-field">
+              <span class="absolute left-3.5 inset-y-0 flex items-center text-slate-400 text-xs font-semibold select-none pointer-events-none">Rp</span>
+              <input type="text" inputmode="numeric" name="<%= f.key %>" id="<%= f.key %>"
+                value="<%= fmtNum(sp[f.key]) %>"
+                autocomplete="off"
+                class="input-money has-prefix w-full earning-field currency-input">
             </div>
           </div>
         <% }); %>
 
         <!-- Meal Allowance Full (days × rate) -->
-        <div class="bg-slate-50 rounded-xl p-4 space-y-3">
-          <p class="text-xs font-bold text-slate-500 uppercase tracking-wide">2. Meal Allowance (Full)</p>
-          <div class="flex items-center gap-2">
-            <div class="flex-1">
-              <label class="text-xs text-slate-400 mb-1 block">Days</label>
+        <div class="bg-slate-50/80 rounded-2xl p-4 border border-slate-100 space-y-3">
+          <p class="text-xs font-bold text-slate-600 uppercase tracking-wide">2. Meal Allowance (Full)</p>
+          <div class="flex items-center gap-3">
+            <div class="w-28 flex-shrink-0">
+              <label for="mealFullDays" class="text-xs font-medium text-slate-400 mb-1.5 block">Days</label>
               <input type="number" name="mealFullDays" id="mealFullDays" value="<%= sp.mealFullDays || 0 %>" min="0" step="1"
-                oninput="recalculate()" class="input-money w-full">
+                class="input-money w-full days-input text-center">
             </div>
-            <span class="text-slate-400 text-sm mt-4">×</span>
+            <span class="text-slate-400 text-sm mt-5 font-bold">×</span>
             <div class="flex-1">
-              <label class="text-xs text-slate-400 mb-1 block">Rate / day</label>
-              <input type="number" name="mealFullRate" id="mealFullRate" value="<%= sp.mealFullRate || 22500 %>" min="0" step="500"
-                oninput="recalculate()" class="input-money w-full">
+              <label for="mealFullRate" class="text-xs font-medium text-slate-400 mb-1.5 block">Rate / day</label>
+              <div class="relative">
+                <span class="absolute left-3.5 inset-y-0 flex items-center text-slate-400 text-xs font-semibold select-none pointer-events-none">Rp</span>
+                <input type="text" inputmode="numeric" name="mealFullRate" id="mealFullRate"
+                  value="<%= fmtNum(sp.mealFullRate ?? 22500) %>"
+                  autocomplete="off"
+                  class="input-money has-prefix w-full currency-input">
+              </div>
             </div>
-            <span class="text-slate-400 text-sm mt-4">=</span>
-            <div class="flex-1">
-              <label class="text-xs text-slate-400 mb-1 block">Total</label>
-              <p id="mealFullTotal" class="font-mono text-sm font-bold text-emerald-700 px-3 py-2.5 bg-emerald-50 rounded-xl">—</p>
+            <span class="text-slate-400 text-sm mt-5 font-bold">=</span>
+            <div class="w-40 flex-shrink-0">
+              <label class="text-xs font-medium text-slate-400 mb-1.5 block">Total</label>
+              <p id="mealFullTotal" class="font-mono text-sm font-bold text-emerald-700 px-3 py-2.5 bg-emerald-50 border border-emerald-100/60 rounded-xl text-right">—</p>
             </div>
           </div>
         </div>
 
         <!-- Meal Allowance Half -->
-        <div class="bg-slate-50 rounded-xl p-4 space-y-3">
-          <p class="text-xs font-bold text-slate-500 uppercase tracking-wide">3. Meal Allowance (Half)</p>
-          <div class="flex items-center gap-2">
-            <div class="flex-1">
-              <label class="text-xs text-slate-400 mb-1 block">Days</label>
+        <div class="bg-slate-50/80 rounded-2xl p-4 border border-slate-100 space-y-3">
+          <p class="text-xs font-bold text-slate-600 uppercase tracking-wide">3. Meal Allowance (Half)</p>
+          <div class="flex items-center gap-3">
+            <div class="w-28 flex-shrink-0">
+              <label for="mealHalfDays" class="text-xs font-medium text-slate-400 mb-1.5 block">Days</label>
               <input type="number" name="mealHalfDays" id="mealHalfDays" value="<%= sp.mealHalfDays || 0 %>" min="0" step="1"
-                oninput="recalculate()" class="input-money w-full">
+                class="input-money w-full days-input text-center">
             </div>
-            <span class="text-slate-400 text-sm mt-4">×</span>
+            <span class="text-slate-400 text-sm mt-5 font-bold">×</span>
             <div class="flex-1">
-              <label class="text-xs text-slate-400 mb-1 block">Rate / day</label>
-              <input type="number" name="mealHalfRate" id="mealHalfRate" value="<%= sp.mealHalfRate || 0 %>" min="0" step="500"
-                oninput="recalculate()" class="input-money w-full">
+              <label for="mealHalfRate" class="text-xs font-medium text-slate-400 mb-1.5 block">Rate / day</label>
+              <div class="relative">
+                <span class="absolute left-3.5 inset-y-0 flex items-center text-slate-400 text-xs font-semibold select-none pointer-events-none">Rp</span>
+                <input type="text" inputmode="numeric" name="mealHalfRate" id="mealHalfRate"
+                  value="<%= fmtNum(sp.mealHalfRate || 0) %>"
+                  autocomplete="off"
+                  class="input-money has-prefix w-full currency-input">
+              </div>
             </div>
-            <span class="text-slate-400 text-sm mt-4">=</span>
-            <div class="flex-1">
-              <label class="text-xs text-slate-400 mb-1 block">Total</label>
-              <p id="mealHalfTotal" class="font-mono text-sm font-bold text-emerald-700 px-3 py-2.5 bg-emerald-50 rounded-xl">—</p>
+            <span class="text-slate-400 text-sm mt-5 font-bold">=</span>
+            <div class="w-40 flex-shrink-0">
+              <label class="text-xs font-medium text-slate-400 mb-1.5 block">Total</label>
+              <p id="mealHalfTotal" class="font-mono text-sm font-bold text-emerald-700 px-3 py-2.5 bg-emerald-50 border border-emerald-100/60 rounded-xl text-right">—</p>
             </div>
           </div>
         </div>
 
         <!-- Transport -->
-        <div class="bg-slate-50 rounded-xl p-4 space-y-3">
-          <p class="text-xs font-bold text-slate-500 uppercase tracking-wide">4. Transport Allowance</p>
-          <div class="flex items-center gap-2">
-            <div class="flex-1">
-              <label class="text-xs text-slate-400 mb-1 block">Days</label>
+        <div class="bg-slate-50/80 rounded-2xl p-4 border border-slate-100 space-y-3">
+          <p class="text-xs font-bold text-slate-600 uppercase tracking-wide">4. Transport Allowance</p>
+          <div class="flex items-center gap-3">
+            <div class="w-28 flex-shrink-0">
+              <label for="transportDays" class="text-xs font-medium text-slate-400 mb-1.5 block">Days</label>
               <input type="number" name="transportDays" id="transportDays" value="<%= sp.transportDays || 0 %>" min="0" step="1"
-                oninput="recalculate()" class="input-money w-full">
+                class="input-money w-full days-input text-center">
             </div>
-            <span class="text-slate-400 text-sm mt-4">×</span>
+            <span class="text-slate-400 text-sm mt-5 font-bold">×</span>
             <div class="flex-1">
-              <label class="text-xs text-slate-400 mb-1 block">Rate / day</label>
-              <input type="number" name="transportRate" id="transportRate" value="<%= sp.transportRate || 22500 %>" min="0" step="500"
-                oninput="recalculate()" class="input-money w-full">
+              <label for="transportRate" class="text-xs font-medium text-slate-400 mb-1.5 block">Rate / day</label>
+              <div class="relative">
+                <span class="absolute left-3.5 inset-y-0 flex items-center text-slate-400 text-xs font-semibold select-none pointer-events-none">Rp</span>
+                <input type="text" inputmode="numeric" name="transportRate" id="transportRate"
+                  value="<%= fmtNum(sp.transportRate ?? 22500) %>"
+                  autocomplete="off"
+                  class="input-money has-prefix w-full currency-input">
+              </div>
             </div>
-            <span class="text-slate-400 text-sm mt-4">=</span>
-            <div class="flex-1">
-              <label class="text-xs text-slate-400 mb-1 block">Total</label>
-              <p id="transportTotal" class="font-mono text-sm font-bold text-emerald-700 px-3 py-2.5 bg-emerald-50 rounded-xl">—</p>
+            <span class="text-slate-400 text-sm mt-5 font-bold">=</span>
+            <div class="w-40 flex-shrink-0">
+              <label class="text-xs font-medium text-slate-400 mb-1.5 block">Total</label>
+              <p id="transportTotal" class="font-mono text-sm font-bold text-emerald-700 px-3 py-2.5 bg-emerald-50 border border-emerald-100/60 rounded-xl text-right">—</p>
             </div>
           </div>
         </div>
 
         <!-- Dynamic other incomes -->
         <div>
-          <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">15. Other Incomes</p>
-          <div id="other-incomes-list" class="space-y-2">
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2.5">15. Other Incomes</p>
+          <div id="other-incomes-list" class="space-y-2.5">
             <% (sp.otherIncomes || []).forEach(function(item) { %>
-              <div class="flex gap-2 other-income-row">
-                <input type="text" name="otherIncomeLabel[]" value="<%= item.label %>" placeholder="Label"
+              <div class="flex gap-2.5 other-income-row items-center">
+                <input type="text" name="otherIncomeLabel[]" value="<%= item.label %>" placeholder="Label (e.g. Bonus)"
                   class="input-std flex-1">
-                <input type="number" name="otherIncomeAmount[]" value="<%= item.amount || 0 %>" min="0" step="500"
-                  oninput="recalculate()" placeholder="Amount" class="input-money w-36 other-income-amt">
+                <div class="relative w-44 flex-shrink-0">
+                  <span class="absolute left-3.5 inset-y-0 flex items-center text-slate-400 text-xs font-semibold select-none pointer-events-none">Rp</span>
+                  <input type="text" inputmode="numeric" name="otherIncomeAmount[]" value="<%= fmtNum(item.amount) %>"
+                    placeholder="0" autocomplete="off" class="input-money has-prefix w-full other-income-amt currency-input">
+                </div>
                 <button type="button" onclick="this.closest('.other-income-row').remove(); recalculate();"
-                  class="w-8 h-10 flex items-center justify-center text-red-400 hover:text-red-600 transition rounded-lg hover:bg-red-50">
+                  class="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition rounded-xl" title="Remove row">
                   <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
                 </button>
               </div>
             <% }); %>
           </div>
           <button type="button" onclick="addOtherIncome()"
-            class="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700 transition">
+            class="mt-2.5 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700 transition px-2.5 py-1.5 rounded-lg hover:bg-brand-50">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
             Add income row
           </button>
@@ -257,36 +279,39 @@
         ]; %>
         <% deductFields.forEach(function(f) { %>
           <div class="flex items-center gap-3">
-            <label class="text-xs font-medium text-slate-500 w-52 flex-shrink-0"><%= f.label %></label>
+            <label for="<%= f.key %>" class="text-xs font-medium text-slate-500 w-52 flex-shrink-0 cursor-pointer"><%= f.label %></label>
             <div class="relative flex-1">
-              <span class="absolute left-3 inset-y-0 flex items-center text-red-400 text-xs font-mono pointer-events-none">Rp</span>
-              <input type="number" name="<%= f.key %>" id="<%= f.key %>"
-                value="<%= sp[f.key] || 0 %>" min="0" step="500"
-                oninput="recalculate()"
-                class="input-money w-full pl-9 deduct-field">
+              <span class="absolute left-3.5 inset-y-0 flex items-center text-red-400 text-xs font-semibold select-none pointer-events-none">Rp</span>
+              <input type="text" inputmode="numeric" name="<%= f.key %>" id="<%= f.key %>"
+                value="<%= fmtNum(sp[f.key]) %>"
+                autocomplete="off"
+                class="input-money has-prefix w-full deduct-field currency-input">
             </div>
           </div>
         <% }); %>
 
         <!-- Dynamic other deductions -->
         <div>
-          <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">20. Other Deductions</p>
-          <div id="other-deductions-list" class="space-y-2">
+          <p class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2.5">20. Other Deductions</p>
+          <div id="other-deductions-list" class="space-y-2.5">
             <% (sp.otherDeductions || []).forEach(function(item) { %>
-              <div class="flex gap-2 other-deduction-row">
-                <input type="text" name="otherDeductionLabel[]" value="<%= item.label %>" placeholder="Label"
+              <div class="flex gap-2.5 other-deduction-row items-center">
+                <input type="text" name="otherDeductionLabel[]" value="<%= item.label %>" placeholder="Label (e.g. Fine)"
                   class="input-std flex-1">
-                <input type="number" name="otherDeductionAmount[]" value="<%= item.amount || 0 %>" min="0" step="500"
-                  oninput="recalculate()" placeholder="Amount" class="input-money w-36 other-deduct-amt">
+                <div class="relative w-44 flex-shrink-0">
+                  <span class="absolute left-3.5 inset-y-0 flex items-center text-red-400 text-xs font-semibold select-none pointer-events-none">Rp</span>
+                  <input type="text" inputmode="numeric" name="otherDeductionAmount[]" value="<%= fmtNum(item.amount) %>"
+                    placeholder="0" autocomplete="off" class="input-money has-prefix w-full other-deduct-amt currency-input">
+                </div>
                 <button type="button" onclick="this.closest('.other-deduction-row').remove(); recalculate();"
-                  class="w-8 h-10 flex items-center justify-center text-red-400 hover:text-red-600 transition rounded-lg hover:bg-red-50">
+                  class="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition rounded-xl" title="Remove row">
                   <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
                 </button>
               </div>
             <% }); %>
           </div>
           <button type="button" onclick="addOtherDeduction()"
-            class="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-red-500 hover:text-red-600 transition">
+            class="mt-2.5 inline-flex items-center gap-1.5 text-xs font-semibold text-red-500 hover:text-red-600 transition px-2.5 py-1.5 rounded-lg hover:bg-red-50">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
             Add deduction row
           </button>
@@ -323,97 +348,220 @@
     font-size: 0.875rem;
     font-weight: 500;
     color: #1e293b;
+    background-color: #ffffff;
     outline: none;
     transition: all 0.15s ease-in-out;
   }
   .input-std:focus {
-    border-color: #4ade80;
-    box-shadow: 0 0 0 2px #dcfce7;
+    border-color: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
   }
   .input-money {
-    padding: 0.625rem 0.75rem;
+    width: 100%;
+    padding: 0.625rem 0.875rem;
     border-radius: 0.75rem;
     border: 1px solid #e2e8f0;
-    background-color: #f8fafc;
+    background-color: #ffffff;
     font-size: 0.875rem;
-    font-family: monospace;
-    color: #1e293b;
+    font-weight: 600;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    color: #0f172a;
     outline: none;
     transition: all 0.15s ease-in-out;
   }
+  .input-money.has-prefix {
+    padding-left: 2.75rem !important;
+  }
   .input-money:focus {
-    border-color: #4ade80;
-    box-shadow: 0 0 0 2px #dcfce7;
+    border-color: #10b981;
+    background-color: #ffffff;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+  }
+  .deduct-field:focus {
+    border-color: #ef4444 !important;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15) !important;
+  }
+  .days-input::-webkit-outer-spin-button,
+  .days-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .days-input[type=number] {
+    -moz-appearance: textfield;
+    appearance: textfield;
   }
 </style>
 
 <script>
-  function n(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
-  function fmt(v) { return 'Rp\u00a0' + Math.round(v).toLocaleString('en-US'); }
+  function parseVal(idOrEl) {
+    const el = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+    if (!el) return 0;
+    const clean = String(el.value || '').replace(/,/g, '').trim();
+    return parseFloat(clean) || 0;
+  }
+
+  function fmt(v) {
+    return 'Rp\u00a0' + Math.round(v).toLocaleString('en-US');
+  }
 
   function sumInputsByClass(cls) {
     return Array.from(document.querySelectorAll('.' + cls))
-      .reduce((s, el) => s + (parseFloat(el.value) || 0), 0);
+      .reduce((s, el) => s + parseVal(el), 0);
   }
 
   function recalculate() {
-    const mealFull  = n('mealFullDays')  * n('mealFullRate');
-    const mealHalf  = n('mealHalfDays')  * n('mealHalfRate');
-    const transport = n('transportDays') * n('transportRate');
+    const mealFullDays  = parseVal('mealFullDays');
+    const mealFullRate  = parseVal('mealFullRate');
+    const mealHalfDays  = parseVal('mealHalfDays');
+    const mealHalfRate  = parseVal('mealHalfRate');
+    const transportDays = parseVal('transportDays');
+    const transportRate = parseVal('transportRate');
 
-    document.getElementById('mealFullTotal').textContent  = fmt(mealFull);
-    document.getElementById('mealHalfTotal').textContent  = fmt(mealHalf);
-    document.getElementById('transportTotal').textContent = fmt(transport);
+    const mealFull  = mealFullDays * mealFullRate;
+    const mealHalf  = mealHalfDays * mealHalfRate;
+    const transport = transportDays * transportRate;
+
+    const elMF = document.getElementById('mealFullTotal');
+    const elMH = document.getElementById('mealHalfTotal');
+    const elTR = document.getElementById('transportTotal');
+    if (elMF) elMF.textContent = fmt(mealFull);
+    if (elMH) elMH.textContent = fmt(mealHalf);
+    if (elTR) elTR.textContent = fmt(transport);
 
     const fixedEarnings = [
       'basicSalary','monthlyIncentive','healthAllowance','positionAllowance',
       'loyaltyAllowance','wifeChildAllowance','teachingReward','gameReward',
       'studentCommission','internetCompensation','overtime',
-    ].reduce((s, k) => s + n(k), 0);
+    ].reduce((s, k) => s + parseVal(k), 0);
 
     const otherIncome  = sumInputsByClass('other-income-amt');
     const gross = fixedEarnings + mealFull + mealHalf + transport + otherIncome;
 
     const otherDeduct = sumInputsByClass('other-deduct-amt');
     const deductions  = ['instalment','miscellaneousDeduction','bpjsKetenagakerjaan','tax']
-      .reduce((s, k) => s + n(k), 0) + otherDeduct;
+      .reduce((s, k) => s + parseVal(k), 0) + otherDeduct;
 
     const net = gross - deductions;
 
-    document.getElementById('subtotal-income').textContent = fmt(gross);
-    document.getElementById('subtotal-deduct').textContent = fmt(deductions);
-    document.getElementById('live-gross').textContent  = fmt(gross);
-    document.getElementById('live-deduct').textContent = fmt(deductions);
-    document.getElementById('live-net').textContent    = fmt(net);
+    const elSI = document.getElementById('subtotal-income');
+    const elSD = document.getElementById('subtotal-deduct');
+    const elLG = document.getElementById('live-gross');
+    const elLD = document.getElementById('live-deduct');
+    const elLN = document.getElementById('live-net');
+
+    if (elSI) elSI.textContent = fmt(gross);
+    if (elSD) elSD.textContent = fmt(deductions);
+    if (elLG) elLG.textContent = fmt(gross);
+    if (elLD) elLD.textContent = fmt(deductions);
+    if (elLN) elLN.textContent = fmt(net);
   }
+
+  // Auto add commas every 3 digits with cursor position preservation
+  function formatInputWithCommas(input) {
+    const orig = input.value;
+    const cursor = input.selectionStart ?? orig.length;
+    // Count how many digits existed before the caret
+    const digitsBefore = orig.slice(0, cursor).replace(/\D/g, '').length;
+
+    // Strip everything except digits
+    const rawDigits = orig.replace(/\D/g, '');
+    if (rawDigits === '') {
+      input.value = '';
+      return;
+    }
+
+    // Strip leading zeroes unless it's just '0'
+    const normalized = rawDigits.replace(/^0+(?=\d)/, '');
+    const formatted = normalized.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    input.value = formatted;
+
+    // Calculate new cursor position based on digits seen
+    let newCursor = 0;
+    let seen = 0;
+    for (let i = 0; i < formatted.length; i++) {
+      if (/\d/.test(formatted[i])) seen++;
+      if (seen === digitsBefore) {
+        newCursor = i + 1;
+        break;
+      }
+    }
+    if (digitsBefore === 0) newCursor = 0;
+    else if (seen < digitsBefore) newCursor = formatted.length;
+
+    input.setSelectionRange(newCursor, newCursor);
+  }
+
+  // Delegated input listener for all currency inputs
+  document.addEventListener('input', function(e) {
+    if (e.target && e.target.classList && e.target.classList.contains('currency-input')) {
+      formatInputWithCommas(e.target);
+      recalculate();
+    } else if (e.target && e.target.classList && e.target.classList.contains('days-input')) {
+      recalculate();
+    }
+  });
+
+  // Select all on focus when input is '0' so user can overwrite directly
+  document.addEventListener('focus', function(e) {
+    if (e.target && e.target.classList && e.target.classList.contains('currency-input')) {
+      if (e.target.value === '0') {
+        e.target.select();
+      }
+    }
+  }, true);
+
+  // Default to '0' on blur if empty
+  document.addEventListener('blur', function(e) {
+    if (e.target && e.target.classList && e.target.classList.contains('currency-input')) {
+      if (e.target.value.trim() === '') {
+        e.target.value = '0';
+        recalculate();
+      }
+    }
+  }, true);
 
   function addOtherIncome() {
     const row = document.createElement('div');
-    row.className = 'flex gap-2 other-income-row';
+    row.className = 'flex gap-2.5 other-income-row items-center';
     row.innerHTML = `
-      <input type="text" name="otherIncomeLabel[]" placeholder="Label" class="input-std flex-1" style="padding:0.625rem 1rem;border-radius:0.75rem;border:1px solid #e2e8f0;font-size:0.875rem;color:#1e293b;">
-      <input type="number" name="otherIncomeAmount[]" value="0" min="0" step="500" oninput="recalculate()" placeholder="Amount" class="other-income-amt" style="width:9rem;padding:0.625rem 0.75rem;border-radius:0.75rem;border:1px solid #e2e8f0;background:#f8fafc;font-size:0.875rem;font-family:monospace;color:#1e293b;">
-      <button type="button" onclick="this.closest('.other-income-row').remove();recalculate();"
-        class="w-8 h-10 flex items-center justify-center text-red-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition">
+      <input type="text" name="otherIncomeLabel[]" placeholder="Label" class="input-std flex-1">
+      <div class="relative w-44 flex-shrink-0">
+        <span class="absolute left-3.5 inset-y-0 flex items-center text-slate-400 text-xs font-semibold select-none pointer-events-none">Rp</span>
+        <input type="text" inputmode="numeric" name="otherIncomeAmount[]" value="0" placeholder="0" autocomplete="off" class="input-money has-prefix w-full other-income-amt currency-input">
+      </div>
+      <button type="button" onclick="this.closest('.other-income-row').remove(); recalculate();"
+        class="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition" title="Remove row">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
       </button>`;
     document.getElementById('other-incomes-list').appendChild(row);
+    recalculate();
   }
 
   function addOtherDeduction() {
     const row = document.createElement('div');
-    row.className = 'flex gap-2 other-deduction-row';
+    row.className = 'flex gap-2.5 other-deduction-row items-center';
     row.innerHTML = `
-      <input type="text" name="otherDeductionLabel[]" placeholder="Label" class="input-std flex-1" style="padding:0.625rem 1rem;border-radius:0.75rem;border:1px solid #e2e8f0;font-size:0.875rem;color:#1e293b;">
-      <input type="number" name="otherDeductionAmount[]" value="0" min="0" step="500" oninput="recalculate()" placeholder="Amount" class="other-deduct-amt" style="width:9rem;padding:0.625rem 0.75rem;border-radius:0.75rem;border:1px solid #e2e8f0;background:#f8fafc;font-size:0.875rem;font-family:monospace;color:#1e293b;">
-      <button type="button" onclick="this.closest('.other-deduction-row').remove();recalculate();"
-        class="w-8 h-10 flex items-center justify-center text-red-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition">
+      <input type="text" name="otherDeductionLabel[]" placeholder="Label" class="input-std flex-1">
+      <div class="relative w-44 flex-shrink-0">
+        <span class="absolute left-3.5 inset-y-0 flex items-center text-red-400 text-xs font-semibold select-none pointer-events-none">Rp</span>
+        <input type="text" inputmode="numeric" name="otherDeductionAmount[]" value="0" placeholder="0" autocomplete="off" class="input-money has-prefix w-full other-deduct-amt currency-input">
+      </div>
+      <button type="button" onclick="this.closest('.other-deduction-row').remove(); recalculate();"
+        class="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition" title="Remove row">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
       </button>`;
     document.getElementById('other-deductions-list').appendChild(row);
+    recalculate();
   }
 
-  // Run on load
+  // Strip commas before form submit just to ensure clean numeric payload
+  document.getElementById('salary-form')?.addEventListener('submit', function() {
+    document.querySelectorAll('.currency-input').forEach(function(input) {
+      input.value = input.value.replace(/,/g, '');
+    });
+  });
+
+  // Run initial calculation
   recalculate();
 </script>
 
