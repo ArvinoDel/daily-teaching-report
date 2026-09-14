@@ -142,7 +142,7 @@
       </div>
 
       <!-- Commission Prices -->
-      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-5">
+      <div id="commission-section" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-5 scroll-mt-6 transition-all duration-300">
         <div>
           <h2 class="text-sm font-bold text-slate-700 uppercase tracking-wider">Commission per Session</h2>
           <p class="text-xs text-slate-400 mt-1">Set your earnings per session type. Used to calculate monthly income on the dashboard.</p>
@@ -239,6 +239,18 @@
             if (initials) initials.classList.add('hidden');
           };
           reader.readAsDataURL(file);
+        }
+      }
+
+      // Auto-scroll and highlight commission section if linked via #commission-section
+      if (window.location.hash === '#commission-section') {
+        const el = document.getElementById('commission-section');
+        if (el) {
+          setTimeout(() => {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            el.classList.add('ring-2', 'ring-brand-500', 'ring-offset-2');
+            setTimeout(() => el.classList.remove('ring-2', 'ring-brand-500', 'ring-offset-2'), 2500);
+          }, 150);
         }
       }
     </script>

@@ -134,6 +134,32 @@ async function notifySalaryPublished(salary, teacher = null) {
 }
 
 /**
+ * Specialized helper: Send welcome notification when a teacher registers their account
+ * Prompting them to configure their teaching reward / commission rates
+ * @param {Object} user
+ * @returns {Promise<Notification>}
+ */
+async function notifyTeacherWelcome(user) {
+  if (!user || !user._id) return null;
+
+  const title = 'Welcome to Daily Teaching Report!';
+  const message = `Welcome aboard, ${user.displayName}! Please set your teaching reward and session commission amounts in your profile to enable accurate income calculations.`;
+  const link = '/profile/edit#commission-section';
+
+  return await sendNotification({
+    recipient: user._id,
+    type: 'teacher_welcome',
+    category: 'system',
+    title,
+    message,
+    link,
+    metadata: {
+      action: 'set_commission',
+    },
+  });
+}
+
+/**
  * Cleanup helper: Remove notification when a salary is retracted back to draft
  * @param {string|mongoose.Types.ObjectId} salaryId
  * @returns {Promise<number>} count of deleted notifications
@@ -252,6 +278,7 @@ module.exports = {
   formatRelativeTime,
   sendNotification,
   notifySalaryPublished,
+  notifyTeacherWelcome,
   removeSalaryNotification,
   getTeacherNotifications,
   getUnreadCount,

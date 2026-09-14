@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const notificationService = require('../services/notificationService');
 
 // GET /auth/login
 exports.loginForm = (req, res) => {
@@ -87,12 +88,26 @@ exports.register = async (req, res) => {
       });
     }
 
-    await User.create({ username, password, displayName, joinDate });
-    res.render('auth/register', {
-      error: null,
-      success: 'Account created! You can now log in.',
-      currentYear,
-    });
+    const newUser = await User.create({ username, password, displayName, joinDate });
+
+    // Send welcome notification instructing teacher to fill teaching reward amount
+    try {
+      await notificationService.notifyTeacherWelcome(newUser);
+    } catch (notifErr) {
+      console.error('[auth] Failed to send welcome notification:', notifErr);
+    }
+
+    // Automatically authenticate the newly registered user
+    req.session.user = {
+      _id: newUser._id,
+      username: newUser.username,
+      displayName: newUser.displayName,
+      role: newUser.role,
+      profilePicture: newUser.profilePicture || null,
+    };
+    req.session.flash = `Welcome, ${newUser.displayName}! Your account is ready.`;
+
+    return res.redirect('/reports');
   } catch (err) {
     const msg = err.errors
       ? Object.values(err.errors).map(e => e.message).join(' ')
