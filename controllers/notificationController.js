@@ -27,7 +27,7 @@ exports.index = async (req, res) => {
     delete req.session.flash;
 
     res.render('notifications/index', {
-      title: 'Notifikasi',
+      title: 'Notifications',
       notifications,
       unreadCount,
       total,
@@ -37,7 +37,7 @@ exports.index = async (req, res) => {
     });
   } catch (err) {
     console.error('[notifications] index error:', err);
-    res.status(500).render('error', { message: 'Gagal memuat notifikasi.' });
+    res.status(500).render('error', { message: 'Failed to load notifications.' });
   }
 };
 
@@ -60,9 +60,9 @@ exports.markAsRead = async (req, res) => {
   } catch (err) {
     console.error('[notifications] markAsRead error:', err);
     if (req.headers.accept && req.headers.accept.includes('application/json')) {
-      return res.status(500).json({ error: 'Gagal menandai notifikasi.' });
+      return res.status(500).json({ error: 'Failed to mark notification.' });
     }
-    req.session.flash = { type: 'error', msg: 'Gagal menandai notifikasi.' };
+    req.session.flash = { type: 'error', msg: 'Failed to mark notification.' };
     res.redirect('/notifications');
   }
 };
@@ -82,15 +82,15 @@ exports.markAllAsRead = async (req, res) => {
 
     req.session.flash = {
       type: 'success',
-      msg: count > 0 ? `${count} notifikasi ditandai sudah dibaca.` : 'Semua notifikasi sudah dibaca.',
+      msg: count > 0 ? `${count} notification${count > 1 ? 's' : ''} marked as read.` : 'All notifications are already read.',
     };
     res.redirect('/notifications');
   } catch (err) {
     console.error('[notifications] markAllAsRead error:', err);
     if (req.headers.accept && req.headers.accept.includes('application/json')) {
-      return res.status(500).json({ error: 'Gagal menandai semua notifikasi.' });
+      return res.status(500).json({ error: 'Failed to mark all notifications.' });
     }
-    req.session.flash = { type: 'error', msg: 'Gagal menandai notifikasi.' };
+    req.session.flash = { type: 'error', msg: 'Failed to mark all notifications.' };
     res.redirect('/notifications');
   }
 };
@@ -110,14 +110,14 @@ exports.deleteNotification = async (req, res) => {
       return res.json({ success });
     }
 
-    req.session.flash = { type: 'success', msg: 'Notifikasi berhasil dihapus.' };
+    req.session.flash = { type: 'success', msg: 'Notification deleted successfully.' };
     res.redirect('/notifications');
   } catch (err) {
     console.error('[notifications] delete error:', err);
     if (req.headers.accept && req.headers.accept.includes('application/json')) {
-      return res.status(500).json({ error: 'Gagal menghapus notifikasi.' });
+      return res.status(500).json({ error: 'Failed to delete notification.' });
     }
-    req.session.flash = { type: 'error', msg: 'Gagal menghapus notifikasi.' };
+    req.session.flash = { type: 'error', msg: 'Failed to delete notification.' };
     res.redirect('/notifications');
   }
 };

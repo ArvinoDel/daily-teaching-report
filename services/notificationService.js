@@ -28,13 +28,15 @@ function formatRelativeTime(date) {
   const diffHours = Math.floor(diffMin / 60);
   const diffDays = Math.floor(diffHours / 24);
 
-  if (diffSec < 45) return 'Baru saja';
-  if (diffMin < 60) return `${diffMin} menit yang lalu`;
-  if (diffHours < 24) return `${diffHours} jam yang lalu`;
-  if (diffDays === 1) return 'Kemarin';
-  if (diffDays < 7) return `${diffDays} hari yang lalu`;
+  if (diffSec < 45) return 'Just now';
+  if (diffMin === 1) return '1 minute ago';
+  if (diffMin < 60) return `${diffMin} minutes ago`;
+  if (diffHours === 1) return '1 hour ago';
+  if (diffHours < 24) return `${diffHours} hours ago`;
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
 
-  return d.toLocaleDateString('id-ID', {
+  return d.toLocaleDateString('en-US', {
     day: 'numeric',
     month: 'short',
     year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
@@ -111,8 +113,8 @@ async function notifySalaryPublished(salary, teacher = null) {
   if (!teacherId) return null;
 
   const periodLabel = salary.periodLabel || `${salary.month}/${salary.year}`;
-  const title = 'Slip Gaji Telah Diterbitkan';
-  const message = `Slip gaji Anda untuk periode ${periodLabel} telah diterbitkan dan siap dilihat.`;
+  const title = 'Payslip Published';
+  const message = `Your payslip for ${periodLabel} has been published and is ready to view.`;
   const link = `/reports/my-salary/${salary._id}/slip`;
 
   return await sendNotification({
@@ -177,7 +179,7 @@ async function getTeacherNotifications(userId, { filter = 'all', page = 1, limit
   const notifications = rawNotifications.map((n) => ({
     ...n,
     relativeTime: formatRelativeTime(n.createdAt),
-    formattedDate: new Date(n.createdAt).toLocaleDateString('id-ID', {
+    formattedDate: new Date(n.createdAt).toLocaleDateString('en-US', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
