@@ -49,5 +49,31 @@
     .badge-amber   { background: #fef3c7; color: #78350f; }
     .badge-purple  { background: #ede9fe; color: #4c1d95; }
     .badge-violet  { background: #ede9fe; color: #4c1d95; }
+
+    /* Admin Navbar Expand on Hover */
+    .nav-expand-link {
+      display: inline-flex;
+      align-items: center;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .nav-expand-label {
+      display: inline-block;
+      max-width: 0;
+      opacity: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      vertical-align: middle;
+      transition: max-width 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease, margin-left 0.2s ease;
+      margin-left: 0;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .nav-expand-link:hover .nav-expand-label,
+    .nav-expand-link:focus-visible .nav-expand-label {
+      max-width: 120px;
+      opacity: 1;
+      margin-left: 0.375rem;
+    }
   </style>
 </head>
