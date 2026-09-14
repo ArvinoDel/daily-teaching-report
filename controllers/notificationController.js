@@ -15,13 +15,21 @@ const notificationService = require('../services/notificationService');
 exports.index = async (req, res) => {
   try {
     const userId = req.session.user._id;
-    const filter = req.query.filter === 'unread' ? 'unread' : 'all';
     const page   = parseInt(req.query.page, 10) || 1;
 
+    // Fetch all notifications for the user
     const { notifications, unreadCount, total } = await notificationService.getTeacherNotifications(
       userId,
-      { filter, page, limit: 50 }
+      { filter: 'all', page, limit: 50 }
     );
+
+    // Automatically mark all unread notifications as read when visiting notifications
+    if (unreadCount > 0) {
+      await notificationService.markAllAsRead(userId);
+    }
+
+    // Immediately clear navbar unread badge on this render
+    res.locals.unreadNotificationCount = 0;
 
     const flash = req.session.flash || null;
     delete req.session.flash;
@@ -29,9 +37,7 @@ exports.index = async (req, res) => {
     res.render('notifications/index', {
       title: 'Notifications',
       notifications,
-      unreadCount,
       total,
-      currentFilter: filter,
       flash,
       csrfToken: req.session.csrfToken || '',
     });
