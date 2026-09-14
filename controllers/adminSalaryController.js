@@ -20,6 +20,7 @@ const Salary      = require('../models/Salary');
 const User        = require('../models/User');
 const AuditLog    = require('../models/AuditLog');
 const salaryService = require('../services/salaryService');
+const notificationService = require('../services/notificationService');
 const ExcelJS     = require('exceljs');
 
 /* ── Shared helpers ── */
@@ -357,6 +358,9 @@ exports.salaryRetract = async (req, res) => {
     salary.publishedAt = null;
     salary.paidAt      = null;
     await salary.save();
+
+    // Clean up published notification so teacher doesn't have broken link
+    await notificationService.removeSalaryNotification(salary._id);
 
     await AuditLog.create({
       admin:      req.session.user?._id,

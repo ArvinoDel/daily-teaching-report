@@ -343,9 +343,25 @@ async function publishSalaries(month, year, teacherIds = null) {
     filter.teacher = { $in: teacherIds };
   }
 
+  // Fetch drafts to be published so we can send notifications
+  const draftsToPublish = await Salary.find(filter).populate('teacher', 'displayName username').lean();
+
   const result = await Salary.updateMany(filter, {
     $set: { status: 'published', publishedAt: new Date() },
   });
+
+  // Dispatch notifications asynchronously for all published slips
+  if (draftsToPublish.length > 0) {
+    const notificationService = require('./notificationService');
+    for (const s of draftsToPublish) {
+      try {
+        await notificationService.notifySalaryPublished(s, s.teacher);
+      } catch (err) {
+        console.error('[salaryService] Failed to send publication notification for salary:', s._id, err);
+      }
+    }
+  }
+
   return result.modifiedCount || 0;
 }
 

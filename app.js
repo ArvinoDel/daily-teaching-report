@@ -15,6 +15,8 @@ const authRoutes    = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
 const adminRoutes   = require('./routes/admin');
 const feedbackRoutes = require('./routes/feedback');
+const notificationRoutes = require('./routes/notifications');
+const Notification   = require('./models/Notification');
 const { requireAuth } = require('./middleware/auth');
 
 const app = express();
@@ -156,11 +158,15 @@ app.use(async (req, res, next) => {
       await User.findByIdAndUpdate(req.session.user._id, { lastActiveAt: new Date() });
     }
     // Always fetch fresh user data for dropdown
-    const user = await User.findById(req.session.user._id)
-      .select('username displayName role joinDate commission profilePicture lastActiveAt');
+    const [user, unreadCount] = await Promise.all([
+      User.findById(req.session.user._id).select('username displayName role joinDate commission profilePicture lastActiveAt'),
+      Notification.countDocuments({ recipient: req.session.user._id, isRead: false }),
+    ]);
     res.locals.currentUser = user || null;
+    res.locals.unreadNotificationCount = unreadCount || 0;
   } catch (e) {
     res.locals.currentUser = req.session.user || null;
+    res.locals.unreadNotificationCount = 0;
   }
   next();
 });
@@ -168,6 +174,7 @@ app.use(async (req, res, next) => {
 app.use('/auth',    authRoutes);
 app.use('/reports', requireAuth, reportRoutes);
 app.use('/profile', requireAuth, profileRoutes);
+app.use('/notifications', requireAuth, notificationRoutes);
 app.use('/admin',   adminRoutes);
 app.use('/feedback', feedbackRoutes);
 app.get('/score-calculator', requireAuth, (req, res) => res.render('score-calculator'));
