@@ -181,10 +181,6 @@ app.use('/feedback', feedbackRoutes);
 app.get('/score-calculator', requireAuth, (req, res) => res.render('score-calculator'));
 app.get('/', (req, res) => res.redirect('/reports'));
 
-// TEMPORARY TEST ROUTE (delete after testing in deployment)
-app.get('/test-error', (req, res) => {
-  throw new Error('Test automatic server error monitoring in deployment!');
-});
 
 app.use((req, res) => {
   res.locals.currentUser = res.locals.currentUser || null;
