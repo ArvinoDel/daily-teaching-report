@@ -36,6 +36,11 @@ const feedbackSchema = new mongoose.Schema({
     enum: ['pending', 'resolved', 'ignored'],
     default: 'pending',
   },
+  source: {
+    type: String,
+    enum: ['user', 'system'],
+    default: 'user',
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Feedback', feedbackSchema);

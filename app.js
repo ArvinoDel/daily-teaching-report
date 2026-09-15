@@ -17,6 +17,7 @@ const adminRoutes   = require('./routes/admin');
 const feedbackRoutes = require('./routes/feedback');
 const notificationRoutes = require('./routes/notifications');
 const Notification   = require('./models/Notification');
+const Feedback = require('./models/Feedback');
 const { requireAuth } = require('./middleware/auth');
 
 const app = express();
@@ -189,8 +190,14 @@ app.use((req, res) => {
   res.status(404).render('error', { message: 'Page not found.' });
 });
 
+// TEMPORARY TEST ROUTE (delete after testing)
+app.get('/test-error', (req, res) => {
+  throw new Error('Test automatic server error monitoring!');
+});
+
+
 // Multer & General error handler
-app.use((err, req, res, next) => {
+app.use(async (err, req, res, next) => {
   res.locals.currentUser = res.locals.currentUser || null;
   res.locals.csrfToken = res.locals.csrfToken || (req.session && req.session.csrfToken) || '';
 
@@ -205,8 +212,39 @@ app.use((err, req, res, next) => {
   }
 
   console.error(err.stack);
+
+  // Auto-log server errors (non-4xx) into the Feedback collection
+  // so they appear in /admin/feedbacks without any manual reporting.
+  const statusCode = err.status || err.statusCode || 500;
+  if (statusCode >= 500) {
+    try {
+      const userId = req.session && req.session.user ? req.session.user._id : null;
+      const userName = req.session && req.session.user ? req.session.user.username : null;
+
+      await Feedback.create({
+        description: [
+          `[AUTO] ${err.message || 'Unknown error'}`,
+          ``,
+          `Route: ${req.method} ${req.originalUrl}`,
+          userName ? `User: ${userName}` : `User: (not logged in)`,
+          ``,
+          `Stack:`,
+          err.stack || '(no stack trace)',
+        ].join('\n'),
+        pageUrl: req.originalUrl,
+        submitterName: 'System (auto)',
+        ...(userId && { user: userId }),
+        source: 'system',
+        status: 'pending',
+      });
+    } catch (feedbackErr) {
+      // Never let feedback saving crash the error handler itself
+      console.error('[AutoFeedback] Failed to save error to Feedback:', feedbackErr.message);
+    }
+  }
+
   if (req.path.includes('/api/') || (req.headers.accept && req.headers.accept.includes('application/json'))) {
-    return res.status(err.status || 500).json({ error: err.message || 'Internal server error.' });
+    return res.status(statusCode).json({ error: err.message || 'Internal server error.' });
   }
   res.status(500).render('error', { message: 'Internal server error.' });
 });
