@@ -60,8 +60,13 @@ exports.groupsList = async (req, res) => {
     const filter = {};
     if (type  && ['GROUP', 'PRIVATE'].includes(type)) filter.type  = type;
     if (level && level.trim())                        filter.level = level.trim();
-    if (q     && q.trim())
-      filter.group_name = { $regex: q.trim(), $options: 'i' };
+    if (q && q.trim()) {
+      const qRegex = { $regex: q.trim(), $options: 'i' };
+      filter.$or = [
+        { group_name: qRegex },
+        { students: qRegex },
+      ];
+    }
 
     const [groups, totalGroup, totalPrivate] = await Promise.all([
       Group.find(filter).sort({ type: 1, group_name: 1 }),

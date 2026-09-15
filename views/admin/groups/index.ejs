@@ -133,8 +133,19 @@
                 <path stroke-linecap="round" stroke-linejoin="round"
                   d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 15.803a7.5 7.5 0 0 0 10.607 0Z" />
               </svg>
-              <input type="text" name="q" value="<%= searchQuery %>" placeholder="Search group name…"
+              <input
+                id="group-search-input"
+                type="text"
+                name="q"
+                value="<%= searchQuery %>"
+                placeholder="Search group or student name…"
+                autocomplete="off"
                 class="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-300 transition">
+              <!-- Autocomplete dropdown -->
+              <ul
+                id="group-suggestions"
+                class="hidden absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+              </ul>
             </div>
             <button type="submit"
               class="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg transition">Go</button>
@@ -612,6 +623,94 @@
             rows.forEach(function (el) { el.classList.remove('hidden'); });
           }
         });
+
+        /* ── Live search autocomplete ─────────────────────────────── */
+        (function () {
+          var input = document.getElementById('group-search-input');
+          var list  = document.getElementById('group-suggestions');
+          if (!input || !list) return;
+
+          // Build a flat suggestion list: group names + student names (with source label)
+          var suggestions = [];
+          groupsData.forEach(function (g) {
+            suggestions.push({ label: g.group_name, sub: g.type === 'GROUP' ? 'Group' : 'Private', value: g.group_name });
+            g.students.forEach(function (s) {
+              suggestions.push({ label: s, sub: 'student in ' + g.group_name, value: s });
+            });
+          });
+
+          var activeIdx = -1;
+
+          function showSuggestions(q) {
+            q = q.trim().toLowerCase();
+            list.innerHTML = '';
+            activeIdx = -1;
+            if (!q || q.length < 1) { list.classList.add('hidden'); return; }
+
+            var matches = suggestions.filter(function (s) {
+              return s.label.toLowerCase().includes(q);
+            }).slice(0, 8); // cap at 8 items
+
+            if (matches.length === 0) { list.classList.add('hidden'); return; }
+
+            matches.forEach(function (m, i) {
+              var li = document.createElement('li');
+              li.className = 'flex items-center gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-slate-50 transition text-sm';
+              li.dataset.idx = i;
+
+              // Highlight the matching portion
+              var re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+              var highlighted = escHtml(m.label).replace(re, '<mark class="bg-brand-100 text-brand-700 rounded font-semibold not-italic">$1</mark>');
+
+              li.innerHTML =
+                '<span class="flex-1 font-medium text-slate-800">' + highlighted + '</span>' +
+                '<span class="text-[11px] text-slate-400 whitespace-nowrap">' + escHtml(m.sub) + '</span>';
+
+              li.addEventListener('mousedown', function (e) {
+                e.preventDefault(); // don't blur the input
+                input.value = m.value;
+                list.classList.add('hidden');
+                input.closest('form').submit();
+              });
+
+              list.appendChild(li);
+            });
+
+            list.classList.remove('hidden');
+          }
+
+          input.addEventListener('input', function () { showSuggestions(this.value); });
+          input.addEventListener('focus', function () { showSuggestions(this.value); });
+
+          // Keyboard navigation
+          input.addEventListener('keydown', function (e) {
+            var items = list.querySelectorAll('li');
+            if (!items.length) return;
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              activeIdx = Math.min(activeIdx + 1, items.length - 1);
+              items.forEach(function (el, i) { el.classList.toggle('bg-slate-50', i === activeIdx); });
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              activeIdx = Math.max(activeIdx - 1, -1);
+              items.forEach(function (el, i) { el.classList.toggle('bg-slate-50', i === activeIdx); });
+            } else if (e.key === 'Enter' && activeIdx >= 0) {
+              e.preventDefault();
+              items[activeIdx].dispatchEvent(new MouseEvent('mousedown'));
+            } else if (e.key === 'Escape') {
+              list.classList.add('hidden');
+              activeIdx = -1;
+            }
+          });
+
+          // Close when clicking outside
+          document.addEventListener('mousedown', function (e) {
+            if (!input.contains(e.target) && !list.contains(e.target)) {
+              list.classList.add('hidden');
+              activeIdx = -1;
+            }
+          });
+        })();
       </script>
 
       <%- include('../../partials/footer') %>
