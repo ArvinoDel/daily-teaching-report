@@ -181,6 +181,11 @@ app.use('/feedback', feedbackRoutes);
 app.get('/score-calculator', requireAuth, (req, res) => res.render('score-calculator'));
 app.get('/', (req, res) => res.redirect('/reports'));
 
+// TEMPORARY TEST ROUTE (delete after testing in deployment)
+app.get('/test-error', (req, res) => {
+  throw new Error('Test automatic server error monitoring in deployment!');
+});
+
 app.use((req, res) => {
   res.locals.currentUser = res.locals.currentUser || null;
   res.locals.csrfToken = res.locals.csrfToken || (req.session && req.session.csrfToken) || '';
@@ -188,11 +193,6 @@ app.use((req, res) => {
     return res.status(404).json({ error: 'Endpoint not found.' });
   }
   res.status(404).render('error', { message: 'Page not found.' });
-});
-
-// TEMPORARY TEST ROUTE (delete after testing)
-app.get('/test-error', (req, res) => {
-  throw new Error('Test automatic server error monitoring!');
 });
 
 
