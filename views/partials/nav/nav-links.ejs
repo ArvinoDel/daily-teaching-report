@@ -5,9 +5,14 @@
       : 'text-slate-500 hover:text-slate-700 hover:bg-white/60';
   }
 
-  // Treat any Admin* page title as active admin tab, except specific tabs like Summary or Groups
-  // Treat any Admin* page title as active admin tab, except specific tabs like Summary, Groups, Feedbacks, or Backups
-  const isAdminPage = typeof title !== 'undefined' && title.startsWith('Admin') && !title.includes('Summary') && !title.includes('Group') && !title.includes('Feedback') && !title.includes('Backup');
+  // Treat any Admin* page title as active admin tab, except specific tabs like Summary, Groups, Feedbacks, Backups, or Salaries
+  const isAdminPage = typeof title !== 'undefined'
+    && title.startsWith('Admin')
+    && !title.includes('Summary')
+    && !title.includes('Group')
+    && !title.includes('Feedback')
+    && !title.includes('Backup')
+    && !title.includes('Salar');
 %>
 <div class="hidden sm:flex items-center gap-1 bg-slate-100 rounded-xl p-1">
 

@@ -1,163 +1,204 @@
-<% function mobileNavClass(pageTitle) { return typeof title !=='undefined' && title===pageTitle
-  ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100' ; } const isAdminPage=typeof title !=='undefined'
-  && title.startsWith('Admin') && !title.includes('Feedback') && !title.includes('Backup'); %>
-  <div id="mobile-menu"
-    class="hidden sm:hidden border-t border-slate-100 bg-white/95 backdrop-blur-md px-4 py-3 space-y-1">
+<%
+  function mobileNavClass(pageTitle) {
+    return typeof title !== 'undefined' && title === pageTitle
+      ? 'bg-brand-50 text-brand-700'
+      : 'text-slate-600 hover:bg-slate-100';
+  }
 
-    <!-- User info strip -->
-    <% if (typeof currentUser !=='undefined' && currentUser) { %>
-      <div class="flex items-center gap-2.5 px-3 py-2.5 mb-2 bg-slate-50 rounded-xl">
+  const isAdminPage = typeof title !== 'undefined'
+    && title.startsWith('Admin')
+    && !title.includes('Summary')
+    && !title.includes('Group')
+    && !title.includes('Feedback')
+    && !title.includes('Backup')
+    && !title.includes('Salar');
+%>
 
-        <!-- Avatar + online dot -->
-        <div class="relative flex-shrink-0">
-          <% if (currentUser.profilePicture) { %>
-            <img src="<%= currentUser.profilePicture %>" alt="Avatar"
-              class="w-9 h-9 rounded-full object-cover border border-slate-200">
-            <% } else { %>
-              <div
-                class="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 text-sm font-bold">
-                <%= currentUser.displayName[0].toUpperCase() %>
-              </div>
-              <% } %>
-                <span
-                  class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-50 <%= _isOnline ? 'bg-emerald-400' : 'bg-slate-300' %>"></span>
-        </div>
+<div id="mobile-menu" class="hidden sm:hidden border-t border-slate-100 bg-white/95 backdrop-blur-md px-4 py-3 space-y-1">
 
-        <!-- Name, username, online status + exp -->
-        <div class="min-w-0">
-          <p class="text-xs font-bold text-slate-800 truncate">
-            <%= currentUser.displayName %>
-          </p>
-          <p class="text-xs text-slate-400 truncate">@<%= currentUser.username %>
-          </p>
-          <div class="flex items-center gap-1.5 mt-0.5">
-            <span class="text-xs <%= _isOnline ? 'text-emerald-500' : 'text-slate-400' %> font-medium">
-              <%= _isOnline ? '● Online' : '○ Offline' %>
-            </span>
-            <% if (_expStr) { %>
-              <span class="text-slate-300 text-xs">·</span>
-              <span class="text-xs text-slate-400">
-                <%= _expStr %>
-              </span>
-              <% } %>
+  <!-- User info strip -->
+  <% if (typeof currentUser !== 'undefined' && currentUser) { %>
+    <div class="flex items-center gap-2.5 px-3 py-2.5 mb-2 bg-slate-50 rounded-xl">
+      <!-- Avatar + online dot -->
+      <div class="relative flex-shrink-0">
+        <% if (currentUser.profilePicture) { %>
+          <img src="<%= currentUser.profilePicture %>" alt="Avatar"
+            class="w-9 h-9 rounded-full object-cover border border-slate-200">
+        <% } else { %>
+          <div class="w-9 h-9 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 text-sm font-bold">
+            <%= currentUser.displayName[0].toUpperCase() %>
           </div>
-        </div>
-
-      </div>
-      <% } %>
-
-        <!-- Admin link (admins only) -->
-        <% if (typeof currentUser !=='undefined' && currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin')) { %>
-          <a href="/admin" onclick="toggleMenu()"
-            class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= isAdminPage ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-100' %>">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
-              stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round"
-                d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
-            </svg>
-            Admin Panel
-          </a>
-          <% if (currentUser.role === 'superadmin') { %>
-          <a href="/admin/feedbacks" onclick="toggleMenu()"
-            class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= typeof title !=='undefined' && title.includes('Feedback') ? 'bg-violet-50 text-violet-700' : 'text-slate-600 hover:bg-slate-100' %>">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
-              stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a.75.75 0 0 1-1.074-.765 6.002 6.002 0 0 1 1.086-3.896C4.534 14.942 4 13.522 4 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
-            </svg>
-            Error Feedbacks
-          </a>
-          <a href="/admin/backups" onclick="toggleMenu()"
-            class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= typeof title !=='undefined' && title.includes('Backup') ? 'bg-rose-50 text-rose-700' : 'text-slate-600 hover:bg-slate-100' %>">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
-            </svg>
-            Database Backups
-          </a>
-          <% } %>
-          <a href="/admin/salaries" onclick="toggleMenu()"
-            class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= typeof title !=='undefined' && title.includes('Salar') ? 'bg-green-50 text-green-700' : 'text-slate-600 hover:bg-slate-100' %>">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75" />
-            </svg>
-            Salaries
-          </a>
         <% } %>
+        <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-50 <%= _isOnline ? 'bg-emerald-400' : 'bg-slate-300' %>"></span>
+      </div>
 
-            <!-- Nav links (teacher only) -->
-            <% if (typeof currentUser !=='undefined' && currentUser && currentUser.role==='teacher') { %>
-              <a href="/reports" onclick="toggleMenu()"
-                class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= mobileNavClass('Dashboard') %>">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
-                  stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round"
-                    d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
-                </svg>
-                Dashboard
-              </a>
-              <a href="/score-calculator" onclick="toggleMenu()"
-                class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= mobileNavClass('Calculator') %>">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
-                  stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round"
-                    d="M15.75 15.75V18m-7.5-6.75h.008v.008H8.25v-.008Zm0 2.25h.008v.008H8.25V13.5Zm0 2.25h.008v.008H8.25v-.008Zm2.498-2.25h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V13.5Zm0 2.25h.008v.008h-.008v-.008Zm2.504-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V13.5Zm0 2.25h.008v.008h-.008v-.008Zm.75-5.25h.008v.008h-.008v-.008Zm-7.5 0h.008v.008H8.25v-.008ZM12 6v.008M3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Z" />
-                </svg>
-                Calculator
-              </a>
-              <a href="/reports/reward-crosscheck" onclick="toggleMenu()"
-                class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= mobileNavClass('Reward Crosscheck') %>">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12c0 4.556-4.03 8.25-9 8.25S3 16.556 3 12 7.03 3.75 12 3.75 21 7.444 21 12Z" />
-                </svg>
-                Crosscheck
-              </a>
-              <a href="/reports/my-salary" onclick="toggleMenu()"
-                class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= typeof title !=='undefined' && title.includes('Salary') ? 'bg-green-50 text-green-700' : 'text-slate-600 hover:bg-slate-100' %>">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75" />
-                </svg>
-                My Salary
-              </a>
-            <% } %>
+      <!-- Name, username, online status + exp -->
+      <div class="min-w-0">
+        <p class="text-xs font-bold text-slate-800 truncate"><%= currentUser.displayName %></p>
+        <p class="text-xs text-slate-400 truncate">@<%= currentUser.username %></p>
+        <div class="flex items-center gap-1.5 mt-0.5">
+          <span class="text-xs <%= _isOnline ? 'text-emerald-500' : 'text-slate-400' %> font-medium">
+            <%= _isOnline ? '● Online' : '○ Offline' %>
+          </span>
+          <% if (_expStr) { %>
+            <span class="text-slate-300 text-xs">·</span>
+            <span class="text-xs text-slate-400"><%= _expStr %></span>
+          <% } %>
+        </div>
+      </div>
+    </div>
 
-                <!-- Profile actions -->
-                <% if (typeof currentUser !=='undefined' && currentUser) { %>
-                  <div class="pt-2 border-t border-slate-100 mt-2 space-y-0.5">
-                    <a href="/notifications" onclick="toggleMenu()"
-                      class="flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= typeof title !== 'undefined' && title.includes('Notification') ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100' %>">
-                      <div class="flex items-center gap-2.5">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
-                        </svg>
-                        Notifications
-                      </div>
-                      <% if (typeof unreadNotificationCount !== 'undefined' && unreadNotificationCount > 0) { %>
-                        <span class="px-2 py-0.5 text-xs font-bold text-white bg-red-500 rounded-full">
-                          <%= unreadNotificationCount %>
-                        </span>
-                      <% } %>
-                    </a>
-                    <a href="/profile/edit" onclick="toggleMenu()"
-                      class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 transition">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
-                        stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                          d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
-                      </svg>
-                      Edit Profile
-                    </a>
-                    <form action="/auth/logout" method="POST">
-                      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                      <button type="submit"
-                        class="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 transition">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24"
-                          stroke="currentColor" stroke-width="2">
-                          <path stroke-linecap="round" stroke-linejoin="round"
-                            d="M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h6a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 16.5 21h-6a2.25 2.25 0 0 1-2.25-2.25V15m-3 0-3-3m0 0 3-3m-3 3H15" />
-                        </svg>
-                        Sign Out
-                      </button>
-                    </form>
-                  </div>
-                  <% } %>
+    <!-- Quick Add Report button -->
+    <a href="/reports/new" onclick="toggleMenu()"
+      class="flex items-center justify-center gap-2 px-3 py-2.5 mb-2 rounded-xl text-sm font-semibold bg-brand-600 hover:bg-brand-700 active:scale-[0.99] text-white shadow-sm transition">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+      </svg>
+      Add Report
+    </a>
+  <% } %>
 
-  </div>
+  <!-- Admin navigation (admin / superadmin) -->
+  <% if (typeof currentUser !== 'undefined' && currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin')) { %>
+    <a href="/admin" onclick="toggleMenu()"
+      class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= isAdminPage ? 'bg-red-50 text-red-700' : 'text-slate-600 hover:bg-slate-100' %>">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
+      </svg>
+      Admin Panel
+    </a>
+
+    <a href="/admin/reports/summary" onclick="toggleMenu()"
+      class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= (typeof title !== 'undefined' && title.includes('Summary')) ? 'bg-teal-50 text-teal-700' : 'text-slate-600 hover:bg-slate-100' %>">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" />
+      </svg>
+      Summary
+    </a>
+
+    <a href="/admin/groups" onclick="toggleMenu()"
+      class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= (typeof title !== 'undefined' && title.includes('Group')) ? 'bg-teal-50 text-teal-700' : 'text-slate-600 hover:bg-slate-100' %>">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
+      </svg>
+      Groups
+    </a>
+
+    <a href="/admin/student-achievements" onclick="toggleMenu()"
+      class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= (typeof title !== 'undefined' && (title.includes('Achievement') || title.includes('AC Bonus'))) ? 'bg-amber-50 text-amber-700' : 'text-slate-600 hover:bg-slate-100' %>">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.25 9.71 2 12 2c2.291 0 4.545.25 6.75.721v1.515M19.75 4.236c.982.143 1.954.317 2.916.52a6.003 6.003 0 0 1-5.395 5.492M19.75 4.236V4.5a9.023 9.023 0 0 1-2.48 5.228" />
+      </svg>
+      AC Bonus
+    </a>
+
+    <a href="/admin/scan-ac" onclick="toggleMenu()"
+      class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= (typeof title !== 'undefined' && title.includes('Scanner')) ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100' %>">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 9.375v-4.5Z" />
+      </svg>
+      Scan AC
+    </a>
+
+    <a href="/admin/salaries" onclick="toggleMenu()"
+      class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= (typeof title !== 'undefined' && title.includes('Salar')) ? 'bg-green-50 text-green-700' : 'text-slate-600 hover:bg-slate-100' %>">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75" />
+      </svg>
+      Salaries
+    </a>
+
+    <% if (currentUser.role === 'superadmin') { %>
+      <a href="/admin/feedbacks" onclick="toggleMenu()"
+        class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= (typeof title !== 'undefined' && title.includes('Feedback')) ? 'bg-violet-50 text-violet-700' : 'text-slate-600 hover:bg-slate-100' %>">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a.75.75 0 0 1-1.074-.765 6.002 6.002 0 0 1 1.086-3.896C4.534 14.942 4 13.522 4 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
+        </svg>
+        Error Feedbacks
+      </a>
+
+      <a href="/admin/backups" onclick="toggleMenu()"
+        class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= (typeof title !== 'undefined' && title.includes('Backup')) ? 'bg-rose-50 text-rose-700' : 'text-slate-600 hover:bg-slate-100' %>">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+        </svg>
+        Database Backups
+      </a>
+    <% } %>
+  <% } %>
+
+  <!-- Teacher navigation -->
+  <% if (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'teacher') { %>
+    <a href="/reports" onclick="toggleMenu()"
+      class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= mobileNavClass('Dashboard') %>">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
+      </svg>
+      Dashboard
+    </a>
+
+    <a href="/score-calculator" onclick="toggleMenu()"
+      class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= mobileNavClass('Calculator') %>">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 15.75V18m-7.5-6.75h.008v.008H8.25v-.008Zm0 2.25h.008v.008H8.25V13.5Zm0 2.25h.008v.008H8.25v-.008Zm2.498-2.25h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V13.5Zm0 2.25h.008v.008h-.008v-.008Zm2.504-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V13.5Zm0 2.25h.008v.008h-.008v-.008Zm.75-5.25h.008v.008h-.008v-.008Zm-7.5 0h.008v.008H8.25v-.008ZM12 6v.008M3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Z" />
+      </svg>
+      Calculator
+    </a>
+
+    <a href="/reports/reward-crosscheck" onclick="toggleMenu()"
+      class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= mobileNavClass('Reward Crosscheck') %>">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12c0 4.556-4.03 8.25-9 8.25S3 16.556 3 12 7.03 3.75 12 3.75 21 7.444 21 12Z" />
+      </svg>
+      Crosscheck
+    </a>
+
+    <a href="/reports/my-salary" onclick="toggleMenu()"
+      class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= (typeof title !== 'undefined' && title.includes('Salary')) ? 'bg-green-50 text-green-700' : 'text-slate-600 hover:bg-slate-100' %>">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75" />
+      </svg>
+      My Salary
+    </a>
+  <% } %>
+
+  <!-- Profile & Account actions -->
+  <% if (typeof currentUser !== 'undefined' && currentUser) { %>
+    <div class="pt-2 border-t border-slate-100 mt-2 space-y-0.5">
+      <a href="/notifications" onclick="toggleMenu()"
+        class="flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= (typeof title !== 'undefined' && title.includes('Notification')) ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100' %>">
+        <div class="flex items-center gap-2.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
+          </svg>
+          Notifications
+        </div>
+        <% if (typeof unreadNotificationCount !== 'undefined' && unreadNotificationCount > 0) { %>
+          <span class="px-2 py-0.5 text-xs font-bold text-white bg-red-500 rounded-full">
+            <%= unreadNotificationCount %>
+          </span>
+        <% } %>
+      </a>
+
+      <a href="/profile/edit" onclick="toggleMenu()"
+        class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-semibold transition <%= (typeof title !== 'undefined' && title.includes('Profile')) ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100' %>">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+        </svg>
+        Edit Profile
+      </a>
+
+      <form action="/auth/logout" method="POST">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button type="submit"
+          class="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h6a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 16.5 21h-6a2.25 2.25 0 0 1-2.25-2.25V15m-3 0-3-3m0 0 3-3m-3 3H15" />
+          </svg>
+          Sign Out
+        </button>
+      </form>
+    </div>
+  <% } %>
+
+</div>
