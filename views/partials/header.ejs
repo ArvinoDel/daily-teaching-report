@@ -26,15 +26,15 @@
     (Date.now() - new Date(currentUser.lastActiveAt).getTime()) < 5 * 60 * 1000;
 %>
 
-<nav class="bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-50">
-  <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
+<nav class="bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-50 w-full overflow-x-clip">
+  <div class="max-w-6xl mx-auto px-3 sm:px-4 h-14 flex items-center justify-between gap-2 sm:gap-4">
 
     <%- include('./nav/logo') %>
     <%- include('./nav/nav-links',         { title }) %>
-    <%- include('./nav/nav-right',         { title, _expStr, _isOnline }) %>
+    <%- include('./nav/nav-right',         { title, _expStr, _isOnline, unreadNotificationCount: typeof unreadNotificationCount !== 'undefined' ? unreadNotificationCount : 0 }) %>
 
   </div>
-  <%- include('./nav/mobile-menu',         { title, _expStr, _isOnline }) %>
+  <%- include('./nav/mobile-menu',         { title, _expStr, _isOnline, unreadNotificationCount: typeof unreadNotificationCount !== 'undefined' ? unreadNotificationCount : 0 }) %>
 </nav>
 
 <%- include('./nav/nav-scripts') %>
