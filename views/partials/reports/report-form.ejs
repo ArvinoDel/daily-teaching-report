@@ -216,14 +216,14 @@
     </div>
   </div>
 
-  <!-- ── Partner Teacher (Assistant Teacher only) ── -->
+  <!-- ── Partner Teacher (Assistant Teacher & 1/2 Prime Teacher) ── -->
   <div id="partner-teacher-section" class="hidden">
     <div class="rounded-2xl border border-sky-200 bg-sky-50/40 p-4 space-y-3">
       <div class="flex items-center gap-2">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></svg>
-        <label class="block text-xs font-semibold text-sky-700 uppercase tracking-wider">Prime Teacher <span class="text-red-500">*</span></label>
+        <label id="partner-teacher-label" class="block text-xs font-semibold text-sky-700 uppercase tracking-wider"><%= _teachingTypeValue === '1/2 Prime Teacher' ? '1/2 Partner Teacher' : 'Prime Teacher' %> <span class="text-red-500">*</span></label>
       </div>
-      <p class="text-xs text-sky-500 -mt-1">Tag the Prime Teacher for this assisted class. Search by name or type manually if not registered.</p>
+      <p id="partner-teacher-subtext" class="text-xs text-sky-500 -mt-1"><%= _teachingTypeValue === '1/2 Prime Teacher' ? 'Tag the partner 1/2 Prime Teacher for this split class. Search by name or type manually if not registered.' : 'Tag the Prime Teacher for this assisted class. Search by name or type manually if not registered.' %></p>
 
       <!-- Autocomplete input -->
       <div class="relative" id="partner-teacher-ac-wrap">
@@ -676,17 +676,31 @@ if (partnerDisplay) {
   });
 }
 
+function updatePartnerLabels(type) {
+  var lbl = document.getElementById('partner-teacher-label');
+  var sub = document.getElementById('partner-teacher-subtext');
+  if (type === 'Assistant Teacher') {
+    if (lbl) lbl.innerHTML = 'Prime Teacher <span class="text-red-500">*</span>';
+    if (sub) sub.textContent = 'Tag the Prime Teacher for this assisted class. Search by name or type manually if not registered.';
+  } else if (type === '1/2 Prime Teacher') {
+    if (lbl) lbl.innerHTML = '1/2 Partner Teacher <span class="text-red-500">*</span>';
+    if (sub) sub.textContent = 'Tag the partner 1/2 Prime Teacher for this split class. Search by name or type manually if not registered.';
+  }
+}
+
 // Show/hide partner section based on teaching type selection
 if (teachingTypeEl) {
   teachingTypeEl.addEventListener('change', function() {
-    if (this.value === 'Assistant Teacher') {
+    if (this.value === 'Assistant Teacher' || this.value === '1/2 Prime Teacher') {
+      updatePartnerLabels(this.value);
       showPartnerSection();
     } else {
       hidePartnerSection();
     }
   });
   // Trigger on page load (edit mode)
-  if (teachingTypeEl.value === 'Assistant Teacher') {
+  if (teachingTypeEl.value === 'Assistant Teacher' || teachingTypeEl.value === '1/2 Prime Teacher') {
+    updatePartnerLabels(teachingTypeEl.value);
     showPartnerSection();
   }
 }
@@ -1948,6 +1962,18 @@ function _bulkPtBlur(id, val) {
   if (nameHid) nameHid.value = val.trim();
 }
 
+function _updateBulkPtLabels(id, type) {
+  var lbl = document.getElementById('bulk-entry-' + id + '-pt-label');
+  var sub = document.getElementById('bulk-entry-' + id + '-pt-subtext');
+  if (type === 'Assistant Teacher') {
+    if (lbl) lbl.innerHTML = 'Prime Teacher <span class="text-red-500">*</span>';
+    if (sub) sub.textContent = 'Tag the Prime Teacher. Search by name or type manually.';
+  } else if (type === '1/2 Prime Teacher') {
+    if (lbl) lbl.innerHTML = '1/2 Partner Teacher <span class="text-red-500">*</span>';
+    if (sub) sub.textContent = 'Tag the partner 1/2 Prime Teacher. Search by name or type manually.';
+  }
+}
+
 /* Hook up teaching type change for bulk entries — called after DOM insert */
 function _initBulkEntryTeachingTypeListener(id) {
   var typeEl = document.getElementById('bulk-entry-' + id + '-teaching-type');
@@ -1955,7 +1981,8 @@ function _initBulkEntryTeachingTypeListener(id) {
   typeEl.addEventListener('change', function() {
     var section = document.getElementById('bulk-entry-' + id + '-pt-section');
     if (!section) return;
-    if (this.value === 'Assistant Teacher') {
+    if (this.value === 'Assistant Teacher' || this.value === '1/2 Prime Teacher') {
+      _updateBulkPtLabels(id, this.value);
       section.classList.remove('hidden');
     } else {
       section.classList.add('hidden');
@@ -1980,6 +2007,10 @@ async function submitBulkReports() {
   if (!mainData.class_name)    errors.push('Report 1: Class name is required.');
   if (!mainData.teaching_type) errors.push('Report 1: Teaching type is required.');
   if (!mainData.duration)      errors.push('Report 1: Duration is required.');
+  if ((mainData.teaching_type === 'Assistant Teacher' || mainData.teaching_type === '1/2 Prime Teacher') && !mainData.partner_teacher_name) {
+    var ptRole = mainData.teaching_type === 'Assistant Teacher' ? 'Prime Teacher' : 'Partner Teacher';
+    errors.push('Report 1: ' + ptRole + ' name is required.');
+  }
 
   // Validate each extra entry independently
   extraData.forEach(function(d, i) {
@@ -1987,6 +2018,10 @@ async function submitBulkReports() {
     if (!d || !d.class_name)    errors.push(label + ': Class name is required.');
     if (!d || !d.teaching_type) errors.push(label + ': Teaching type is required.');
     if (!d || !d.duration)      errors.push(label + ': Duration is required.');
+    if (d && (d.teaching_type === 'Assistant Teacher' || d.teaching_type === '1/2 Prime Teacher') && !d.partner_teacher_name) {
+      var dRole = d.teaching_type === 'Assistant Teacher' ? 'Prime Teacher' : 'Partner Teacher';
+      errors.push(label + ': ' + dRole + ' name is required.');
+    }
   });
 
   if (errors.length) {
@@ -2114,9 +2149,9 @@ function _buildEntryHtml(id, num) {
         '<div class="rounded-2xl border border-sky-200 bg-sky-50/40 p-4 space-y-3">' +
           '<div class="flex items-center gap-2">' +
             '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></svg>' +
-            '<label class="block text-xs font-semibold text-sky-700 uppercase tracking-wider">Prime Teacher <span class="text-red-500">*</span></label>' +
+            '<label id="bulk-entry-' + id + '-pt-label" class="block text-xs font-semibold text-sky-700 uppercase tracking-wider">Prime Teacher <span class="text-red-500">*</span></label>' +
           '</div>' +
-          '<p class="text-xs text-sky-500 -mt-1">Tag the Prime Teacher. Search by name or type manually.</p>' +
+          '<p id="bulk-entry-' + id + '-pt-subtext" class="text-xs text-sky-500 -mt-1">Tag the Prime Teacher. Search by name or type manually.</p>' +
           '<div class="relative" id="bulk-entry-' + id + '-pt-wrap">' +
             '<input type="text" id="bulk-entry-' + id + '-pt-display" placeholder="Search registered teachers\u2026" autocomplete="off"' +
               ' class="w-full rounded-xl border border-sky-200 bg-white px-4 py-2.5 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition"' +

@@ -44,9 +44,10 @@ function validateReportInput({ date, class_name, duration, teaching_type, notes,
     errors.push('Duration must be a whole number, min 1 minute.');
   }
   if (!teaching_type || !TEACHING_TYPES.includes(teaching_type))   errors.push('Invalid teaching type.');
-  // Require partner teacher name when submitting as Assistant Teacher
-  if (teaching_type === 'Assistant Teacher' && (!partner_teacher_name || !partner_teacher_name.trim())) {
-    errors.push('Prime Teacher name is required when using the Assistant Teacher type.');
+  // Require partner teacher name when submitting as Assistant Teacher or 1/2 Prime Teacher
+  if ((teaching_type === 'Assistant Teacher' || teaching_type === '1/2 Prime Teacher') && (!partner_teacher_name || !partner_teacher_name.trim())) {
+    const roleLabel = teaching_type === 'Assistant Teacher' ? 'Prime Teacher' : 'Partner Teacher';
+    errors.push(`${roleLabel} name is required when using the ${teaching_type} type.`);
   }
   if (notes && notes.length > 1000)                                 errors.push('Notes max 1000 characters.');
   if (ac_students     && ac_students.some(s => s.length > 50))     errors.push('AC student name max 50 characters.');

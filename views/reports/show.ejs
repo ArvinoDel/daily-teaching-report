@@ -93,7 +93,7 @@
       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-sky-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></svg>
       <div class="flex items-center gap-2 flex-wrap">
         <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-          <%= report.teaching_type === 'Assistant Teacher' ? 'Prime Teacher' : 'Assistant Teacher' %>
+          <%= report.teaching_type === 'Assistant Teacher' ? 'Prime Teacher' : (report.teaching_type === '1/2 Prime Teacher' ? 'Partner Teacher' : 'Assistant Teacher') %>
         </span>
         <span class="text-sm font-semibold text-slate-800"><%= report.partner_teacher_name %></span>
         <% if (report.partner_teacher) { %>

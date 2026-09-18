@@ -37,9 +37,10 @@ function validateReportInput({ date, subject, class_name, duration, teaching_typ
   const dur = Number(duration);
   if (!duration || isNaN(dur) || dur < 1 || !Number.isInteger(dur)) errors.push('Duration must be an integer of at least 1 minute.');
   if (!teaching_type || !TEACHING_TYPES.includes(teaching_type)) errors.push('Invalid teaching type.');
-  // Require partner teacher name when submitting as Assistant Teacher
-  if (teaching_type === 'Assistant Teacher' && (!partner_teacher_name || !partner_teacher_name.trim())) {
-    errors.push('Prime Teacher name is required when using the Assistant Teacher type.');
+  // Require partner teacher name when submitting as Assistant Teacher or 1/2 Prime Teacher
+  if ((teaching_type === 'Assistant Teacher' || teaching_type === '1/2 Prime Teacher') && (!partner_teacher_name || !partner_teacher_name.trim())) {
+    const roleLabel = teaching_type === 'Assistant Teacher' ? 'Prime Teacher' : 'Partner Teacher';
+    errors.push(`${roleLabel} name is required when using the ${teaching_type} type.`);
   }
   if (notes && notes.length > 1000) errors.push('Notes max 1000 characters.');
   if (ac_students && ac_students.some(s => s.length > 50)) errors.push('AC student name max 50 characters.');
@@ -282,15 +283,19 @@ exports.create = async (req, res) => {
     });
     await report.save();
 
-    // Auto-generate a linked "Prime Teacher (Assisted)" report when partner is a registered user
-    if (teaching_type === 'Assistant Teacher' && partner_teacher_id) {
-      // Resolve display name of the submitting teacher (the assistant)
+    // Auto-generate a linked report when partner is a registered user
+    if ((teaching_type === 'Assistant Teacher' || teaching_type === '1/2 Prime Teacher') && partner_teacher_id) {
+      // Resolve display name of the submitting teacher
       const submitter = await User.findById(teacherId).select('displayName').lean();
       const submitterName = submitter ? submitter.displayName : '';
 
+      const partnerTeachingType = teaching_type === 'Assistant Teacher'
+        ? 'Prime Teacher (Assisted)'
+        : '1/2 Prime Teacher';
+
       const linkedReport = new Report({
         ...sharedData,
-        teaching_type:        'Prime Teacher (Assisted)',
+        teaching_type:        partnerTeachingType,
         teacher:              partner_teacher_id,
         partner_teacher:      String(teacherId),
         partner_teacher_name: submitterName,
@@ -387,11 +392,11 @@ exports.createBulk = async (req, res) => {
       return res.status(400).json({ ok: false, errors: allErrors });
     }
 
-    // Save all valid entries and build linked reports for Assistant Teacher entries
+    // Save all valid entries and build linked reports for Assistant Teacher and 1/2 Prime Teacher entries
     const linkedReportsDocs = [];
     const savedReports = await Report.insertMany(validEntries.map(e => e.data));
 
-    // Resolve submitter name once (used by all assistant entries in this batch)
+    // Resolve submitter name once (used by all assistant / 1/2 entries in this batch)
     const mainTeacherId = req.session.user._id;
     const mainSubmitter = await User.findById(mainTeacherId).select('displayName').lean();
     const mainSubmitterName = mainSubmitter ? mainSubmitter.displayName : '';
@@ -399,19 +404,23 @@ exports.createBulk = async (req, res) => {
     for (let i = 0; i < savedReports.length; i++) {
       const saved  = savedReports[i];
       const ve     = validEntries[i];
-      if (saved.teaching_type === 'Assistant Teacher' && ve.partner_teacher_id) {
+      if ((saved.teaching_type === 'Assistant Teacher' || saved.teaching_type === '1/2 Prime Teacher') && ve.partner_teacher_id) {
         // Submitter name: for admin-created reports on behalf of another teacher, look up that teacher
-        let assistantName = mainSubmitterName;
+        let submitterName = mainSubmitterName;
         if (isAdmin && String(ve.teacherId) !== String(mainTeacherId)) {
           const tDoc = await User.findById(ve.teacherId).select('displayName').lean();
-          assistantName = tDoc ? tDoc.displayName : '';
+          submitterName = tDoc ? tDoc.displayName : '';
         }
+        const partnerTeachingType = saved.teaching_type === 'Assistant Teacher'
+          ? 'Prime Teacher (Assisted)'
+          : '1/2 Prime Teacher';
+
         const linked = new Report({
           date:                   saved.date,
           subject:                saved.subject,
           class_name:             saved.class_name,
           duration:               saved.duration,
-          teaching_type:          'Prime Teacher (Assisted)',
+          teaching_type:          partnerTeachingType,
           notes:                  saved.notes,
           ac_students:            saved.ac_students,
           absent_students:        saved.absent_students,
@@ -421,7 +430,7 @@ exports.createBulk = async (req, res) => {
           competition_groups:     saved.competition_groups,
           teacher:                ve.partner_teacher_id,
           partner_teacher:        String(ve.teacherId),
-          partner_teacher_name:   assistantName,
+          partner_teacher_name:   submitterName,
           linked_report:          saved._id,
           is_auto_generated:      true,
         });
