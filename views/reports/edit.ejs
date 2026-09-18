@@ -49,7 +49,10 @@
       notesValue: report.notes || '',
       acStudentsValue: (report.ac_students || []).join(','),
       absentStudentsValue: (report.absent_students || []).join(','),
-      teachingTypes: teachingTypes
+      teachingTypes: teachingTypes,
+      teachersJson: typeof teachersJson !== 'undefined' ? teachersJson : '[]',
+      partnerTeacherName: report.partner_teacher_name || '',
+      partnerTeacherId: report.partner_teacher ? String(report.partner_teacher) : ''
     }) %>
 
   </div>

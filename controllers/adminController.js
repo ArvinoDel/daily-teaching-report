@@ -28,7 +28,7 @@ function parseStudentList(raw) {
 }
 
 // 🟠 Orange: consistent English messages + stricter integer check (rejects "60.5", "60.0")
-function validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher }) {
+function validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher, partner_teacher_name }) {
   const errors = [];
   if (!date || isNaN(new Date(date).getTime())) errors.push('Invalid date.');
   if (!teacher) {
@@ -44,6 +44,10 @@ function validateReportInput({ date, class_name, duration, teaching_type, notes,
     errors.push('Duration must be a whole number, min 1 minute.');
   }
   if (!teaching_type || !TEACHING_TYPES.includes(teaching_type))   errors.push('Invalid teaching type.');
+  // Require partner teacher name when submitting as Assistant Teacher
+  if (teaching_type === 'Assistant Teacher' && (!partner_teacher_name || !partner_teacher_name.trim())) {
+    errors.push('Prime Teacher name is required when using the Assistant Teacher type.');
+  }
   if (notes && notes.length > 1000)                                 errors.push('Notes max 1000 characters.');
   if (ac_students     && ac_students.some(s => s.length > 50))     errors.push('AC student name max 50 characters.');
   if (absent_students && absent_students.some(s => s.length > 50)) errors.push('Absent student name max 50 characters.');
@@ -74,6 +78,23 @@ async function getGroupsJson() {
     })));
   } catch (e) {
     console.error('getGroupsJson error:', e);
+    return '[]';
+  }
+}
+
+// 🟢 Fetch all teachers as safe JSON for partner-teacher autocomplete
+async function getTeachersJson() {
+  try {
+    const teachers = await User.find({ role: 'teacher' })
+      .select('displayName username')
+      .sort({ displayName: 1 });
+    return safeJson(teachers.map(t => ({
+      _id:         String(t._id),
+      displayName: t.displayName,
+      username:    t.username,
+    })));
+  } catch (e) {
+    console.error('getTeachersJson error:', e);
     return '[]';
   }
 }
@@ -455,13 +476,14 @@ exports.reportsList = async (req, res) => {
 
 exports.reportEditForm = async (req, res) => {
   try {
-    const [report, groupsJson, teachers] = await Promise.all([
+    const [report, groupsJson, teachersJson, teachers] = await Promise.all([
       Report.findById(req.params.id).populate('teacher', 'displayName username'),
       getGroupsJson(),
+      getTeachersJson(),
       User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),
     ]);
     if (!report) return res.render('error', { message: 'Report not found.' });
-    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [], groupsJson, teachers });
+    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [], groupsJson, teachersJson, teachers });
   } catch (err) {
     res.render('error', { message: 'Report not found.' });
   }
@@ -474,48 +496,75 @@ exports.reportUpdate = async (req, res) => {
     const ac_students     = parseStudentList(req.body.ac_students);
     const absent_students = parseStudentList(req.body.absent_students);
     const competition_groups = session_type === 'competition' ? parseStudentList(req.body.competition_groups) : [];
+    const partner_teacher_name = (req.body.partner_teacher_name || '').trim();
+    const partner_teacher_id   = req.body.partner_teacher && /^[0-9a-fA-F]{24}$/.test(req.body.partner_teacher)
+      ? req.body.partner_teacher : null;
 
-    const validationErrors = validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher });
+    const validationErrors = validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher, partner_teacher_name });
     if (validationErrors.length > 0) {
-      const [report, groupsJson, teachers] = await Promise.all([
+      const [report, groupsJson, teachersJson, teachers] = await Promise.all([
         Report.findById(req.params.id).populate('teacher', 'displayName username'),
         getGroupsJson(),
+        getTeachersJson(),
         User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),
       ]);
-      return res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors, groupsJson, teachers });
+      return res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors, groupsJson, teachersJson, teachers });
     }
+
+    const sharedUpdate = {
+      teacher,
+      date,
+      subject:                subject ? subject.trim() : '',
+      class_name:             class_name.trim(),
+      duration:               Number(duration),
+      teaching_type,
+      notes:                  (notes || '').trim(),
+      ac_students, absent_students,
+      session_mode:           session_mode || 'offline',
+      uses_personal_internet,
+      session_type:           session_type || 'group',
+      competition_groups,
+      partner_teacher:        partner_teacher_id || null,
+      partner_teacher_name:   partner_teacher_name || '',
+    };
 
     const report = await Report.findByIdAndUpdate(
       req.params.id,
-      {
-        teacher,
-        date,
-        subject:   subject ? subject.trim() : '',
-        class_name: class_name.trim(),
-        duration:   Number(duration),
-        teaching_type,
-        notes: (notes || '').trim(),
-        ac_students, absent_students,
-        session_mode: session_mode || 'offline',
-        uses_personal_internet,
-        session_type: session_type || 'group',
-        competition_groups,
-      },
+      sharedUpdate,
       { new: true, runValidators: true }
     );
 
     if (!report) return res.render('error', { message: 'Report not found.' });
-    await logAudit(req, 'update', 'report', report._id, `${report.class_name} — ${report.date.toISOString().substring(0, 10)}`); // 🟢 log
+
+    // Sync linked report fields if one exists
+    if (report.linked_report) {
+      await Report.findByIdAndUpdate(report.linked_report, {
+        date,
+        subject:                subject ? subject.trim() : '',
+        class_name:             class_name.trim(),
+        duration:               Number(duration),
+        notes:                  (notes || '').trim(),
+        ac_students,
+        absent_students,
+        session_mode:           session_mode || 'offline',
+        uses_personal_internet,
+        session_type:           session_type || 'group',
+        competition_groups,
+      });
+    }
+
+    await logAudit(req, 'update', 'report', report._id, `${report.class_name} — ${report.date.toISOString().substring(0, 10)}`);
     req.session.flash = 'Report updated by admin.';
     res.redirect('/admin/reports');
   } catch (err) {
     console.error(err);
-    const [report, groupsJson, teachers] = await Promise.all([
+    const [report, groupsJson, teachersJson, teachers] = await Promise.all([
       Report.findById(req.params.id).populate('teacher', 'displayName username').catch(() => null),
       getGroupsJson(),
+      getTeachersJson(),
       User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),
     ]);
-    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: ['Something went wrong.'], groupsJson, teachers });
+    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: ['Something went wrong.'], groupsJson, teachersJson, teachers });
   }
 };
 
@@ -524,8 +573,14 @@ exports.reportDelete = async (req, res) => {
     const report = await Report.findById(req.params.id);
     if (!report) return res.status(404).json({ error: 'Report not found.' });
     const label = `${report.class_name} — ${report.date.toISOString().substring(0, 10)}`;
+
+    // Delete auto-generated linked report if it exists
+    if (report.linked_report) {
+      await Report.findOneAndDelete({ _id: report.linked_report, is_auto_generated: true });
+    }
+
     await report.deleteOne();
-    await logAudit(req, 'delete', 'report', report._id, label); // 🟢 log
+    await logAudit(req, 'delete', 'report', report._id, label);
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
       return res.status(200).json({ ok: true });
     }
@@ -543,6 +598,16 @@ exports.reportsBulkDelete = async (req, res) => {
     if (!ids) return res.status(400).json({ error: 'No reports selected.' });
     if (!Array.isArray(ids)) ids = [ids];
     if (ids.length === 0) return res.status(400).json({ error: 'No reports selected.' });
+
+    // Also delete auto-generated linked reports for each selected report
+    const reportsToDelete = await Report.find({ _id: { $in: ids } }).select('linked_report').lean();
+    const linkedIds = reportsToDelete
+      .map(r => r.linked_report)
+      .filter(Boolean)
+      .map(id => String(id));
+    if (linkedIds.length > 0) {
+      await Report.deleteMany({ _id: { $in: linkedIds }, is_auto_generated: true });
+    }
 
     const result = await Report.deleteMany({ _id: { $in: ids } });
     await logAudit(req, 'delete', 'report', ids[0], `Bulk delete — ${result.deletedCount} report(s)`);

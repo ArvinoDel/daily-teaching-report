@@ -59,7 +59,10 @@
       absentStudentsValue: formData.absent_students || '',
       teachingTypes: teachingTypes,
       teacherValue: formData.teacher || (typeof currentUser !== 'undefined' && currentUser ? currentUser._id : ''),
-      teachers: typeof teachers !== 'undefined' ? teachers : []
+      teachers: typeof teachers !== 'undefined' ? teachers : [],
+      teachersJson: typeof teachersJson !== 'undefined' ? teachersJson : '[]',
+      partnerTeacherName: formData.partner_teacher_name || '',
+      partnerTeacherId: formData.partner_teacher || ''
     }) %>
 
   </div>

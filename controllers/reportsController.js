@@ -24,7 +24,7 @@ function parseStudentList(raw) {
   return raw.split(',').map(s => s.trim()).filter(Boolean);
 }
 
-function validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher }) {
+function validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher, partner_teacher_name }) {
   const errors = [];
   if (!date || isNaN(new Date(date).getTime())) errors.push('Invalid date.');
   if (teacher !== undefined) {
@@ -37,6 +37,10 @@ function validateReportInput({ date, subject, class_name, duration, teaching_typ
   const dur = Number(duration);
   if (!duration || isNaN(dur) || dur < 1 || !Number.isInteger(dur)) errors.push('Duration must be an integer of at least 1 minute.');
   if (!teaching_type || !TEACHING_TYPES.includes(teaching_type)) errors.push('Invalid teaching type.');
+  // Require partner teacher name when submitting as Assistant Teacher
+  if (teaching_type === 'Assistant Teacher' && (!partner_teacher_name || !partner_teacher_name.trim())) {
+    errors.push('Prime Teacher name is required when using the Assistant Teacher type.');
+  }
   if (notes && notes.length > 1000) errors.push('Notes max 1000 characters.');
   if (ac_students && ac_students.some(s => s.length > 50)) errors.push('AC student name max 50 characters.');
   if (absent_students && absent_students.some(s => s.length > 50)) errors.push('Absent student name max 50 characters.');
@@ -66,6 +70,23 @@ async function getGroupsJson() {
     })));
   } catch (e) {
     console.error('getGroupsJson error:', e);
+    return '[]';
+  }
+}
+
+// 🟢 Fetch all teachers as safe JSON for partner-teacher autocomplete
+async function getTeachersJson() {
+  try {
+    const teachers = await User.find({ role: 'teacher' })
+      .select('displayName username')
+      .sort({ displayName: 1 });
+    return safeJsonForHtml(teachers.map(t => ({
+      _id:         String(t._id),
+      displayName: t.displayName,
+      username:    t.username,
+    })));
+  } catch (e) {
+    console.error('getTeachersJson error:', e);
     return '[]';
   }
 }
@@ -195,17 +216,17 @@ exports.index = async (req, res) => {
   }
 };
 
-// 🟢 Now async — fetches groups for autocomplete + teachers list if admin/superadmin
+// 🟢 Now async — fetches groups + teachers for autocomplete
 exports.newForm = async (req, res) => {
   try {
-    const groupsJson = await getGroupsJson();
+    const [groupsJson, teachersJson] = await Promise.all([getGroupsJson(), getTeachersJson()]);
     const isAdmin = req.session.user && (req.session.user.role === 'admin' || req.session.user.role === 'superadmin');
     const teachers = isAdmin
       ? await User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 })
       : [];
-    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson, teachers });
+    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson, teachersJson, teachers });
   } catch (err) {
-    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson: '[]', teachers: [] });
+    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson: '[]', teachersJson: '[]', teachers: [] });
   }
 };
 
@@ -217,46 +238,82 @@ exports.create = async (req, res) => {
     const ac_students     = parseStudentList(req.body.ac_students);
     const absent_students = parseStudentList(req.body.absent_students);
     const competition_groups = session_type === 'competition' ? parseStudentList(req.body.competition_groups) : [];
+    const partner_teacher_name = (req.body.partner_teacher_name || '').trim();
+    const partner_teacher_id   = req.body.partner_teacher && /^[0-9a-fA-F]{24}$/.test(req.body.partner_teacher)
+      ? req.body.partner_teacher : null;
 
     const teacherId = isAdmin && teacher ? teacher : req.session.user._id;
 
     const validationErrors = validateReportInput({
       date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type,
-      teacher: isAdmin ? teacherId : undefined
+      teacher: isAdmin ? teacherId : undefined,
+      partner_teacher_name,
     });
     if (validationErrors.length > 0) {
-      const [groupsJson, teachers] = await Promise.all([
+      const [groupsJson, teachersJson, teachers] = await Promise.all([
         getGroupsJson(),
-        isAdmin ? User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }) : []
+        getTeachersJson(),
+        isAdmin ? User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }) : Promise.resolve([])
       ]);
-      return res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: validationErrors, formData: req.body, groupsJson, teachers });
+      return res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: validationErrors, formData: req.body, groupsJson, teachersJson, teachers });
     }
 
-    const report = new Report({
+    // Build shared class data for potential linked report
+    const sharedData = {
       date,
       subject: subject ? subject.trim() : '',
       class_name: class_name.trim(),
       duration: Number(duration),
-      teaching_type,
       notes: (notes || '').trim(),
       ac_students,
       absent_students,
-      teacher: teacherId,
       session_mode: session_mode || 'offline',
       uses_personal_internet,
       session_type: session_type || 'group',
       competition_groups,
+    };
+
+    const report = new Report({
+      ...sharedData,
+      teaching_type,
+      teacher: teacherId,
+      partner_teacher:      partner_teacher_id || null,
+      partner_teacher_name: partner_teacher_name || '',
     });
     await report.save();
+
+    // Auto-generate a linked "Prime Teacher (Assisted)" report when partner is a registered user
+    if (teaching_type === 'Assistant Teacher' && partner_teacher_id) {
+      // Resolve display name of the submitting teacher (the assistant)
+      const submitter = await User.findById(teacherId).select('displayName').lean();
+      const submitterName = submitter ? submitter.displayName : '';
+
+      const linkedReport = new Report({
+        ...sharedData,
+        teaching_type:        'Prime Teacher (Assisted)',
+        teacher:              partner_teacher_id,
+        partner_teacher:      String(teacherId),
+        partner_teacher_name: submitterName,
+        linked_report:        report._id,
+        is_auto_generated:    true,
+      });
+      await linkedReport.save();
+
+      // Back-link the original report to its partner
+      report.linked_report = linkedReport._id;
+      await report.save();
+    }
+
     req.session.flash = 'Report has been created!';
     res.redirect('/reports');
   } catch (err) {
     const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['An error occurred. Please try again.'];
-    const [groupsJson, teachers] = await Promise.all([
+    const [groupsJson, teachersJson, teachers] = await Promise.all([
       getGroupsJson(),
-      isAdmin ? User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }) : []
+      getTeachersJson(),
+      isAdmin ? User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }) : Promise.resolve([])
     ]);
-    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors, formData: req.body, groupsJson, teachers });
+    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors, formData: req.body, groupsJson, teachersJson, teachers });
   }
 };
 
@@ -271,48 +328,57 @@ exports.createBulk = async (req, res) => {
     }
 
     const allErrors = [];
-    const reportsToInsert = [];
+    const validEntries = []; // keep processed data alongside original entry index
 
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
 
-      // Each entry carries its own date, teaching_type, duration, and teacher
       const teacherId = isAdmin && entry.teacher ? entry.teacher : req.session.user._id;
       const ac_students     = Array.isArray(entry.ac_students)     ? entry.ac_students     : parseStudentList(entry.ac_students || '');
       const absent_students = Array.isArray(entry.absent_students) ? entry.absent_students : parseStudentList(entry.absent_students || '');
       const competition_groups = entry.session_type === 'competition'
         ? (Array.isArray(entry.competition_groups) ? entry.competition_groups : parseStudentList(entry.competition_groups || ''))
         : [];
+      const partner_teacher_name = (entry.partner_teacher_name || '').trim();
+      const partner_teacher_id   = entry.partner_teacher && /^[0-9a-fA-F]{24}$/.test(entry.partner_teacher)
+        ? entry.partner_teacher : null;
 
       const errs = validateReportInput({
-        date:          entry.date,
-        teaching_type: entry.teaching_type,
-        duration:      entry.duration,
-        class_name:    entry.class_name,
-        subject:       entry.subject,
-        notes:         entry.notes,
+        date:                 entry.date,
+        teaching_type:        entry.teaching_type,
+        duration:             entry.duration,
+        class_name:           entry.class_name,
+        subject:              entry.subject,
+        notes:                entry.notes,
         ac_students, absent_students,
-        session_mode:  entry.session_mode,
-        session_type:  entry.session_type,
-        teacher:       isAdmin ? teacherId : undefined,
+        session_mode:         entry.session_mode,
+        session_type:         entry.session_type,
+        teacher:              isAdmin ? teacherId : undefined,
+        partner_teacher_name,
       });
 
       if (errs.length > 0) {
         errs.forEach(e => allErrors.push(`Report ${i + 1}: ${e}`));
       } else {
-        reportsToInsert.push({
-          date:                   entry.date,
-          subject:                (entry.subject || '').trim(),
-          class_name:             entry.class_name.trim(),
-          duration:               Number(entry.duration),
-          teaching_type:          entry.teaching_type,
-          notes:                  (entry.notes || '').trim(),
-          ac_students, absent_students,
-          teacher:                teacherId,
-          session_mode:           entry.session_mode   || 'offline',
-          uses_personal_internet: entry.uses_personal_internet === true || entry.uses_personal_internet === 'true',
-          session_type:           entry.session_type   || 'group',
-          competition_groups,
+        validEntries.push({
+          teacherId, ac_students, absent_students, competition_groups,
+          partner_teacher_name, partner_teacher_id,
+          data: {
+            date:                   entry.date,
+            subject:                (entry.subject || '').trim(),
+            class_name:             entry.class_name.trim(),
+            duration:               Number(entry.duration),
+            teaching_type:          entry.teaching_type,
+            notes:                  (entry.notes || '').trim(),
+            ac_students, absent_students,
+            teacher:                teacherId,
+            session_mode:           entry.session_mode   || 'offline',
+            uses_personal_internet: entry.uses_personal_internet === true || entry.uses_personal_internet === 'true',
+            session_type:           entry.session_type   || 'group',
+            competition_groups,
+            partner_teacher:        partner_teacher_id || null,
+            partner_teacher_name:   partner_teacher_name || '',
+          },
         });
       }
     }
@@ -321,8 +387,58 @@ exports.createBulk = async (req, res) => {
       return res.status(400).json({ ok: false, errors: allErrors });
     }
 
-    await Report.insertMany(reportsToInsert);
-    const count = reportsToInsert.length;
+    // Save all valid entries and build linked reports for Assistant Teacher entries
+    const linkedReportsDocs = [];
+    const savedReports = await Report.insertMany(validEntries.map(e => e.data));
+
+    // Resolve submitter name once (used by all assistant entries in this batch)
+    const mainTeacherId = req.session.user._id;
+    const mainSubmitter = await User.findById(mainTeacherId).select('displayName').lean();
+    const mainSubmitterName = mainSubmitter ? mainSubmitter.displayName : '';
+
+    for (let i = 0; i < savedReports.length; i++) {
+      const saved  = savedReports[i];
+      const ve     = validEntries[i];
+      if (saved.teaching_type === 'Assistant Teacher' && ve.partner_teacher_id) {
+        // Submitter name: for admin-created reports on behalf of another teacher, look up that teacher
+        let assistantName = mainSubmitterName;
+        if (isAdmin && String(ve.teacherId) !== String(mainTeacherId)) {
+          const tDoc = await User.findById(ve.teacherId).select('displayName').lean();
+          assistantName = tDoc ? tDoc.displayName : '';
+        }
+        const linked = new Report({
+          date:                   saved.date,
+          subject:                saved.subject,
+          class_name:             saved.class_name,
+          duration:               saved.duration,
+          teaching_type:          'Prime Teacher (Assisted)',
+          notes:                  saved.notes,
+          ac_students:            saved.ac_students,
+          absent_students:        saved.absent_students,
+          session_mode:           saved.session_mode,
+          uses_personal_internet: saved.uses_personal_internet,
+          session_type:           saved.session_type,
+          competition_groups:     saved.competition_groups,
+          teacher:                ve.partner_teacher_id,
+          partner_teacher:        String(ve.teacherId),
+          partner_teacher_name:   assistantName,
+          linked_report:          saved._id,
+          is_auto_generated:      true,
+        });
+        linkedReportsDocs.push({ linked, originalId: saved._id });
+      }
+    }
+
+    if (linkedReportsDocs.length > 0) {
+      // Save linked reports in batch
+      const savedLinked = await Report.insertMany(linkedReportsDocs.map(x => x.linked));
+      // Back-link originals to their linked reports
+      await Promise.all(savedLinked.map((lk, idx) =>
+        Report.findByIdAndUpdate(linkedReportsDocs[idx].originalId, { linked_report: lk._id })
+      ));
+    }
+
+    const count = savedReports.length;
     req.session.flash = `${count} report${count > 1 ? 's' : ''} have been created!`;
     return res.json({ ok: true, count });
 
@@ -346,15 +462,16 @@ exports.show = async (req, res) => {
   }
 };
 
-// 🟢 Now fetches groups for autocomplete + pre-selection
+// 🟢 Now fetches groups + teachers for autocomplete + pre-selection
 exports.editForm = async (req, res) => {
   try {
-    const [report, groupsJson] = await Promise.all([
+    const [report, groupsJson, teachersJson] = await Promise.all([
       Report.findOne({ _id: req.params.id, teacher: req.session.user._id }),
       getGroupsJson(),
+      getTeachersJson(),
     ]);
     if (!report) return res.render('error', { message: 'Report not found.' });
-    res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [], groupsJson });
+    res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [], groupsJson, teachersJson });
   } catch (err) {
     res.render('error', { message: 'Report not found.' });
   }
@@ -367,44 +484,75 @@ exports.update = async (req, res) => {
     const ac_students     = parseStudentList(req.body.ac_students);
     const absent_students = parseStudentList(req.body.absent_students);
     const competition_groups = session_type === 'competition' ? parseStudentList(req.body.competition_groups) : [];
+    const partner_teacher_name = (req.body.partner_teacher_name || '').trim();
+    const partner_teacher_id   = req.body.partner_teacher && /^[0-9a-fA-F]{24}$/.test(req.body.partner_teacher)
+      ? req.body.partner_teacher : null;
 
-    const validationErrors = validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type });
+    const validationErrors = validateReportInput({
+      date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type,
+      partner_teacher_name,
+    });
     if (validationErrors.length > 0) {
-      const [report, groupsJson] = await Promise.all([
+      const [report, groupsJson, teachersJson] = await Promise.all([
         Report.findOne({ _id: req.params.id, teacher: req.session.user._id }),
-        getGroupsJson(), // 🟢 keep autocomplete on error
+        getGroupsJson(),
+        getTeachersJson(),
       ]);
-      return res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors, groupsJson });
+      return res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors, groupsJson, teachersJson });
     }
+
+    // Shared update fields
+    const sharedUpdate = {
+      date,
+      subject: subject ? subject.trim() : '',
+      class_name: class_name.trim(),
+      duration: Number(duration),
+      teaching_type,
+      notes: (notes || '').trim(),
+      ac_students,
+      absent_students,
+      session_mode: session_mode || 'offline',
+      uses_personal_internet,
+      session_type: session_type || 'group',
+      competition_groups,
+      partner_teacher:      partner_teacher_id || null,
+      partner_teacher_name: partner_teacher_name || '',
+    };
 
     const report = await Report.findOneAndUpdate(
       { _id: req.params.id, teacher: req.session.user._id },
-      {
-        date,
-        subject: subject ? subject.trim() : '',
-        class_name: class_name.trim(),
-        duration: Number(duration),
-        teaching_type,
-        notes: (notes || '').trim(),
-        ac_students,
-        absent_students,
-        session_mode: session_mode || 'offline',
-        uses_personal_internet,
-        session_type: session_type || 'group',
-        competition_groups,
-      },
+      sharedUpdate,
       { new: true, runValidators: true }
     );
     if (!report) return res.render('error', { message: 'Report not found.' });
+
+    // Sync linked report if one exists
+    if (report.linked_report) {
+      await Report.findByIdAndUpdate(report.linked_report, {
+        date,
+        subject:                subject ? subject.trim() : '',
+        class_name:             class_name.trim(),
+        duration:               Number(duration),
+        notes:                  (notes || '').trim(),
+        ac_students,
+        absent_students,
+        session_mode:           session_mode || 'offline',
+        uses_personal_internet,
+        session_type:           session_type || 'group',
+        competition_groups,
+      });
+    }
+
     req.session.flash = 'Report has been updated!';
     res.redirect('/reports');
   } catch (err) {
     const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['An error occurred while updating.'];
-    const [report, groupsJson] = await Promise.all([
+    const [report, groupsJson, teachersJson] = await Promise.all([
       Report.findOne({ _id: req.params.id, teacher: req.session.user._id }),
       getGroupsJson(),
+      getTeachersJson(),
     ]);
-    res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors, groupsJson });
+    res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors, groupsJson, teachersJson });
   }
 };
 
@@ -412,6 +560,12 @@ exports.destroy = async (req, res) => {
   try {
     const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
     if (!report) return res.status(404).json({ error: 'Report not found.' });
+
+    // Delete auto-generated linked report (created for the tagged partner)
+    if (report.linked_report) {
+      await Report.findOneAndDelete({ _id: report.linked_report, is_auto_generated: true });
+    }
+
     await report.deleteOne();
     req.session.flash = 'Report has been deleted!';
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {

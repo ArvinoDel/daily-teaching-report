@@ -57,7 +57,10 @@
       absentStudentsValue: (report.absent_students || []).join(','),
       teachingTypes: teachingTypes,
       teacherValue: report.teacher ? report.teacher._id : '',
-      teachers: typeof teachers !== 'undefined' ? teachers : []
+      teachers: typeof teachers !== 'undefined' ? teachers : [],
+      teachersJson: typeof teachersJson !== 'undefined' ? teachersJson : '[]',
+      partnerTeacherName: report.partner_teacher_name || '',
+      partnerTeacherId: report.partner_teacher ? String(report.partner_teacher) : ''
     }) %>
 
   </div>

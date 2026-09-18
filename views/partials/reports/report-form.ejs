@@ -18,7 +18,13 @@
   const _submitText = typeof submitText !== 'undefined' ? submitText : (_isEdit ? (_isAdmin ? 'Save Changes' : 'Update the Report') : 'Save Report');
   const _submitColorClass = typeof submitColorClass !== 'undefined' ? submitColorClass : (_isEdit ? (_isAdmin ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-500 hover:bg-amber-600') : 'bg-brand-600 hover:bg-brand-700');
   const _teacherValue = typeof teacherValue !== 'undefined' ? teacherValue : '';
+  const _partnerTeacherName = typeof partnerTeacherName !== 'undefined' ? partnerTeacherName : '';
+  const _partnerTeacherId   = typeof partnerTeacherId   !== 'undefined' ? partnerTeacherId   : '';
+  const _teachersJson = typeof teachersJson !== 'undefined' ? teachersJson : '[]';
 %>
+
+<!-- Embedded teachers data for partner-teacher autocomplete -->
+<script id="teachers-json" type="application/json"><%- _teachersJson %></script>
 
 <form action="<%= _actionUrl %>" method="POST" class="px-8 py-7 space-y-6"
   id="report-form"
@@ -209,6 +215,53 @@
       <p id="duration-hint" class="text-xs text-slate-400"></p>
     </div>
   </div>
+
+  <!-- ── Partner Teacher (Assistant Teacher only) ── -->
+  <div id="partner-teacher-section" class="hidden">
+    <div class="rounded-2xl border border-sky-200 bg-sky-50/40 p-4 space-y-3">
+      <div class="flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></svg>
+        <label class="block text-xs font-semibold text-sky-700 uppercase tracking-wider">Prime Teacher <span class="text-red-500">*</span></label>
+      </div>
+      <p class="text-xs text-sky-500 -mt-1">Tag the Prime Teacher for this assisted class. Search by name or type manually if not registered.</p>
+
+      <!-- Autocomplete input -->
+      <div class="relative" id="partner-teacher-ac-wrap">
+        <input type="text" id="partner_teacher_display"
+          placeholder="Search registered teachers…"
+          autocomplete="off"
+          class="w-full rounded-xl border border-sky-200 bg-white px-4 py-2.5 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition"
+          value="<%= _partnerTeacherName %>" />
+        <!-- Clear button -->
+        <button type="button" id="btn-clear-partner"
+          onclick="clearPartnerTeacher()"
+          class="<%= _partnerTeacherName ? '' : 'hidden' %> absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition"
+          title="Clear partner teacher">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+        </button>
+        <!-- Dropdown -->
+        <div id="partner-teacher-dropdown"
+          class="hidden absolute z-30 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden divide-y divide-slate-50 max-h-52 overflow-y-auto">
+        </div>
+      </div>
+
+      <!-- Selected registered teacher pill -->
+      <div id="partner-teacher-selected" class="<%= _partnerTeacherId ? '' : 'hidden' %>">
+        <div class="inline-flex items-center gap-2 text-xs font-semibold bg-sky-100 text-sky-700 px-3 py-1.5 rounded-full">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+          <span id="partner-teacher-pill-name"><%= _partnerTeacherName %></span>
+          <span class="text-sky-400 text-[10px] font-normal">· Registered</span>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400" id="partner-teacher-hint">
+        <% if (!_partnerTeacherId && _partnerTeacherName) { %>Name saved manually — not linked to a registered account.<% } else if (!_partnerTeacherName) { %>Start typing to search. If not registered, the name will be saved as text.<% } %>
+      </p>
+    </div>
+  </div>
+
+  <!-- Hidden inputs for partner teacher data -->
+  <input type="hidden" name="partner_teacher"      id="partner_teacher_hidden" value="<%= _partnerTeacherId %>">
+  <input type="hidden" name="partner_teacher_name" id="partner_teacher_name_hidden" value="<%= _partnerTeacherName %>">
 
   <!-- Notes -->
   <div class="space-y-1.5">
@@ -534,6 +587,110 @@ var groupsData    = JSON.parse(document.getElementById('groups-json').textConten
 var selectedGroup = null;
 var studentStates = {};
 
+/* ═══════════════════════════════════════════════════════════════
+   Partner Teacher Autocomplete (Assistant Teacher mode)
+   ═══════════════════════════════════════════════════════════════ */
+var teachersData = JSON.parse(document.getElementById('teachers-json').textContent || '[]');
+
+var partnerSection   = document.getElementById('partner-teacher-section');
+var partnerDisplay   = document.getElementById('partner_teacher_display');
+var partnerHidden    = document.getElementById('partner_teacher_hidden');
+var partnerNameHidden = document.getElementById('partner_teacher_name_hidden');
+var partnerDropdown  = document.getElementById('partner-teacher-dropdown');
+var partnerPill      = document.getElementById('partner-teacher-selected');
+var partnerPillName  = document.getElementById('partner-teacher-pill-name');
+var partnerHint      = document.getElementById('partner-teacher-hint');
+var partnerClearBtn  = document.getElementById('btn-clear-partner');
+var teachingTypeEl   = document.getElementById('teaching_type');
+
+function showPartnerSection() {
+  if (partnerSection) partnerSection.classList.remove('hidden');
+}
+function hidePartnerSection() {
+  if (partnerSection) partnerSection.classList.add('hidden');
+  clearPartnerTeacher(true);
+}
+function clearPartnerTeacher(silent) {
+  if (partnerDisplay)   partnerDisplay.value = '';
+  if (partnerHidden)    partnerHidden.value  = '';
+  if (partnerNameHidden) partnerNameHidden.value = '';
+  if (partnerDropdown)  partnerDropdown.classList.add('hidden');
+  if (partnerPill)      partnerPill.classList.add('hidden');
+  if (partnerClearBtn)  partnerClearBtn.classList.add('hidden');
+  if (partnerHint)      partnerHint.textContent = 'Start typing to search. If not registered, the name will be saved as text.';
+}
+function selectPartnerTeacher(teacher) {
+  if (partnerDisplay)   partnerDisplay.value  = teacher.displayName;
+  if (partnerHidden)    partnerHidden.value   = teacher._id;
+  if (partnerNameHidden) partnerNameHidden.value = teacher.displayName;
+  if (partnerDropdown)  partnerDropdown.classList.add('hidden');
+  if (partnerPill)      partnerPill.classList.remove('hidden');
+  if (partnerPillName)  partnerPillName.textContent = teacher.displayName;
+  if (partnerClearBtn)  partnerClearBtn.classList.remove('hidden');
+  if (partnerHint)      partnerHint.textContent = '';
+}
+function renderPartnerDropdown(list) {
+  if (!partnerDropdown) return;
+  if (!list.length) { partnerDropdown.classList.add('hidden'); return; }
+  partnerDropdown.innerHTML = list.slice(0, 8).map(function(t) {
+    return '<button type="button" onclick="selectPartnerTeacher(' + JSON.stringify({_id:t._id, displayName:t.displayName}).replace(/"/g,'&quot;') + ')" ' +
+      'class="w-full text-left px-4 py-3 hover:bg-sky-50 transition flex items-center justify-between gap-3">' +
+      '<div class="flex-1 min-w-0">' +
+        '<p class="text-sm font-semibold text-slate-800 truncate">' + escHtml(t.displayName) + '</p>' +
+        '<p class="text-xs text-slate-400 truncate">@' + escHtml(t.username) + '</p>' +
+      '</div>' +
+      '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-sky-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>' +
+    '</button>';
+  }).join('');
+  partnerDropdown.classList.remove('hidden');
+}
+
+if (partnerDisplay) {
+  partnerDisplay.addEventListener('input', function() {
+    var q = this.value.trim();
+    // Update the name hidden field as the user types (manual entry support)
+    if (partnerNameHidden) partnerNameHidden.value = q;
+    // If user types away from a selected registered teacher, deselect
+    if (partnerHidden && partnerHidden.value) {
+      partnerHidden.value = '';
+      if (partnerPill)     partnerPill.classList.add('hidden');
+      if (partnerClearBtn) partnerClearBtn.classList.add(q ? '' : 'hidden').toString();
+    }
+    if (q) { partnerClearBtn && partnerClearBtn.classList.remove('hidden'); } else { partnerClearBtn && partnerClearBtn.classList.add('hidden'); }
+    if (!q) { partnerDropdown && partnerDropdown.classList.add('hidden'); return; }
+    var ql = q.toLowerCase();
+    var list = teachersData.filter(function(t) {
+      return t.displayName.toLowerCase().includes(ql) || t.username.toLowerCase().includes(ql);
+    });
+    renderPartnerDropdown(list);
+  });
+  partnerDisplay.addEventListener('focus', function() {
+    if (!this.value.trim() && teachersData.length) renderPartnerDropdown(teachersData);
+  });
+  partnerDisplay.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' || e.key === 'Tab') partnerDropdown && partnerDropdown.classList.add('hidden');
+  });
+  partnerDisplay.addEventListener('blur', function() {
+    // Save typed name even if no teacher was selected
+    if (partnerNameHidden) partnerNameHidden.value = this.value.trim();
+  });
+}
+
+// Show/hide partner section based on teaching type selection
+if (teachingTypeEl) {
+  teachingTypeEl.addEventListener('change', function() {
+    if (this.value === 'Assistant Teacher') {
+      showPartnerSection();
+    } else {
+      hidePartnerSection();
+    }
+  });
+  // Trigger on page load (edit mode)
+  if (teachingTypeEl.value === 'Assistant Teacher') {
+    showPartnerSection();
+  }
+}
+
 var classInput    = document.getElementById('class_name');
 var groupDropdown = document.getElementById('group-dropdown');
 var clearBtn      = document.getElementById('btn-clear-group');
@@ -674,6 +831,7 @@ document.addEventListener('click', function(e) {
     if (cd) cd.classList.add('hidden');
   }
   if (!e.target.closest('#private-ac-wrap')) hidePrivateDropdown();
+  if (!e.target.closest('#partner-teacher-ac-wrap') && partnerDropdown) partnerDropdown.classList.add('hidden');
 });
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1600,6 +1758,7 @@ function _initBulkEntry(id) {
   setEntryMode(id, 'offline');
   _initBulkTagInput(id, 'ac');
   _initBulkTagInput(id, 'absent');
+  _initBulkEntryTeachingTypeListener(id);
 
   // Roster click delegation
   var rosterEl = document.getElementById('bulk-entry-' + id + '-roster-students');
@@ -1617,6 +1776,7 @@ function _initBulkEntry(id) {
   // Close dropdown on outside click
   document.addEventListener('click', function(e) {
     if (!e.target.closest('#bulk-entry-' + id + '-group-wrap')) _hideEntryDropdown(id);
+    if (!e.target.closest('#bulk-entry-' + id + '-pt-wrap')) _hideBulkPtDropdown(id);
   });
 }
 
@@ -1646,6 +1806,8 @@ function _getEntryData(id) {
   var subjEl    = document.getElementById('bulk-entry-' + id + '-subject');
   var notesEl   = document.getElementById('bulk-entry-' + id + '-notes');
   var piCheck   = document.getElementById('bulk-entry-' + id + '-pi-check');
+  var ptHidden  = document.getElementById('bulk-entry-' + id + '-pt-hidden');
+  var ptNameHid = document.getElementById('bulk-entry-' + id + '-pt-name-hidden');
 
   return {
     date:                   dateEl    ? dateEl.value    : _bulkToday,
@@ -1660,7 +1822,9 @@ function _getEntryData(id) {
     notes:                  notesEl ? notesEl.value.trim() : '',
     ac_students:            acStudents,
     absent_students:        absentStudents,
-    competition_groups:     []
+    competition_groups:     [],
+    partner_teacher:        ptHidden  ? ptHidden.value  : '',
+    partner_teacher_name:   ptNameHid ? ptNameHid.value : '',
   };
 }
 
@@ -1687,6 +1851,8 @@ function _getMainEntryData() {
   var typeEl     = form.querySelector('[name="teaching_type"]');
   var durEl      = form.querySelector('[name="duration"]');
   var teacherEl  = form.querySelector('[name="teacher"]');
+  var ptHidden   = document.getElementById('partner_teacher_hidden');
+  var ptNameHid  = document.getElementById('partner_teacher_name_hidden');
   return {
     _csrf:                  csrfEl    ? csrfEl.value    : '',
     date:                   dateEl    ? dateEl.value    : '',
@@ -1701,11 +1867,103 @@ function _getMainEntryData() {
     notes:                  notesEl   ? notesEl.value.trim()   : '',
     ac_students:            acHidden  ? acHidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [],
     absent_students:        absHidden ? absHidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [],
-    competition_groups:     compHidden ? compHidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : []
+    competition_groups:     compHidden ? compHidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [],
+    partner_teacher:        ptHidden  ? ptHidden.value  : '',
+    partner_teacher_name:   ptNameHid ? ptNameHid.value : '',
   };
 }
 
 /* ─── Bulk Submit ───────────────────────────────────────────────────── */
+
+/* ─── Bulk Partner Teacher helpers ─────────────────────────────────── */
+function _hideBulkPtDropdown(id) {
+  var d = document.getElementById('bulk-entry-' + id + '-pt-dropdown');
+  if (d) d.classList.add('hidden');
+}
+function _clearBulkPt(id, silent) {
+  var disp    = document.getElementById('bulk-entry-' + id + '-pt-display');
+  var hidden  = document.getElementById('bulk-entry-' + id + '-pt-hidden');
+  var nameHid = document.getElementById('bulk-entry-' + id + '-pt-name-hidden');
+  var pill    = document.getElementById('bulk-entry-' + id + '-pt-pill');
+  var clrBtn  = document.getElementById('bulk-entry-' + id + '-pt-clear');
+  if (disp)    disp.value    = '';
+  if (hidden)  hidden.value  = '';
+  if (nameHid) nameHid.value = '';
+  if (pill)    pill.classList.add('hidden');
+  if (clrBtn)  clrBtn.classList.add('hidden');
+  _hideBulkPtDropdown(id);
+}
+function _selectBulkPt(id, teacher) {
+  var disp    = document.getElementById('bulk-entry-' + id + '-pt-display');
+  var hidden  = document.getElementById('bulk-entry-' + id + '-pt-hidden');
+  var nameHid = document.getElementById('bulk-entry-' + id + '-pt-name-hidden');
+  var pill    = document.getElementById('bulk-entry-' + id + '-pt-pill');
+  var pillNm  = document.getElementById('bulk-entry-' + id + '-pt-pill-name');
+  var clrBtn  = document.getElementById('bulk-entry-' + id + '-pt-clear');
+  if (disp)    disp.value    = teacher.displayName;
+  if (hidden)  hidden.value  = teacher._id;
+  if (nameHid) nameHid.value = teacher.displayName;
+  if (pill)    pill.classList.remove('hidden');
+  if (pillNm)  pillNm.textContent = teacher.displayName;
+  if (clrBtn)  clrBtn.classList.remove('hidden');
+  _hideBulkPtDropdown(id);
+}
+function _renderBulkPtDropdown(id, list) {
+  var dropdown = document.getElementById('bulk-entry-' + id + '-pt-dropdown');
+  if (!dropdown) return;
+  if (!list.length) { dropdown.classList.add('hidden'); return; }
+  dropdown.innerHTML = list.slice(0, 8).map(function(t) {
+    return '<button type="button" onclick="_selectBulkPt(' + id + ',' + JSON.stringify({_id:t._id,displayName:t.displayName}).replace(/"/g,'&quot;') + ')" ' +
+      'class="w-full text-left px-4 py-3 hover:bg-sky-50 transition flex items-center justify-between gap-3">' +
+      '<div class="flex-1 min-w-0">' +
+        '<p class="text-sm font-semibold text-slate-800 truncate">' + escHtml(t.displayName) + '</p>' +
+        '<p class="text-xs text-slate-400 truncate">@' + escHtml(t.username) + '</p>' +
+      '</div>' +
+      '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-sky-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>' +
+    '</button>';
+  }).join('');
+  dropdown.classList.remove('hidden');
+}
+function _bulkPtInput(id, val) {
+  var nameHid = document.getElementById('bulk-entry-' + id + '-pt-name-hidden');
+  var hidden  = document.getElementById('bulk-entry-' + id + '-pt-hidden');
+  var pill    = document.getElementById('bulk-entry-' + id + '-pt-pill');
+  var clrBtn  = document.getElementById('bulk-entry-' + id + '-pt-clear');
+  if (nameHid) nameHid.value = val.trim();
+  if (hidden && hidden.value) { hidden.value = ''; if (pill) pill.classList.add('hidden'); }
+  if (clrBtn) { if (val.trim()) clrBtn.classList.remove('hidden'); else clrBtn.classList.add('hidden'); }
+  if (!val.trim()) { _hideBulkPtDropdown(id); return; }
+  var ql = val.toLowerCase();
+  _renderBulkPtDropdown(id, teachersData.filter(function(t){
+    return t.displayName.toLowerCase().includes(ql) || t.username.toLowerCase().includes(ql);
+  }));
+}
+function _bulkPtFocus(id) {
+  var disp = document.getElementById('bulk-entry-' + id + '-pt-display');
+  if (!disp || disp.value.trim()) return;
+  if (teachersData.length) _renderBulkPtDropdown(id, teachersData);
+}
+function _bulkPtBlur(id, val) {
+  var nameHid = document.getElementById('bulk-entry-' + id + '-pt-name-hidden');
+  if (nameHid) nameHid.value = val.trim();
+}
+
+/* Hook up teaching type change for bulk entries — called after DOM insert */
+function _initBulkEntryTeachingTypeListener(id) {
+  var typeEl = document.getElementById('bulk-entry-' + id + '-teaching-type');
+  if (!typeEl) return;
+  typeEl.addEventListener('change', function() {
+    var section = document.getElementById('bulk-entry-' + id + '-pt-section');
+    if (!section) return;
+    if (this.value === 'Assistant Teacher') {
+      section.classList.remove('hidden');
+    } else {
+      section.classList.add('hidden');
+      _clearBulkPt(id, true);
+    }
+  });
+}
+
 async function submitBulkReports() {
   var bulkBtn  = document.getElementById('btn-submit-bulk');
   var mainBtn  = document.getElementById('btn-main-submit');
@@ -1850,6 +2108,38 @@ function _buildEntryHtml(id, num) {
 
       /* \u2500\u2500 Teacher (admin only) \u2500\u2500 */
       (teacherBlock ? '<div class="sm:max-w-xs">' + teacherBlock + '</div>' : '') +
+
+      /* \u2500\u2500 Partner Teacher (shown when teaching type = Assistant Teacher) \u2500\u2500 */
+      '<div id="bulk-entry-' + id + '-pt-section" class="hidden">' +
+        '<div class="rounded-2xl border border-sky-200 bg-sky-50/40 p-4 space-y-3">' +
+          '<div class="flex items-center gap-2">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></svg>' +
+            '<label class="block text-xs font-semibold text-sky-700 uppercase tracking-wider">Prime Teacher <span class="text-red-500">*</span></label>' +
+          '</div>' +
+          '<p class="text-xs text-sky-500 -mt-1">Tag the Prime Teacher. Search by name or type manually.</p>' +
+          '<div class="relative" id="bulk-entry-' + id + '-pt-wrap">' +
+            '<input type="text" id="bulk-entry-' + id + '-pt-display" placeholder="Search registered teachers\u2026" autocomplete="off"' +
+              ' class="w-full rounded-xl border border-sky-200 bg-white px-4 py-2.5 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition"' +
+              ' oninput="_bulkPtInput(' + id + ', this.value)"' +
+              ' onfocus="_bulkPtFocus(' + id + ')"' +
+              ' onblur="_bulkPtBlur(' + id + ', this.value)"' +
+              ' onkeydown="if(event.key===\'Escape\'||event.key===\'Tab\') _hideBulkPtDropdown(' + id + ')"/>' +
+            '<button type="button" id="bulk-entry-' + id + '-pt-clear" onclick="_clearBulkPt(' + id + ')" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>' +
+            '</button>' +
+            '<div id="bulk-entry-' + id + '-pt-dropdown" class="hidden absolute z-30 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden divide-y divide-slate-50 max-h-52 overflow-y-auto"></div>' +
+          '</div>' +
+          '<div id="bulk-entry-' + id + '-pt-pill" class="hidden">' +
+            '<div class="inline-flex items-center gap-2 text-xs font-semibold bg-sky-100 text-sky-700 px-3 py-1.5 rounded-full">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>' +
+              '<span id="bulk-entry-' + id + '-pt-pill-name"></span>' +
+              '<span class="text-sky-400 text-[10px] font-normal">\u00b7 Registered</span>' +
+            '</div>' +
+          '</div>' +
+          '<input type="hidden" id="bulk-entry-' + id + '-pt-hidden" value="">' +
+          '<input type="hidden" id="bulk-entry-' + id + '-pt-name-hidden" value="">' +
+        '</div>' +
+      '</div>' +
 
       /* \u2500\u2500 Divider \u2500\u2500 */
       '<div class="border-t border-slate-100"></div>' +

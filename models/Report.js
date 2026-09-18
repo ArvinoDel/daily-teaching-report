@@ -70,6 +70,30 @@ const reportSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    // ── Assistant Teacher tagging ──────────────────────────────
+    // Registered user tagged as the prime teacher (if any)
+    partner_teacher: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    // Display name of the partner (registered or manually typed)
+    partner_teacher_name: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    // The paired report created automatically for the partner
+    linked_report: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Report',
+      default: null,
+    },
+    // True when this report was auto-generated for the tagged partner
+    is_auto_generated: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
