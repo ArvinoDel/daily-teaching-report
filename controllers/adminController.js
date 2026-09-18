@@ -28,7 +28,7 @@ function parseStudentList(raw) {
 }
 
 // 🟠 Orange: consistent English messages + stricter integer check (rejects "60.5", "60.0")
-function validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher, partner_teacher_name }) {
+function validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher, partner_teacher, partner_teacher_name, teacherUser }) {
   const errors = [];
   if (!date || isNaN(new Date(date).getTime())) errors.push('Invalid date.');
   if (!teacher) {
@@ -45,9 +45,23 @@ function validateReportInput({ date, class_name, duration, teaching_type, notes,
   }
   if (!teaching_type || !TEACHING_TYPES.includes(teaching_type))   errors.push('Invalid teaching type.');
   // Require partner teacher name when submitting as Assistant Teacher or 1/2 Prime Teacher
-  if ((teaching_type === 'Assistant Teacher' || teaching_type === '1/2 Prime Teacher') && (!partner_teacher_name || !partner_teacher_name.trim())) {
-    const roleLabel = teaching_type === 'Assistant Teacher' ? 'Prime Teacher' : 'Partner Teacher';
-    errors.push(`${roleLabel} name is required when using the ${teaching_type} type.`);
+  if (teaching_type === 'Assistant Teacher' || teaching_type === '1/2 Prime Teacher') {
+    if (!partner_teacher_name || !partner_teacher_name.trim()) {
+      const roleLabel = teaching_type === 'Assistant Teacher' ? 'Prime Teacher' : 'Partner Teacher';
+      errors.push(`${roleLabel} name is required when using the ${teaching_type} type.`);
+    } else {
+      // Prevent tagging oneself
+      if (partner_teacher && teacher && String(partner_teacher) === String(teacher)) {
+        errors.push('You cannot tag yourself as the partner teacher.');
+      } else if (teacherUser) {
+        const pName = partner_teacher_name.trim().toLowerCase();
+        const dName = (teacherUser.displayName || '').trim().toLowerCase();
+        const uName = (teacherUser.username || '').trim().toLowerCase();
+        if ((dName && pName === dName) || (uName && (pName === uName || pName === `@${uName}`))) {
+          errors.push('You cannot tag yourself as the partner teacher.');
+        }
+      }
+    }
   }
   if (notes && notes.length > 1000)                                 errors.push('Notes max 1000 characters.');
   if (ac_students     && ac_students.some(s => s.length > 50))     errors.push('AC student name max 50 characters.');
@@ -501,7 +515,11 @@ exports.reportUpdate = async (req, res) => {
     const partner_teacher_id   = req.body.partner_teacher && /^[0-9a-fA-F]{24}$/.test(req.body.partner_teacher)
       ? req.body.partner_teacher : null;
 
-    const validationErrors = validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher, partner_teacher_name });
+    const teacherUser = teacher ? await User.findById(teacher).select('displayName username').lean() : null;
+    const validationErrors = validateReportInput({
+      date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type,
+      teacher, partner_teacher: partner_teacher_id, partner_teacher_name, teacherUser
+    });
     if (validationErrors.length > 0) {
       const [report, groupsJson, teachersJson, teachers] = await Promise.all([
         Report.findById(req.params.id).populate('teacher', 'displayName username'),

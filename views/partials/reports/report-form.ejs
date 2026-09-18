@@ -25,6 +25,7 @@
 
 <!-- Embedded teachers data for partner-teacher autocomplete -->
 <script id="teachers-json" type="application/json"><%- _teachersJson %></script>
+<script id="current-user-info" type="application/json"><%- JSON.stringify((typeof currentUser !== 'undefined' && currentUser) ? { id: String(currentUser._id), displayName: currentUser.displayName, username: currentUser.username } : {}) %></script>
 
 <form action="<%= _actionUrl %>" method="POST" class="px-8 py-7 space-y-6"
   id="report-form"
@@ -591,6 +592,36 @@ var studentStates = {};
    Partner Teacher Autocomplete (Assistant Teacher mode)
    ═══════════════════════════════════════════════════════════════ */
 var teachersData = JSON.parse(document.getElementById('teachers-json').textContent || '[]');
+var _currentUserInfo = JSON.parse(document.getElementById('current-user-info')?.textContent || '{}');
+
+function _getCurrentTeacherId() {
+  var tSel = document.getElementById('teacher');
+  if (tSel && tSel.value) return tSel.value;
+  return _currentUserInfo ? _currentUserInfo.id : '';
+}
+
+function _isSelfTeacher(teacherId, teacherName, currentTid) {
+  var cId = currentTid || _getCurrentTeacherId();
+  if (teacherId && cId && String(teacherId) === String(cId)) return true;
+  var currentName = '';
+  var currentUsername = '';
+  if (cId && _currentUserInfo && String(_currentUserInfo.id) === String(cId)) {
+    currentName = (_currentUserInfo.displayName || '').toLowerCase();
+    currentUsername = (_currentUserInfo.username || '').toLowerCase();
+  } else if (cId) {
+    var found = teachersData.find(function(t) { return String(t._id) === String(cId); });
+    if (found) {
+      currentName = (found.displayName || '').toLowerCase();
+      currentUsername = (found.username || '').toLowerCase();
+    }
+  }
+  if (teacherName) {
+    var tn = teacherName.trim().toLowerCase();
+    if (currentName && tn === currentName) return true;
+    if (currentUsername && (tn === currentUsername || tn === '@' + currentUsername)) return true;
+  }
+  return false;
+}
 
 var partnerSection   = document.getElementById('partner-teacher-section');
 var partnerDisplay   = document.getElementById('partner_teacher_display');
@@ -620,6 +651,10 @@ function clearPartnerTeacher(silent) {
   if (partnerHint)      partnerHint.textContent = 'Start typing to search. If not registered, the name will be saved as text.';
 }
 function selectPartnerTeacher(teacher) {
+  if (_isSelfTeacher(teacher._id, teacher.displayName)) {
+    if (partnerHint) partnerHint.innerHTML = '<span class="text-red-500 font-semibold">You cannot tag yourself as the partner teacher.</span>';
+    return;
+  }
   if (partnerDisplay)   partnerDisplay.value  = teacher.displayName;
   if (partnerHidden)    partnerHidden.value   = teacher._id;
   if (partnerNameHidden) partnerNameHidden.value = teacher.displayName;
@@ -659,13 +694,19 @@ if (partnerDisplay) {
     if (q) { partnerClearBtn && partnerClearBtn.classList.remove('hidden'); } else { partnerClearBtn && partnerClearBtn.classList.add('hidden'); }
     if (!q) { partnerDropdown && partnerDropdown.classList.add('hidden'); return; }
     var ql = q.toLowerCase();
+    var cId = _getCurrentTeacherId();
     var list = teachersData.filter(function(t) {
+      if (cId && String(t._id) === String(cId)) return false;
       return t.displayName.toLowerCase().includes(ql) || t.username.toLowerCase().includes(ql);
     });
     renderPartnerDropdown(list);
   });
   partnerDisplay.addEventListener('focus', function() {
-    if (!this.value.trim() && teachersData.length) renderPartnerDropdown(teachersData);
+    var cId = _getCurrentTeacherId();
+    var list = teachersData.filter(function(t) {
+      return !cId || String(t._id) !== String(cId);
+    });
+    if (!this.value.trim() && list.length) renderPartnerDropdown(list);
   });
   partnerDisplay.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' || e.key === 'Tab') partnerDropdown && partnerDropdown.classList.add('hidden');
@@ -673,6 +714,19 @@ if (partnerDisplay) {
   partnerDisplay.addEventListener('blur', function() {
     // Save typed name even if no teacher was selected
     if (partnerNameHidden) partnerNameHidden.value = this.value.trim();
+    if (_isSelfTeacher(partnerHidden ? partnerHidden.value : '', this.value.trim())) {
+      if (partnerHint) partnerHint.innerHTML = '<span class="text-red-500 font-semibold">You cannot tag yourself as the partner teacher.</span>';
+    }
+  });
+}
+
+var teacherSelectEl = document.getElementById('teacher');
+if (teacherSelectEl) {
+  teacherSelectEl.addEventListener('change', function() {
+    var newTid = this.value;
+    if (partnerHidden && partnerHidden.value && String(partnerHidden.value) === String(newTid)) {
+      clearPartnerTeacher(true);
+    }
   });
 }
 
@@ -1385,7 +1439,33 @@ if (rosterStudentsEl) {
       btn.addEventListener('click', function () { dirty = true; });
     });
 
-    form.addEventListener('submit', function () { dirty = false; });
+    form.addEventListener('submit', function (e) {
+      if (typeof teachingTypeEl !== 'undefined' && teachingTypeEl) {
+        var tVal = teachingTypeEl.value;
+        if (tVal === 'Assistant Teacher' || tVal === '1/2 Prime Teacher') {
+          var pId = partnerHidden ? partnerHidden.value : '';
+          var pNm = partnerNameHidden ? partnerNameHidden.value : (partnerDisplay ? partnerDisplay.value : '');
+          if (_isSelfTeacher(pId, pNm)) {
+            e.preventDefault();
+            e.stopPropagation();
+            dirty = true;
+            if (typeof Swal !== 'undefined') {
+              Swal.fire({
+                title: 'Cannot Tag Yourself',
+                text: 'You cannot tag yourself as the partner teacher.',
+                icon: 'error',
+                confirmButtonColor: '#0284c7',
+                customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' }
+              });
+            } else {
+              alert('You cannot tag yourself as the partner teacher.');
+            }
+            return false;
+          }
+        }
+      }
+      dirty = false;
+    });
 
     var cancelBtn = document.getElementById('cancel-btn');
     var backLink  = document.getElementById('back-link');
@@ -1907,7 +1987,18 @@ function _clearBulkPt(id, silent) {
   if (clrBtn)  clrBtn.classList.add('hidden');
   _hideBulkPtDropdown(id);
 }
+
+function _getBulkTeacherId(id) {
+  var tSel = document.getElementById('bulk-entry-' + id + '-teacher');
+  if (tSel && tSel.value) return tSel.value;
+  return _currentUserInfo ? _currentUserInfo.id : '';
+}
+
 function _selectBulkPt(id, teacher) {
+  var tid = _getBulkTeacherId(id);
+  if (_isSelfTeacher(teacher._id, teacher.displayName, tid)) {
+    return;
+  }
   var disp    = document.getElementById('bulk-entry-' + id + '-pt-display');
   var hidden  = document.getElementById('bulk-entry-' + id + '-pt-hidden');
   var nameHid = document.getElementById('bulk-entry-' + id + '-pt-name-hidden');
@@ -2007,9 +2098,13 @@ async function submitBulkReports() {
   if (!mainData.class_name)    errors.push('Report 1: Class name is required.');
   if (!mainData.teaching_type) errors.push('Report 1: Teaching type is required.');
   if (!mainData.duration)      errors.push('Report 1: Duration is required.');
-  if ((mainData.teaching_type === 'Assistant Teacher' || mainData.teaching_type === '1/2 Prime Teacher') && !mainData.partner_teacher_name) {
-    var ptRole = mainData.teaching_type === 'Assistant Teacher' ? 'Prime Teacher' : 'Partner Teacher';
-    errors.push('Report 1: ' + ptRole + ' name is required.');
+  if (mainData.teaching_type === 'Assistant Teacher' || mainData.teaching_type === '1/2 Prime Teacher') {
+    if (!mainData.partner_teacher_name) {
+      var ptRole = mainData.teaching_type === 'Assistant Teacher' ? 'Prime Teacher' : 'Partner Teacher';
+      errors.push('Report 1: ' + ptRole + ' name is required.');
+    } else if (_isSelfTeacher(mainData.partner_teacher, mainData.partner_teacher_name, _getCurrentTeacherId())) {
+      errors.push('Report 1: You cannot tag yourself as the partner teacher.');
+    }
   }
 
   // Validate each extra entry independently
@@ -2018,9 +2113,14 @@ async function submitBulkReports() {
     if (!d || !d.class_name)    errors.push(label + ': Class name is required.');
     if (!d || !d.teaching_type) errors.push(label + ': Teaching type is required.');
     if (!d || !d.duration)      errors.push(label + ': Duration is required.');
-    if (d && (d.teaching_type === 'Assistant Teacher' || d.teaching_type === '1/2 Prime Teacher') && !d.partner_teacher_name) {
-      var dRole = d.teaching_type === 'Assistant Teacher' ? 'Prime Teacher' : 'Partner Teacher';
-      errors.push(label + ': ' + dRole + ' name is required.');
+    if (d && (d.teaching_type === 'Assistant Teacher' || d.teaching_type === '1/2 Prime Teacher')) {
+      var cardTeacherId = d.teacher || _getBulkTeacherId(_bulkIds[i]);
+      if (!d.partner_teacher_name) {
+        var dRole = d.teaching_type === 'Assistant Teacher' ? 'Prime Teacher' : 'Partner Teacher';
+        errors.push(label + ': ' + dRole + ' name is required.');
+      } else if (_isSelfTeacher(d.partner_teacher, d.partner_teacher_name, cardTeacherId)) {
+        errors.push(label + ': You cannot tag yourself as the partner teacher.');
+      }
     }
   });
 

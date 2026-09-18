@@ -24,10 +24,10 @@ function parseStudentList(raw) {
   return raw.split(',').map(s => s.trim()).filter(Boolean);
 }
 
-function validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher, partner_teacher_name }) {
+function validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher, partner_teacher, partner_teacher_name, teacherUser, isAdmin }) {
   const errors = [];
   if (!date || isNaN(new Date(date).getTime())) errors.push('Invalid date.');
-  if (teacher !== undefined) {
+  if (isAdmin && teacher !== undefined) {
     if (!teacher) errors.push('Teacher is required.');
     else if (!/^[0-9a-fA-F]{24}$/.test(teacher)) errors.push('Invalid teacher selected.');
   }
@@ -38,9 +38,23 @@ function validateReportInput({ date, subject, class_name, duration, teaching_typ
   if (!duration || isNaN(dur) || dur < 1 || !Number.isInteger(dur)) errors.push('Duration must be an integer of at least 1 minute.');
   if (!teaching_type || !TEACHING_TYPES.includes(teaching_type)) errors.push('Invalid teaching type.');
   // Require partner teacher name when submitting as Assistant Teacher or 1/2 Prime Teacher
-  if ((teaching_type === 'Assistant Teacher' || teaching_type === '1/2 Prime Teacher') && (!partner_teacher_name || !partner_teacher_name.trim())) {
-    const roleLabel = teaching_type === 'Assistant Teacher' ? 'Prime Teacher' : 'Partner Teacher';
-    errors.push(`${roleLabel} name is required when using the ${teaching_type} type.`);
+  if (teaching_type === 'Assistant Teacher' || teaching_type === '1/2 Prime Teacher') {
+    if (!partner_teacher_name || !partner_teacher_name.trim()) {
+      const roleLabel = teaching_type === 'Assistant Teacher' ? 'Prime Teacher' : 'Partner Teacher';
+      errors.push(`${roleLabel} name is required when using the ${teaching_type} type.`);
+    } else {
+      // Prevent tagging oneself
+      if (partner_teacher && teacher && String(partner_teacher) === String(teacher)) {
+        errors.push('You cannot tag yourself as the partner teacher.');
+      } else if (teacherUser) {
+        const pName = partner_teacher_name.trim().toLowerCase();
+        const dName = (teacherUser.displayName || '').trim().toLowerCase();
+        const uName = (teacherUser.username || '').trim().toLowerCase();
+        if ((dName && pName === dName) || (uName && (pName === uName || pName === `@${uName}`))) {
+          errors.push('You cannot tag yourself as the partner teacher.');
+        }
+      }
+    }
   }
   if (notes && notes.length > 1000) errors.push('Notes max 1000 characters.');
   if (ac_students && ac_students.some(s => s.length > 50)) errors.push('AC student name max 50 characters.');
@@ -244,11 +258,15 @@ exports.create = async (req, res) => {
       ? req.body.partner_teacher : null;
 
     const teacherId = isAdmin && teacher ? teacher : req.session.user._id;
+    const teacherUser = await User.findById(teacherId).select('displayName username').lean();
 
     const validationErrors = validateReportInput({
       date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type,
-      teacher: isAdmin ? teacherId : undefined,
+      teacher: teacherId,
+      partner_teacher: partner_teacher_id,
       partner_teacher_name,
+      teacherUser,
+      isAdmin,
     });
     if (validationErrors.length > 0) {
       const [groupsJson, teachersJson, teachers] = await Promise.all([
@@ -339,6 +357,13 @@ exports.createBulk = async (req, res) => {
       const entry = entries[i];
 
       const teacherId = isAdmin && entry.teacher ? entry.teacher : req.session.user._id;
+      let teacherUser = null;
+      if (String(teacherId) === String(req.session.user._id)) {
+        teacherUser = req.session.user;
+      } else {
+        teacherUser = await User.findById(teacherId).select('displayName username').lean();
+      }
+
       const ac_students     = Array.isArray(entry.ac_students)     ? entry.ac_students     : parseStudentList(entry.ac_students || '');
       const absent_students = Array.isArray(entry.absent_students) ? entry.absent_students : parseStudentList(entry.absent_students || '');
       const competition_groups = entry.session_type === 'competition'
@@ -358,8 +383,11 @@ exports.createBulk = async (req, res) => {
         ac_students, absent_students,
         session_mode:         entry.session_mode,
         session_type:         entry.session_type,
-        teacher:              isAdmin ? teacherId : undefined,
+        teacher:              teacherId,
+        partner_teacher:      partner_teacher_id,
         partner_teacher_name,
+        teacherUser,
+        isAdmin,
       });
 
       if (errs.length > 0) {
@@ -497,9 +525,16 @@ exports.update = async (req, res) => {
     const partner_teacher_id   = req.body.partner_teacher && /^[0-9a-fA-F]{24}$/.test(req.body.partner_teacher)
       ? req.body.partner_teacher : null;
 
+    const teacherId = req.session.user._id;
+    const teacherUser = await User.findById(teacherId).select('displayName username').lean();
+
     const validationErrors = validateReportInput({
       date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type,
+      teacher: teacherId,
+      partner_teacher: partner_teacher_id,
       partner_teacher_name,
+      teacherUser,
+      isAdmin: false,
     });
     if (validationErrors.length > 0) {
       const [report, groupsJson, teachersJson] = await Promise.all([
