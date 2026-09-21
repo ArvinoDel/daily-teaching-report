@@ -14,7 +14,7 @@
   <div class="absolute inset-0" onclick="closeStudentCard()"></div>
 
   <div id="student-card-panel"
-    class="relative w-full max-w-md mx-4 bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+    class="relative w-full max-w-md mx-4 bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
     style="transform: translateY(16px); opacity: 0; transition: transform .3s ease, opacity .3s ease; will-change: transform, opacity;">
 
     <!-- Loading -->
@@ -33,87 +33,83 @@
     </div>
 
     <!-- Card Content -->
-    <div id="card-content" class="hidden flex-col overflow-hidden">
+    <div id="card-content" class="hidden flex-col flex-1 min-h-0 overflow-hidden">
 
-      <!-- ── Printable Card Area ── -->
-      <div id="printable-card">
+      <!-- ── Scrollable Body (Printable Card + AC History) ── -->
+      <div id="card-scroll-body" class="flex-1 min-h-0 overflow-y-auto">
 
-        <!-- Header: name + close -->
-        <div class="px-6 pt-6 pb-4 flex items-start justify-between gap-3">
-          <div class="flex items-center gap-3">
-            <div id="card-avatar"
-              class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-400 to-indigo-700 flex items-center justify-center text-white text-xl font-extrabold flex-shrink-0 shadow">?</div>
-            <div>
-              <h2 id="card-student-name" class="text-lg font-extrabold text-slate-900 leading-tight"></h2>
-              <div id="card-badges" class="flex items-center gap-1.5 mt-1 flex-wrap"></div>
+        <!-- ── Printable Card Area ── -->
+        <div id="printable-card" class="pb-2">
+
+          <!-- Header: name + close -->
+          <div class="px-6 pt-6 pb-4 flex items-start justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <div id="card-avatar"
+                class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-400 to-indigo-700 flex items-center justify-center text-white text-xl font-extrabold flex-shrink-0 shadow">?</div>
+              <div>
+                <h2 id="card-student-name" class="text-lg font-extrabold text-slate-900 leading-tight"></h2>
+                <div id="card-badges" class="flex items-center gap-1.5 mt-1 flex-wrap"></div>
+              </div>
+            </div>
+            <button onclick="closeStudentCard()"
+              class="no-print flex-shrink-0 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition mt-0.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Barcode — LARGE & front-and-center -->
+          <div class="mx-6 mb-4 bg-white border-2 border-slate-100 rounded-2xl py-5 px-4 flex flex-col items-center">
+            <svg id="card-barcode" class="max-w-full"></svg>
+            <p id="card-student-code" class="text-xs font-mono text-slate-400 mt-2 tracking-widest text-center"></p>
+            <p id="card-barcode-missing" class="hidden text-xs text-slate-400 italic mt-1">No barcode yet — run migration first</p>
+          </div>
+
+          <!-- Groups -->
+          <div id="card-groups-section" class="hidden px-6 mb-3">
+            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Classes</p>
+            <div id="card-groups" class="flex flex-wrap gap-1.5"></div>
+          </div>
+
+          <!-- AC Total banner -->
+          <div class="mx-6 mb-4 flex items-center gap-4 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
+            <div class="flex-1">
+              <p class="text-xs font-bold text-amber-500 uppercase tracking-wider mb-0.5">Total Achievement Cards</p>
+              <p id="card-ac-total" class="text-4xl font-extrabold text-amber-600">0</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
+              </svg>
             </div>
           </div>
-          <button onclick="closeStudentCard()"
-            class="no-print flex-shrink-0 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition mt-0.5">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
 
-        <!-- Barcode — LARGE & front-and-center -->
-        <div class="mx-6 mb-4 bg-white border-2 border-slate-100 rounded-2xl py-5 px-4 flex flex-col items-center">
-          <svg id="card-barcode" class="max-w-full"></svg>
-          <p id="card-student-code" class="text-xs font-mono text-slate-400 mt-2 tracking-widest text-center"></p>
-          <p id="card-barcode-missing" class="hidden text-xs text-slate-400 italic mt-1">No barcode yet — run migration first</p>
-        </div>
+        </div><!-- /printable-card -->
 
-        <!-- Groups -->
-        <div id="card-groups-section" class="hidden px-6 mb-3">
-          <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Classes</p>
-          <div id="card-groups" class="flex flex-wrap gap-1.5"></div>
-        </div>
-
-        <!-- AC Total banner -->
-        <div class="mx-6 mb-3 flex items-center gap-4 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
-          <div class="flex-1">
-            <p class="text-xs font-bold text-amber-500 uppercase tracking-wider mb-0.5">Total Achievement Cards</p>
-            <p id="card-ac-total" class="text-4xl font-extrabold text-amber-600">0</p>
+        <!-- ── AC History (no-print) ── -->
+        <div class="border-t border-slate-100 no-print">
+          <div class="px-6 py-3 bg-slate-50/80 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10 backdrop-blur-xs">
+            <div class="flex items-center gap-1.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+              </svg>
+              <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">AC History</p>
+            </div>
+            <span id="card-history-count" class="text-xs font-semibold bg-white border border-slate-200 text-slate-600 px-2 py-0.5 rounded-full shadow-xs">0</span>
           </div>
-          <div class="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
-            </svg>
-          </div>
+          <div id="card-history-empty" class="hidden px-6 py-8 text-center text-xs text-slate-400">No AC history recorded yet.</div>
+          <div id="card-history-list" class="divide-y divide-slate-100"></div>
         </div>
 
-        <!-- Admin Quick Actions (no-print) -->
-        <div id="card-admin-actions" class="no-print mx-6 mb-4 flex items-center gap-2">
-          <button type="button" id="btn-quick-add-ac" onclick="quickAdjustAc('add')"
-            class="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-bold transition active:scale-95 shadow-sm">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-            +1 AC
-          </button>
-          <button type="button" id="btn-quick-reduce-ac" onclick="quickAdjustAc('reduce')"
-            class="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold transition active:scale-95 shadow-sm">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" /></svg>
-            −1 AC
-          </button>
-        </div>
-
-      </div><!-- /printable-card -->
-
-      <!-- ── AC History ── -->
-      <div class="border-t border-slate-100 flex-1 overflow-y-auto no-print">
-        <div class="px-6 py-3 flex items-center justify-between">
-          <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">AC History</p>
-          <span id="card-history-count" class="text-xs font-semibold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">0</span>
-        </div>
-        <div id="card-history-empty" class="hidden px-6 pb-5 text-center text-xs text-slate-400">No AC history yet.</div>
-        <div id="card-history-list" class="divide-y divide-slate-50 pb-2"></div>
-      </div>
+      </div><!-- /card-scroll-body -->
 
       <!-- ── Footer actions ── -->
-      <div class="no-print flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50">
+      <div class="no-print flex items-center justify-between gap-3 px-6 py-3.5 border-t border-slate-100 bg-slate-50 flex-shrink-0">
         <button onclick="closeStudentCard()"
-          class="text-sm font-semibold text-slate-400 hover:text-slate-600 transition">Close</button>
+          class="text-sm font-semibold text-slate-500 hover:text-slate-800 transition px-2 py-1">Close</button>
         <button onclick="printStudentCard()"
-          class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl shadow transition active:scale-95">
+          class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-xl shadow transition active:scale-95">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.056 48.056 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5Zm-3 0h.008v.008H15V10.5Z" />
           </svg>
@@ -143,7 +139,9 @@
     }
     .no-print { display: none !important; }
     #card-loading, #card-error { display: none !important; }
-    #card-content { display: flex !important; flex-direction: column; }
+    #card-content { display: block !important; }
+    #card-scroll-body { overflow: visible !important; }
+    #printable-card { display: block !important; }
   }
 </style>
 
@@ -155,6 +153,7 @@
   var errorEl  = document.getElementById('card-error');
   var errorMsg = document.getElementById('card-error-msg');
   var content  = document.getElementById('card-content');
+  var currentStudent = null;
 
   /* ── Open / Close ── */
   function openOverlay() {
@@ -198,8 +197,6 @@
       .catch(function () { showCardError('Network error.'); });
   };
 
-  var currentStudent = null;
-
   /* ── Public API — open by barcode string ── */
   window.showStudentCardByBarcode = function (barcode) {
     openOverlay();
@@ -213,59 +210,16 @@
       .catch(function () { showCardError('Network error.'); });
   };
 
-  /* ── Quick Adjust (+1 / -1 AC) for Admin ── */
-  window.quickAdjustAc = function (type) {
-    if (!currentStudent) return;
-    if (!currentStudent.barcode) {
-      alert('Student barcode is required for AC adjustments. Please run migration first.');
-      return;
-    }
-    if (type === 'reduce' && (currentStudent.acTotal || 0) <= 0) {
-      alert((currentStudent.full_name || 'Student') + ' has 0 AC cards. Cannot reduce further.');
-      return;
-    }
-    var btnAdd = document.getElementById('btn-quick-add-ac');
-    var btnRed = document.getElementById('btn-quick-reduce-ac');
-    if (btnAdd) btnAdd.disabled = true;
-    if (btnRed) btnRed.disabled = true;
-
-    fetch('/admin/scan-ac/transact', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        barcode: currentStudent.barcode,
-        type: type,
-        note: 'Admin quick adjustment',
-      }),
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (res) {
-        if (btnAdd) btnAdd.disabled = false;
-        if (btnRed) btnRed.disabled = false;
-        if (!res.ok) {
-          alert(res.error || 'Failed to adjust AC.');
-          return;
-        }
-        // Reload student data
-        if (currentStudent._id) {
-          window.showStudentCard(currentStudent._id);
-        } else if (currentStudent.barcode) {
-          window.showStudentCardByBarcode(currentStudent.barcode);
-        }
-      })
-      .catch(function () {
-        if (btnAdd) btnAdd.disabled = false;
-        if (btnRed) btnRed.disabled = false;
-        alert('Network error while adjusting AC.');
-      });
-  };
-
   /* ── Render ── */
   function renderCard(s) {
     currentStudent = s;
     document.getElementById('card-avatar').textContent = (s.full_name || '?').charAt(0).toUpperCase();
     document.getElementById('card-student-name').textContent = s.full_name || s.raw_name || '—';
     document.getElementById('card-ac-total').textContent = s.acTotal || 0;
+
+    // Reset scroll position to top
+    var scrollBody = document.getElementById('card-scroll-body');
+    if (scrollBody) scrollBody.scrollTop = 0;
 
     // Badges
     var badges = document.getElementById('card-badges');
@@ -340,13 +294,13 @@
         if (h.note) metaParts.push('"' + escH(h.note) + '"');
         var metaStr = metaParts.join(' · ');
 
-        return '<div class="px-6 py-3 flex items-center gap-3">' +
+        return '<div class="px-6 py-3 flex items-center gap-3 hover:bg-slate-50/80 transition">' +
           '<div class="flex-shrink-0 w-2 h-2 rounded-full ' + dotColor + ' mt-0.5"></div>' +
           '<div class="flex-1 min-w-0">' +
             '<p class="text-sm font-semibold text-slate-800 truncate">' + escH(h.class_name || 'Admin Adjustment') + badge + countBadge + '</p>' +
-            (metaStr ? '<p class="text-xs text-slate-400 truncate">' + metaStr + '</p>' : '') +
+            (metaStr ? '<p class="text-xs text-slate-400 truncate mt-0.5">' + metaStr + '</p>' : '') +
           '</div>' +
-          '<span class="text-xs text-slate-400 flex-shrink-0">' + dateStr + '</span>' +
+          '<span class="text-xs text-slate-400 flex-shrink-0 font-medium">' + dateStr + '</span>' +
           '</div>';
       }).join('');
     }
