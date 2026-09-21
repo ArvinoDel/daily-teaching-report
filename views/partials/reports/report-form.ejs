@@ -2299,8 +2299,12 @@ async function submitBulkReports() {
     });
     var json = await res.json();
     if (json.ok) {
-      if (typeof clearDraft === 'function') clearDraft();
+      window.__isDraftDisabled = true;
+      window.__isSubmitting = true;
       window.__bulkSubmitting = true;
+      if (_draftSaveTimer) clearTimeout(_draftSaveTimer);
+      if (typeof clearDraft === 'function') clearDraft();
+      try { sessionStorage.setItem('dtr_draft_discarded', '1'); } catch(e) {}
       window.location.href = '/reports';
     } else {
       _showBulkErrors(json.errors || ['An error occurred. Please try again.']);
@@ -2329,7 +2333,11 @@ document.getElementById('report-form').addEventListener('submit', function(e) {
     e.preventDefault();
     submitBulkReports();
   } else {
+    window.__isDraftDisabled = true;
+    window.__isSubmitting = true;
+    if (_draftSaveTimer) clearTimeout(_draftSaveTimer);
     if (typeof clearDraft === 'function') clearDraft();
+    try { sessionStorage.setItem('dtr_draft_discarded', '1'); } catch(e) {}
   }
 });
 
@@ -2545,9 +2553,11 @@ try {
 } catch(e) {}
 var DRAFT_KEY = 'dtr_report_draft_' + (_draftUserInfo.id || 'anonymous');
 var _draftSaveTimer = null;
+window.__isDraftDisabled = false;
+window.__isSubmitting = false;
 
 function saveDraft() {
-  if (window.__bulkSubmitting || window.__isDraftRestoring) return;
+  if (window.__isDraftDisabled || window.__isSubmitting || window.__bulkSubmitting || window.__isDraftRestoring) return;
   try {
     var form = document.getElementById('report-form');
     if (!form) return;
@@ -2586,7 +2596,7 @@ function saveDraft() {
 }
 
 window.triggerAutoSave = function() {
-  if (window.__isDraftRestoring) return;
+  if (window.__isDraftDisabled || window.__isSubmitting || window.__isDraftRestoring) return;
   if (_draftSaveTimer) clearTimeout(_draftSaveTimer);
   _draftSaveTimer = setTimeout(saveDraft, 350);
 };
@@ -2594,13 +2604,18 @@ window.triggerAutoSave = function() {
 window.clearDraft = function() {
   try {
     localStorage.removeItem(DRAFT_KEY);
+    localStorage.removeItem('dtr_report_draft_anonymous');
   } catch(e) {}
 };
 
 window.discardDraft = function() {
   function proceed() {
+    window.__isDraftDisabled = true;
+    window.__isSubmitting = true;
+    if (_draftSaveTimer) clearTimeout(_draftSaveTimer);
     clearDraft();
-    window.location.reload();
+    try { sessionStorage.setItem('dtr_draft_discarded', '1'); } catch(e) {}
+    window.location.href = window.location.pathname;
   }
   if (typeof Swal !== 'undefined') {
     Swal.fire({
@@ -2623,6 +2638,14 @@ window.discardDraft = function() {
 };
 
 function restoreDraft() {
+  try {
+    if (sessionStorage.getItem('dtr_draft_discarded') === '1') {
+      sessionStorage.removeItem('dtr_draft_discarded');
+      clearDraft();
+      return;
+    }
+  } catch(e) {}
+
   var raw = null;
   try { raw = localStorage.getItem(DRAFT_KEY); } catch(e) {}
   if (!raw) return;
