@@ -49,6 +49,7 @@
       notesValue: report.notes || '',
       acStudentsValue: (report.ac_students || []).join(','),
       absentStudentsValue: (report.absent_students || []).join(','),
+      acReducedStudentsValue: (report.ac_reduced_students || []).join(','),
       teachingTypes: teachingTypes,
       teachersJson: typeof teachersJson !== 'undefined' ? teachersJson : '[]',
       partnerTeacherName: report.partner_teacher_name || '',

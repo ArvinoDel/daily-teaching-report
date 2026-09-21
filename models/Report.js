@@ -52,6 +52,12 @@ const reportSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    // Students who had their AC cards reduced (stored as array of names,
+    // duplicates allowed to represent multiple deductions, same as ac_students)
+    ac_reduced_students: {
+      type: [String],
+      default: [],
+    },
     session_mode: {
       type: String,
       enum: ['online', 'offline'],

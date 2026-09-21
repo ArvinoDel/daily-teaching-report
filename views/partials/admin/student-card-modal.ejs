@@ -70,7 +70,7 @@
         </div>
 
         <!-- AC Total banner -->
-        <div class="mx-6 mb-4 flex items-center gap-4 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
+        <div class="mx-6 mb-3 flex items-center gap-4 bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3">
           <div class="flex-1">
             <p class="text-xs font-bold text-amber-500 uppercase tracking-wider mb-0.5">Total Achievement Cards</p>
             <p id="card-ac-total" class="text-4xl font-extrabold text-amber-600">0</p>
@@ -80,6 +80,20 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
             </svg>
           </div>
+        </div>
+
+        <!-- Admin Quick Actions (no-print) -->
+        <div id="card-admin-actions" class="no-print mx-6 mb-4 flex items-center gap-2">
+          <button type="button" id="btn-quick-add-ac" onclick="quickAdjustAc('add')"
+            class="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-bold transition active:scale-95 shadow-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+            +1 AC
+          </button>
+          <button type="button" id="btn-quick-reduce-ac" onclick="quickAdjustAc('reduce')"
+            class="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold transition active:scale-95 shadow-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" /></svg>
+            −1 AC
+          </button>
         </div>
 
       </div><!-- /printable-card -->
@@ -184,6 +198,8 @@
       .catch(function () { showCardError('Network error.'); });
   };
 
+  var currentStudent = null;
+
   /* ── Public API — open by barcode string ── */
   window.showStudentCardByBarcode = function (barcode) {
     openOverlay();
@@ -197,8 +213,56 @@
       .catch(function () { showCardError('Network error.'); });
   };
 
+  /* ── Quick Adjust (+1 / -1 AC) for Admin ── */
+  window.quickAdjustAc = function (type) {
+    if (!currentStudent) return;
+    if (!currentStudent.barcode) {
+      alert('Student barcode is required for AC adjustments. Please run migration first.');
+      return;
+    }
+    if (type === 'reduce' && (currentStudent.acTotal || 0) <= 0) {
+      alert((currentStudent.full_name || 'Student') + ' has 0 AC cards. Cannot reduce further.');
+      return;
+    }
+    var btnAdd = document.getElementById('btn-quick-add-ac');
+    var btnRed = document.getElementById('btn-quick-reduce-ac');
+    if (btnAdd) btnAdd.disabled = true;
+    if (btnRed) btnRed.disabled = true;
+
+    fetch('/admin/scan-ac/transact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        barcode: currentStudent.barcode,
+        type: type,
+        note: 'Admin quick adjustment',
+      }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (btnAdd) btnAdd.disabled = false;
+        if (btnRed) btnRed.disabled = false;
+        if (!res.ok) {
+          alert(res.error || 'Failed to adjust AC.');
+          return;
+        }
+        // Reload student data
+        if (currentStudent._id) {
+          window.showStudentCard(currentStudent._id);
+        } else if (currentStudent.barcode) {
+          window.showStudentCardByBarcode(currentStudent.barcode);
+        }
+      })
+      .catch(function () {
+        if (btnAdd) btnAdd.disabled = false;
+        if (btnRed) btnRed.disabled = false;
+        alert('Network error while adjusting AC.');
+      });
+  };
+
   /* ── Render ── */
   function renderCard(s) {
+    currentStudent = s;
     document.getElementById('card-avatar').textContent = (s.full_name || '?').charAt(0).toUpperCase();
     document.getElementById('card-student-name').textContent = s.full_name || s.raw_name || '—';
     document.getElementById('card-ac-total').textContent = s.acTotal || 0;
@@ -262,17 +326,25 @@
         var dateStr = isNaN(d) ? '—' : d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
         var isAdd  = h.type !== 'reduce';
         var badge  = h.source === 'scan'
-          ? '<span class="text-[10px] font-bold bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded ml-1">SCAN</span>'
-          : '';
-        var countLabel = !isAdd
-          ? '<span class="text-[10px] font-bold bg-red-100 text-red-500 px-1.5 py-0.5 rounded ml-1">−1</span>'
-          : (h.count > 1 ? '<span class="text-[10px] font-bold bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded ml-1">×' + h.count + '</span>' : '');
-        var dotColor = isAdd ? 'bg-amber-400' : 'bg-red-400';
+          ? '<span class="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded ml-1">SCAN</span>'
+          : '<span class="text-[10px] font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded ml-1">REPORT</span>';
+        var absCount = Math.abs(h.count || 1);
+        var countBadge = isAdd
+          ? '<span class="text-[10px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded ml-1">+' + absCount + '</span>'
+          : '<span class="text-[10px] font-bold bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded ml-1">−' + absCount + '</span>';
+        var dotColor = isAdd ? 'bg-emerald-500' : 'bg-rose-500';
+
+        var metaParts = [];
+        if (h.subject) metaParts.push(escH(h.subject));
+        if (h.teacher) metaParts.push('by ' + escH(h.teacher));
+        if (h.note) metaParts.push('"' + escH(h.note) + '"');
+        var metaStr = metaParts.join(' · ');
+
         return '<div class="px-6 py-3 flex items-center gap-3">' +
-          '<div class="flex-shrink-0 w-1.5 h-1.5 rounded-full ' + dotColor + ' mt-0.5"></div>' +
+          '<div class="flex-shrink-0 w-2 h-2 rounded-full ' + dotColor + ' mt-0.5"></div>' +
           '<div class="flex-1 min-w-0">' +
-            '<p class="text-sm font-semibold text-slate-800 truncate">' + escH(h.class_name || '—') + badge + countLabel + '</p>' +
-            (h.subject ? '<p class="text-xs text-slate-400 truncate">' + escH(h.subject) + '</p>' : '') +
+            '<p class="text-sm font-semibold text-slate-800 truncate">' + escH(h.class_name || 'Admin Adjustment') + badge + countBadge + '</p>' +
+            (metaStr ? '<p class="text-xs text-slate-400 truncate">' + metaStr + '</p>' : '') +
           '</div>' +
           '<span class="text-xs text-slate-400 flex-shrink-0">' + dateStr + '</span>' +
           '</div>';

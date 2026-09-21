@@ -55,6 +55,7 @@
       notesValue: report.notes || '',
       acStudentsValue: (report.ac_students || []).join(','),
       absentStudentsValue: (report.absent_students || []).join(','),
+      acReducedStudentsValue: (report.ac_reduced_students || []).join(','),
       teachingTypes: teachingTypes,
       teacherValue: report.teacher ? report.teacher._id : '',
       teachers: typeof teachers !== 'undefined' ? teachers : [],

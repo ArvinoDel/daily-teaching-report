@@ -14,6 +14,7 @@
   const _durationValue = typeof durationValue !== 'undefined' ? durationValue : '';
   const _notesValue = typeof notesValue !== 'undefined' ? notesValue : '';
   const _acStudentsValue = typeof acStudentsValue !== 'undefined' ? acStudentsValue : '';
+  const _acReducedStudentsValue = typeof acReducedStudentsValue !== 'undefined' ? acReducedStudentsValue : '';
   const _absentStudentsValue = typeof absentStudentsValue !== 'undefined' ? absentStudentsValue : '';
   const _submitText = typeof submitText !== 'undefined' ? submitText : (_isEdit ? (_isAdmin ? 'Save Changes' : 'Update the Report') : 'Save Report');
   const _submitColorClass = typeof submitColorClass !== 'undefined' ? submitColorClass : (_isEdit ? (_isAdmin ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-500 hover:bg-amber-600') : 'bg-brand-600 hover:bg-brand-700');
@@ -34,11 +35,31 @@
   data-uses-personal-internet="<%= _usesPersonalInternetValue %>"
   data-class-name="<%= _classNameValue %>"
   data-ac-students="<%= _acStudentsValue %>"
+  data-ac-reduced-students="<%= _acReducedStudentsValue %>"
   data-absent-students="<%= _absentStudentsValue %>"
   data-competition-groups="<%= _competitionGroupsValue %>">
   <input type="hidden" name="_csrf" value="<%= csrfToken %>">
   <% if (_isEdit) { %>
     <input type="hidden" name="_method" value="PUT">
+  <% } else { %>
+    <!-- ── Draft Notification Banner ── -->
+    <div id="draft-banner" class="hidden -mt-2 mb-4 bg-amber-50 border border-amber-200/80 rounded-2xl p-4 transition-all">
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <span class="flex items-center justify-center w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex-shrink-0 text-base">
+            📝
+          </span>
+          <div>
+            <p class="text-xs font-bold text-amber-900">Draft Restored</p>
+            <p class="text-xs text-amber-700" id="draft-banner-text">We automatically restored your unsaved progress.</p>
+          </div>
+        </div>
+        <button type="button" onclick="discardDraft()"
+          class="flex-shrink-0 inline-flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-200 transition active:scale-95">
+          Discard Draft
+        </button>
+      </div>
+    </div>
   <% } %>
 
   <% if (_isAdmin && typeof teachers !== 'undefined' && teachers && teachers.length > 0) { %>
@@ -309,20 +330,30 @@
 
   <!-- ══ MANUAL INPUT (shown when no group selected) ══ -->
   <div id="manual-students-section">
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <div class="space-y-1.5">
-        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Achievement Card (AC)</label>
-        <p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd> to add</p>
+        <label class="block text-xs font-semibold text-emerald-700 uppercase tracking-wider">Achievement Card (+AC)</label>
+        <p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd></p>
         <div id="ac-tag-box"
-          class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition"
+          class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-100 transition"
           onclick="document.getElementById('ac-input').focus()"></div>
         <input type="text" id="ac-input" placeholder="e.g: Darren" autocomplete="off"
           class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition" />
         <p class="text-xs text-slate-400"><span id="ac-count">0</span> student(s) added</p>
       </div>
       <div class="space-y-1.5">
+        <label class="block text-xs font-semibold text-rose-700 uppercase tracking-wider">Deduct Card (−AC)</label>
+        <p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd></p>
+        <div id="ac-reduced-tag-box"
+          class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-rose-500 focus-within:ring-2 focus-within:ring-rose-100 transition"
+          onclick="document.getElementById('ac-reduced-input').focus()"></div>
+        <input type="text" id="ac-reduced-input" placeholder="e.g: Sarah" autocomplete="off"
+          class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition" />
+        <p class="text-xs text-slate-400"><span id="ac-reduced-count">0</span> student(s) deducted</p>
+      </div>
+      <div class="space-y-1.5">
         <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Absent</label>
-        <p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd> to add</p>
+        <p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd></p>
         <div id="absent-tag-box"
           class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition"
           onclick="document.getElementById('absent-input').focus()"></div>
@@ -334,8 +365,9 @@
   </div>
 
   <!-- Shared hidden inputs — always submitted -->
-  <input type="hidden" name="ac_students"     id="ac-hidden"     value="<%= _acStudentsValue %>">
-  <input type="hidden" name="absent_students" id="absent-hidden" value="<%= _absentStudentsValue %>">
+  <input type="hidden" name="ac_students"         id="ac-hidden"         value="<%= _acStudentsValue %>">
+  <input type="hidden" name="ac_reduced_students" id="ac-reduced-hidden" value="<%= _acReducedStudentsValue %>">
+  <input type="hidden" name="absent_students"     id="absent-hidden"     value="<%= _absentStudentsValue %>">
 
   <!-- Actions -->
   <div class="flex items-center justify-between pt-2">
@@ -552,7 +584,11 @@ function initTagInput({ inputId, boxId, hiddenId, countId, tagCls, allowDuplicat
       var pill = document.createElement('span');
       pill.className = 'inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ' + tagCls;
       pill.innerHTML = escHtml(tag) + ' <button type="button" class="ml-0.5 leading-none opacity-60 hover:opacity-100 transition text-sm" data-i="'+i+'">×</button>';
-      pill.querySelector('button').addEventListener('click', function() { tags.splice(i, 1); render(); });
+      pill.querySelector('button').addEventListener('click', function() {
+        tags.splice(i, 1);
+        render();
+        if (typeof triggerAutoSave === 'function') triggerAutoSave();
+      });
       box.appendChild(pill);
     });
     var unique = [];
@@ -562,7 +598,10 @@ function initTagInput({ inputId, boxId, hiddenId, countId, tagCls, allowDuplicat
   }
   function tryAdd() {
     var val = input.value.replace(/,/g,'').trim();
-    if (val && (allowDuplicates || tags.indexOf(val) === -1)) tags.push(val);
+    if (val && (allowDuplicates || tags.indexOf(val) === -1)) {
+      tags.push(val);
+      if (typeof triggerAutoSave === 'function') triggerAutoSave();
+    }
     input.value = ''; render();
   }
   input.addEventListener('keydown', function(e) {
@@ -579,7 +618,7 @@ function initTagInput({ inputId, boxId, hiddenId, countId, tagCls, allowDuplicat
   };
 }
 
-var acCtrl, absentCtrl;
+var acCtrl, acReducedCtrl, absentCtrl;
 
 /* ═══════════════════════════════════════════════════════════════
    Groups Autocomplete
@@ -926,21 +965,30 @@ function selectGroup(id, opts) {
 
   // Reset states
   studentStates = {};
-  selectedGroup.students.forEach(function(s) { studentStates[s] = { state: null, acCount: 0 }; });
+  selectedGroup.students.forEach(function(s) { studentStates[s] = { state: null, acCount: 0, reduceCount: 0 }; });
 
-  // Pre-fill from existing report ac/absent data
+  // Pre-fill from existing report ac/reduced/absent data
   if (opts && opts.preAc) {
     var acCounts = {};
     opts.preAc.forEach(function(s) { acCounts[s] = (acCounts[s] || 0) + 1; });
     Object.keys(acCounts).forEach(function(s) {
       if (studentStates[s] !== undefined) {
-        studentStates[s] = { state: 'ac', acCount: acCounts[s] };
+        studentStates[s] = { state: 'ac', acCount: acCounts[s], reduceCount: 0 };
+      }
+    });
+  }
+  if (opts && opts.preReduced) {
+    var redCounts = {};
+    opts.preReduced.forEach(function(s) { redCounts[s] = (redCounts[s] || 0) + 1; });
+    Object.keys(redCounts).forEach(function(s) {
+      if (studentStates[s] !== undefined) {
+        studentStates[s] = { state: 'reduce', acCount: 0, reduceCount: redCounts[s] };
       }
     });
   }
   if (opts && opts.preAbsent) {
     opts.preAbsent.forEach(function(s) {
-      if (studentStates[s] !== undefined) studentStates[s] = { state: 'absent', acCount: 0 };
+      if (studentStates[s] !== undefined) studentStates[s] = { state: 'absent', acCount: 0, reduceCount: 0 };
     });
   }
 
@@ -965,6 +1013,7 @@ function clearGroupSelection() {
   hideRoster();
   if (clearBtn) clearBtn.classList.add('hidden');
   if (acCtrl) acCtrl.reset([]);
+  if (acReducedCtrl) acReducedCtrl.reset([]);
   if (absentCtrl) absentCtrl.reset([]);
   setGroupHintDefault();
 }
@@ -1112,21 +1161,27 @@ function hideRoster()  {
 }
 
 function renderStudentRow(student) {
-  var stObj  = studentStates[student] || { state: null, acCount: 0 };
-  var state  = stObj.state;
+  var stObj   = studentStates[student] || { state: null, acCount: 0, reduceCount: 0 };
+  var state   = stObj.state;
   var acCount = stObj.acCount || 0;
+  var redCount = stObj.reduceCount || 0;
 
   var rowCls = 'flex items-center justify-between py-2.5 px-3 rounded-xl border transition-all duration-200 ';
   rowCls += state === 'ac'     ? 'bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200 shadow-sm shadow-emerald-100/50' :
+            state === 'reduce' ? 'bg-gradient-to-r from-rose-50 to-pink-50 border-rose-200 shadow-sm shadow-rose-100/50' :
             state === 'absent' ? 'bg-red-50 border-red-200' :
             'bg-white border-slate-100 hover:border-slate-200';
 
-  var nameCls = 'text-sm ' + (state === 'ac' ? 'text-emerald-800 font-semibold' : state === 'absent' ? 'text-red-700 font-medium' : 'text-slate-700');
+  var nameCls = 'text-sm ' + (state === 'ac' ? 'text-emerald-800 font-semibold' : state === 'reduce' ? 'text-rose-800 font-semibold' : state === 'absent' ? 'text-red-700 font-medium' : 'text-slate-700');
 
   var statusIcon = '';
   if (state === 'ac') {
     statusIcon = '<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500 text-white flex-shrink-0">' +
       '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z" clip-rule="evenodd"/></svg>' +
+    '</span>';
+  } else if (state === 'reduce') {
+    statusIcon = '<span class="flex items-center justify-center w-5 h-5 rounded-full bg-rose-500 text-white flex-shrink-0">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15"/></svg>' +
     '</span>';
   } else if (state === 'absent') {
     statusIcon = '<span class="flex items-center justify-center w-5 h-5 rounded-full bg-red-100 text-red-500 flex-shrink-0">' +
@@ -1156,13 +1211,33 @@ function renderStudentRow(student) {
     '<button type="button" class="w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors" data-student="'+escHtml(student)+'" data-role="clear-ac" title="Remove AC">' +
       '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>' +
     '</button>';
+  } else if (state === 'reduce') {
+    var canRemRed = redCount > 1;
+    var canAddRed = redCount < MAX_AC_COUNT;
+    acHtml = '<div class="inline-flex items-center rounded-full bg-rose-500 shadow-sm overflow-hidden">' +
+      '<button type="button" ' + (canRemRed ? '' : 'disabled ') +
+        'class="w-7 h-7 flex items-center justify-center text-sm font-bold transition-colors ' +
+        (canRemRed ? 'text-white/90 hover:bg-rose-600 active:bg-rose-700' : 'text-rose-300 cursor-not-allowed') +
+        '" data-student="'+escHtml(student)+'" data-role="reduce-minus">&minus;</button>' +
+      '<span class="px-1.5 text-[11px] font-bold text-white tracking-wide select-none border-x border-rose-400/40 min-w-[38px] text-center leading-7">' + redCount + ' −AC</span>' +
+      '<button type="button" ' + (canAddRed ? '' : 'disabled ') +
+        'class="w-7 h-7 flex items-center justify-center text-sm font-bold transition-colors ' +
+        (canAddRed ? 'text-white/90 hover:bg-rose-600 active:bg-rose-700' : 'text-rose-300 cursor-not-allowed') +
+        '" data-student="'+escHtml(student)+'" data-role="reduce-add">+</button>' +
+    '</div>' +
+    '<button type="button" class="w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors" data-student="'+escHtml(student)+'" data-role="clear-reduce" title="Clear reduction">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>' +
+    '</button>';
   } else {
-    acHtml = '<button type="button" class="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full transition-all duration-200 border border-emerald-200 bg-white text-emerald-600 hover:bg-emerald-500 hover:text-white hover:border-emerald-500 hover:shadow-sm active:scale-95" data-student="'+escHtml(student)+'" data-role="ac">' +
+    acHtml = '<button type="button" class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-full transition-all duration-200 border border-emerald-200 bg-white text-emerald-600 hover:bg-emerald-500 hover:text-white hover:border-emerald-500 hover:shadow-sm active:scale-95" data-student="'+escHtml(student)+'" data-role="ac">' +
       '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z" clip-rule="evenodd"/></svg>' +
-      'AC</button>';
+      '+AC</button>' +
+      '<button type="button" class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-full transition-all duration-200 border border-rose-200 bg-white text-rose-600 hover:bg-rose-500 hover:text-white hover:border-rose-500 hover:shadow-sm active:scale-95" data-student="'+escHtml(student)+'" data-role="reduce">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15"/></svg>' +
+      '−AC</button>';
   }
 
-  var absCls = 'inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full transition-all duration-200 ' +
+  var absCls = 'inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-full transition-all duration-200 ' +
     (state === 'absent' ? 'bg-red-500 text-white shadow-sm border border-red-500' :
      'border border-slate-200 bg-white text-slate-400 hover:border-red-300 hover:text-red-500 active:scale-95');
 
@@ -1252,11 +1327,12 @@ function rerender() {
 }
 
 function toggleStudent(name, role) {
-  var st = studentStates[name] || { state: null, acCount: 0 };
+  var st = studentStates[name] || { state: null, acCount: 0, reduceCount: 0 };
 
   if (role === 'ac') {
     st.state = 'ac';
     st.acCount = 1;
+    st.reduceCount = 0;
   } else if (role === 'add') {
     if (st.state === 'ac' && st.acCount < MAX_AC_COUNT) {
       st.acCount++;
@@ -1268,34 +1344,53 @@ function toggleStudent(name, role) {
   } else if (role === 'clear-ac') {
     st.state = null;
     st.acCount = 0;
+  } else if (role === 'reduce') {
+    st.state = 'reduce';
+    st.reduceCount = 1;
+    st.acCount = 0;
+  } else if (role === 'reduce-add') {
+    if (st.state === 'reduce' && st.reduceCount < MAX_AC_COUNT) {
+      st.reduceCount++;
+    }
+  } else if (role === 'reduce-minus') {
+    if (st.state === 'reduce' && st.reduceCount > 1) {
+      st.reduceCount--;
+    }
+  } else if (role === 'clear-reduce') {
+    st.state = null;
+    st.reduceCount = 0;
   } else if (role === 'absent') {
     if (st.state === 'absent') {
       st.state = null;
       st.acCount = 0;
+      st.reduceCount = 0;
     } else {
       st.state = 'absent';
       st.acCount = 0;
+      st.reduceCount = 0;
     }
   }
 
   studentStates[name] = st;
   rerender();
   updateHiddenInputs();
+  if (typeof triggerAutoSave === 'function') triggerAutoSave();
 }
 
 function markAll(role) {
   if (!selectedGroup) return;
   selectedGroup.students.forEach(function(s) {
     if (role === 'clear') {
-      studentStates[s] = { state: null, acCount: 0 };
+      studentStates[s] = { state: null, acCount: 0, reduceCount: 0 };
     } else if (role === 'ac') {
-      studentStates[s] = { state: 'ac', acCount: 1 };
+      studentStates[s] = { state: 'ac', acCount: 1, reduceCount: 0 };
     } else if (role === 'absent') {
-      studentStates[s] = { state: 'absent', acCount: 0 };
+      studentStates[s] = { state: 'absent', acCount: 0, reduceCount: 0 };
     }
   });
   rerender();
   updateHiddenInputs();
+  if (typeof triggerAutoSave === 'function') triggerAutoSave();
 }
 
 function markAllInGroup(groupId, role) {
@@ -1303,36 +1398,44 @@ function markAllInGroup(groupId, role) {
   if (!g) return;
   g.students.forEach(function(s) {
     if (role === 'clear') {
-      studentStates[s] = { state: null, acCount: 0 };
+      studentStates[s] = { state: null, acCount: 0, reduceCount: 0 };
     } else if (role === 'ac') {
-      studentStates[s] = { state: 'ac', acCount: 1 };
+      studentStates[s] = { state: 'ac', acCount: 1, reduceCount: 0 };
     } else if (role === 'absent') {
-      studentStates[s] = { state: 'absent', acCount: 0 };
+      studentStates[s] = { state: 'absent', acCount: 0, reduceCount: 0 };
     }
   });
   rerender();
   updateHiddenInputs();
+  if (typeof triggerAutoSave === 'function') triggerAutoSave();
 }
 
 function updateRosterSummary() {
-  var vals   = Object.values(studentStates);
-  var acCnt  = vals.filter(function(v){return v.state==='ac';}).length;
-  var totalAc = vals.reduce(function(s, v){return s + (v.state==='ac' ? v.acCount : 0);}, 0);
-  var absCnt = vals.filter(function(v){return v.state==='absent';}).length;
-  var el     = document.getElementById('roster-summary');
+  var vals       = Object.values(studentStates);
+  var acCnt      = vals.filter(function(v){return v.state==='ac';}).length;
+  var totalAc    = vals.reduce(function(s, v){return s + (v.state==='ac' ? v.acCount : 0);}, 0);
+  var redCnt     = vals.filter(function(v){return v.state==='reduce';}).length;
+  var totalRed   = vals.reduce(function(s, v){return s + (v.state==='reduce' ? (v.reduceCount||1) : 0);}, 0);
+  var absCnt     = vals.filter(function(v){return v.state==='absent';}).length;
+  var el         = document.getElementById('roster-summary');
   if (!el) return;
-  var parts  = [];
-  if (acCnt  > 0) {
-    var acText = acCnt + ' AC';
+  var parts      = [];
+  if (acCnt > 0) {
+    var acText = acCnt + ' +AC';
     if (totalAc > acCnt) acText += ' (' + totalAc + ' total)';
     parts.push('<span class="text-emerald-600 font-semibold">' + acText + '</span>');
+  }
+  if (redCnt > 0) {
+    var redText = redCnt + ' −AC';
+    if (totalRed > redCnt) redText += ' (' + totalRed + ' total)';
+    parts.push('<span class="text-rose-600 font-semibold">' + redText + '</span>');
   }
   if (absCnt > 0) parts.push('<span class="text-red-500 font-semibold">'+absCnt+' Absent</span>');
   el.innerHTML = parts.length ? parts.join(' · ') : '<span class="text-slate-400">No marks yet</span>';
 }
 
 function updateHiddenInputs() {
-  var acList = [], absList = [];
+  var acList = [], redList = [], absList = [];
   Object.keys(studentStates).forEach(function(s) {
     var st = studentStates[s];
     if (st.state === 'ac') {
@@ -1340,17 +1443,24 @@ function updateHiddenInputs() {
         acList.push(s);
       }
     }
+    if (st.state === 'reduce') {
+      for (var j = 0; j < (st.reduceCount || 1); j++) {
+        redList.push(s);
+      }
+    }
     if (st.state === 'absent') absList.push(s);
   });
-  if (acCtrl)     acCtrl.reset(acList);
-  if (absentCtrl) absentCtrl.reset(absList);
+  if (acCtrl)        acCtrl.reset(acList);
+  if (acReducedCtrl) acReducedCtrl.reset(redList);
+  if (absentCtrl)    absentCtrl.reset(absList);
 }
 
 /* ═══════════════════════════════════════════════════════════════
    Init tag inputs
    ═══════════════════════════════════════════════════════════════ */
-acCtrl     = initTagInput({ inputId:'ac-input',     boxId:'ac-tag-box',     hiddenId:'ac-hidden',     countId:'ac-count',     tagCls:'bg-emerald-100 text-emerald-700', allowDuplicates: true });
-absentCtrl = initTagInput({ inputId:'absent-input', boxId:'absent-tag-box', hiddenId:'absent-hidden', countId:'absent-count', tagCls:'bg-red-100 text-red-600', allowDuplicates: false });
+acCtrl        = initTagInput({ inputId:'ac-input',         boxId:'ac-tag-box',         hiddenId:'ac-hidden',         countId:'ac-count',         tagCls:'bg-emerald-100 text-emerald-700', allowDuplicates: true });
+acReducedCtrl = initTagInput({ inputId:'ac-reduced-input', boxId:'ac-reduced-tag-box', hiddenId:'ac-reduced-hidden', countId:'ac-reduced-count', tagCls:'bg-rose-100 text-rose-700',       allowDuplicates: true });
+absentCtrl    = initTagInput({ inputId:'absent-input',     boxId:'absent-tag-box',     hiddenId:'absent-hidden',     countId:'absent-count',     tagCls:'bg-red-100 text-red-600',         allowDuplicates: false });
 
 /* ═══════════════════════════════════════════════════════════════
    Auto-detect & pre-select group / setup page states on page load
@@ -1360,6 +1470,7 @@ absentCtrl = initTagInput({ inputId:'absent-input', boxId:'absent-tag-box', hidd
   var initSessionMode     = formEl.dataset.sessionMode || 'offline';
   var initClassName       = formEl.dataset.className || '';
   var initAc              = formEl.dataset.acStudents ? formEl.dataset.acStudents.split(',').filter(Boolean) : [];
+  var initAcReduced       = formEl.dataset.acReducedStudents ? formEl.dataset.acReducedStudents.split(',').filter(Boolean) : [];
   var initAbsent          = formEl.dataset.absentStudents ? formEl.dataset.absentStudents.split(',').filter(Boolean) : [];
   var initCompGroups      = formEl.dataset.competitionGroups ? formEl.dataset.competitionGroups.split(',').map(function(s){return s.trim();}).filter(Boolean) : [];
 
@@ -1385,17 +1496,26 @@ absentCtrl = initTagInput({ inputId:'absent-input', boxId:'absent-tag-box', hidd
       if (g) g.students.forEach(function(s) { if (allStudents.indexOf(s) === -1) allStudents.push(s); });
     });
     studentStates = {};
-    allStudents.forEach(function(s) { studentStates[s] = { state: null, acCount: 0 }; });
+    allStudents.forEach(function(s) { studentStates[s] = { state: null, acCount: 0, reduceCount: 0 }; });
 
     var acCounts = {};
     initAc.forEach(function(s) { acCounts[s] = (acCounts[s] || 0) + 1; });
     Object.keys(acCounts).forEach(function(s) {
       if (studentStates[s] !== undefined) {
-        studentStates[s] = { state: 'ac', acCount: acCounts[s] };
+        studentStates[s] = { state: 'ac', acCount: acCounts[s], reduceCount: 0 };
       }
     });
+
+    var redCounts = {};
+    initAcReduced.forEach(function(s) { redCounts[s] = (redCounts[s] || 0) + 1; });
+    Object.keys(redCounts).forEach(function(s) {
+      if (studentStates[s] !== undefined) {
+        studentStates[s] = { state: 'reduce', acCount: 0, reduceCount: redCounts[s] };
+      }
+    });
+
     initAbsent.forEach(function(s) {
-      if (studentStates[s] !== undefined) studentStates[s] = { state: 'absent', acCount: 0 };
+      if (studentStates[s] !== undefined) studentStates[s] = { state: 'absent', acCount: 0, reduceCount: 0 };
     });
 
     renderCompetitionRoster();
@@ -1404,7 +1524,7 @@ absentCtrl = initTagInput({ inputId:'absent-input', boxId:'absent-tag-box', hidd
 
   var match = groupsData.find(function(g) { return g.group_name === initClassName; });
   if (match) {
-    selectGroup(match._id, { preAc: initAc, preAbsent: initAbsent });
+    selectGroup(match._id, { preAc: initAc, preReduced: initAcReduced, preAbsent: initAbsent });
   } else if (initSessionType === 'private') {
     var privateInput = document.getElementById('private_name_input');
     if (privateInput) privateInput.value = initClassName;
@@ -1494,6 +1614,10 @@ if (rosterStudentsEl) {
       if (dirty && !window.__bulkSubmitting) { e.preventDefault(); e.returnValue = ''; }
     });
   })();
+
+  if (typeof window.triggerAutoSave !== 'function') {
+    window.triggerAutoSave = function() {};
+  }
 </script>
 
 <% if (!_isEdit) { %>
@@ -1521,7 +1645,7 @@ function addBulkEntry() {
   var id  = ++_bulkIdCounter;
   var num = _bulkIds.length + 2; // +2 because entry #1 is the main form
   _bulkIds.push(id);
-  _bulkStates[id] = { sessionType: 'group', sessionMode: 'offline', selectedGroup: null, studentStates: {}, acTags: [], absentTags: [] };
+  _bulkStates[id] = { sessionType: 'group', sessionMode: 'offline', selectedGroup: null, studentStates: {}, acTags: [], acReducedTags: [], absentTags: [] };
 
   var container = document.getElementById('bulk-extra-entries');
   var wrapper   = document.createElement('div');
@@ -1657,7 +1781,7 @@ function selectEntryGroup(id, groupId) {
 
   st.selectedGroup  = g;
   st.studentStates  = {};
-  g.students.forEach(function(s){ st.studentStates[s] = { state: null, acCount: 0 }; });
+  g.students.forEach(function(s){ st.studentStates[s] = { state: null, acCount: 0, reduceCount: 0 }; });
 
   var inp = document.getElementById('bulk-entry-' + id + '-class-name');
   if (inp) inp.value = g.group_name;
@@ -1680,13 +1804,14 @@ function selectEntryGroup(id, groupId) {
 
 function clearEntryGroup(id) {
   var st = _bulkStates[id]; if (!st) return;
-  st.selectedGroup = null; st.studentStates = {}; st.acTags = []; st.absentTags = [];
+  st.selectedGroup = null; st.studentStates = {}; st.acTags = []; st.acReducedTags = []; st.absentTags = [];
   var inp = document.getElementById('bulk-entry-' + id + '-class-name');
   if (inp) { inp.value = ''; inp.focus(); }
   var cb = document.getElementById('bulk-entry-' + id + '-clear-btn');
   if (cb) cb.classList.add('hidden');
   _hideEntryRoster(id);
   _renderEntryTagBox(id, 'ac');
+  _renderEntryTagBox(id, 'ac-reduced');
   _renderEntryTagBox(id, 'absent');
   _entryHintDefault(id);
   var idx     = _bulkIds.indexOf(id);
@@ -1727,36 +1852,53 @@ function _renderEntryRoster(id) {
 }
 
 function _renderEntryStudentRow(id, student) {
-  var st     = _bulkStates[id];
-  var stObj  = (st && st.studentStates[student]) || { state: null, acCount: 0 };
-  var state  = stObj.state;
-  var acCnt  = stObj.acCount || 0;
-  var MAX_AC = 10;
+  var st        = _bulkStates[id];
+  var stObj     = (st && st.studentStates[student]) || { state: null, acCount: 0, reduceCount: 0 };
+  var state     = stObj.state;
+  var acCnt     = stObj.acCount || 0;
+  var redCnt    = stObj.reduceCount || 0;
+  var MAX_AC    = 10;
 
   var rowCls = 'flex items-center justify-between py-2.5 px-3 rounded-xl border transition-all duration-200 ' +
     (state === 'ac' ? 'bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200 shadow-sm shadow-emerald-100/50' :
+     state === 'reduce' ? 'bg-gradient-to-r from-rose-50 to-pink-50 border-rose-200 shadow-sm shadow-rose-100/50' :
      state === 'absent' ? 'bg-red-50 border-red-200' : 'bg-white border-slate-100 hover:border-slate-200');
 
-  var nameCls = 'text-sm ' + (state === 'ac' ? 'text-emerald-800 font-semibold' : state === 'absent' ? 'text-red-700 font-medium' : 'text-slate-700');
+  var nameCls = 'text-sm ' + (state === 'ac' ? 'text-emerald-800 font-semibold' : state === 'reduce' ? 'text-rose-800 font-semibold' : state === 'absent' ? 'text-red-700 font-medium' : 'text-slate-700');
 
   var icon = state === 'ac'
     ? '<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500 text-white flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z" clip-rule="evenodd"/></svg></span>'
+    : state === 'reduce'
+    ? '<span class="flex items-center justify-center w-5 h-5 rounded-full bg-rose-500 text-white flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15"/></svg></span>'
     : state === 'absent'
     ? '<span class="flex items-center justify-center w-5 h-5 rounded-full bg-red-100 text-red-500 flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg></span>'
     : '<span class="flex items-center justify-center w-5 h-5 rounded-full bg-slate-100 flex-shrink-0"><span class="w-1.5 h-1.5 rounded-full bg-slate-300"></span></span>';
 
-  var acHtml = state === 'ac'
-    ? '<div class="inline-flex items-center rounded-full bg-emerald-500 shadow-sm overflow-hidden">' +
+  var acHtml = '';
+  if (state === 'ac') {
+    acHtml = '<div class="inline-flex items-center rounded-full bg-emerald-500 shadow-sm overflow-hidden">' +
         '<button type="button" ' + (acCnt > 1 ? '' : 'disabled ') + 'class="w-7 h-7 flex items-center justify-center text-sm font-bold ' + (acCnt > 1 ? 'text-white/90 hover:bg-emerald-600' : 'text-emerald-300 cursor-not-allowed') + '" data-beid="' + id + '" data-student="' + escHtml(student) + '" data-role="remove">−</button>' +
         '<span class="px-1.5 text-[11px] font-bold text-white border-x border-emerald-400/40 min-w-[38px] text-center leading-7">' + acCnt + ' AC</span>' +
         '<button type="button" ' + (acCnt < MAX_AC ? '' : 'disabled ') + 'class="w-7 h-7 flex items-center justify-center text-sm font-bold ' + (acCnt < MAX_AC ? 'text-white/90 hover:bg-emerald-600' : 'text-emerald-300 cursor-not-allowed') + '" data-beid="' + id + '" data-student="' + escHtml(student) + '" data-role="add">+</button>' +
       '</div>' +
-      '<button type="button" class="w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:bg-red-50 hover:text-red-500" data-beid="' + id + '" data-student="' + escHtml(student) + '" data-role="clear-ac"><svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg></button>'
-    : '<button type="button" class="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full border border-emerald-200 bg-white text-emerald-600 hover:bg-emerald-500 hover:text-white hover:border-emerald-500 active:scale-95 transition-all" data-beid="' + id + '" data-student="' + escHtml(student) + '" data-role="ac">' +
+      '<button type="button" class="w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:bg-red-50 hover:text-red-500" data-beid="' + id + '" data-student="' + escHtml(student) + '" data-role="clear-ac"><svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg></button>';
+  } else if (state === 'reduce') {
+    acHtml = '<div class="inline-flex items-center rounded-full bg-rose-500 shadow-sm overflow-hidden">' +
+        '<button type="button" ' + (redCnt > 1 ? '' : 'disabled ') + 'class="w-7 h-7 flex items-center justify-center text-sm font-bold ' + (redCnt > 1 ? 'text-white/90 hover:bg-rose-600' : 'text-rose-300 cursor-not-allowed') + '" data-beid="' + id + '" data-student="' + escHtml(student) + '" data-role="reduce-minus">−</button>' +
+        '<span class="px-1.5 text-[11px] font-bold text-white border-x border-rose-400/40 min-w-[38px] text-center leading-7">' + redCnt + ' −AC</span>' +
+        '<button type="button" ' + (redCnt < MAX_AC ? '' : 'disabled ') + 'class="w-7 h-7 flex items-center justify-center text-sm font-bold ' + (redCnt < MAX_AC ? 'text-white/90 hover:bg-rose-600' : 'text-rose-300 cursor-not-allowed') + '" data-beid="' + id + '" data-student="' + escHtml(student) + '" data-role="reduce-add">+</button>' +
+      '</div>' +
+      '<button type="button" class="w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:bg-red-50 hover:text-red-500" data-beid="' + id + '" data-student="' + escHtml(student) + '" data-role="clear-reduce"><svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg></button>';
+  } else {
+    acHtml = '<button type="button" class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-full border border-emerald-200 bg-white text-emerald-600 hover:bg-emerald-500 hover:text-white hover:border-emerald-500 active:scale-95 transition-all" data-beid="' + id + '" data-student="' + escHtml(student) + '" data-role="ac">' +
         '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401Z" clip-rule="evenodd"/></svg>' +
-        'AC</button>';
+        '+AC</button>' +
+      '<button type="button" class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-full border border-rose-200 bg-white text-rose-600 hover:bg-rose-500 hover:text-white hover:border-rose-500 active:scale-95 transition-all" data-beid="' + id + '" data-student="' + escHtml(student) + '" data-role="reduce">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15"/></svg>' +
+        '−AC</button>';
+  }
 
-  var absCls = 'inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full transition-all duration-200 ' +
+  var absCls = 'inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-full transition-all duration-200 ' +
     (state === 'absent' ? 'bg-red-500 text-white shadow-sm border border-red-500' : 'border border-slate-200 bg-white text-slate-400 hover:border-red-300 hover:text-red-500 active:scale-95');
 
   return '<div class="' + rowCls + '">' +
@@ -1768,12 +1910,16 @@ function _renderEntryStudentRow(id, student) {
 
 function toggleEntryStudent(id, student, role) {
   var st   = _bulkStates[id]; if (!st) return;
-  var stObj = st.studentStates[student] || { state: null, acCount: 0 };
-  if (role === 'ac')       { stObj.state = 'ac'; stObj.acCount = 1; }
-  else if (role === 'add') { if (stObj.state === 'ac' && stObj.acCount < 10) stObj.acCount++; }
-  else if (role === 'remove') { if (stObj.state === 'ac' && stObj.acCount > 1) stObj.acCount--; }
+  var stObj = st.studentStates[student] || { state: null, acCount: 0, reduceCount: 0 };
+  if (role === 'ac')            { stObj.state = 'ac'; stObj.acCount = 1; stObj.reduceCount = 0; }
+  else if (role === 'add')      { if (stObj.state === 'ac' && stObj.acCount < 10) stObj.acCount++; }
+  else if (role === 'remove')   { if (stObj.state === 'ac' && stObj.acCount > 1) stObj.acCount--; }
   else if (role === 'clear-ac') { stObj.state = null; stObj.acCount = 0; }
-  else if (role === 'absent') { stObj.state = stObj.state === 'absent' ? null : 'absent'; stObj.acCount = 0; }
+  else if (role === 'reduce')   { stObj.state = 'reduce'; stObj.reduceCount = 1; stObj.acCount = 0; }
+  else if (role === 'reduce-add') { if (stObj.state === 'reduce' && stObj.reduceCount < 10) stObj.reduceCount++; }
+  else if (role === 'reduce-minus') { if (stObj.state === 'reduce' && stObj.reduceCount > 1) stObj.reduceCount--; }
+  else if (role === 'clear-reduce') { stObj.state = null; stObj.reduceCount = 0; }
+  else if (role === 'absent')   { stObj.state = stObj.state === 'absent' ? null : 'absent'; stObj.acCount = 0; stObj.reduceCount = 0; }
   st.studentStates[student] = stObj;
   _renderEntryRoster(id);
 }
@@ -1781,9 +1927,10 @@ function toggleEntryStudent(id, student, role) {
 function markAllEntry(id, role) {
   var st = _bulkStates[id]; if (!st || !st.selectedGroup) return;
   st.selectedGroup.students.forEach(function(s) {
-    if (role === 'clear')  st.studentStates[s] = { state: null, acCount: 0 };
-    else if (role === 'ac') st.studentStates[s] = { state: 'ac', acCount: 1 };
-    else if (role === 'absent') st.studentStates[s] = { state: 'absent', acCount: 0 };
+    if (role === 'clear')       st.studentStates[s] = { state: null, acCount: 0, reduceCount: 0 };
+    else if (role === 'ac')     st.studentStates[s] = { state: 'ac', acCount: 1, reduceCount: 0 };
+    else if (role === 'reduce') st.studentStates[s] = { state: 'reduce', acCount: 0, reduceCount: 1 };
+    else if (role === 'absent') st.studentStates[s] = { state: 'absent', acCount: 0, reduceCount: 0 };
   });
   _renderEntryRoster(id);
 }
@@ -1793,21 +1940,24 @@ function _updateEntryRosterSummary(id) {
   var vals = Object.values(st.studentStates);
   var acCnt   = vals.filter(function(v){ return v.state === 'ac'; }).length;
   var totalAc = vals.reduce(function(s,v){ return s + (v.state==='ac' ? v.acCount : 0); }, 0);
+  var redCnt  = vals.filter(function(v){ return v.state === 'reduce'; }).length;
+  var totalRed = vals.reduce(function(s,v){ return s + (v.state==='reduce' ? (v.reduceCount || 1) : 0); }, 0);
   var absCnt  = vals.filter(function(v){ return v.state === 'absent'; }).length;
   var el = document.getElementById('bulk-entry-' + id + '-roster-summary'); if (!el) return;
   var parts = [];
-  if (acCnt > 0) { var t = acCnt + ' AC'; if (totalAc > acCnt) t += ' (' + totalAc + ' total)'; parts.push('<span class="text-emerald-600 font-semibold">' + t + '</span>'); }
+  if (acCnt > 0) { var t = acCnt + ' +AC'; if (totalAc > acCnt) t += ' (' + totalAc + ' total)'; parts.push('<span class="text-emerald-600 font-semibold">' + t + '</span>'); }
+  if (redCnt > 0) { var rt = redCnt + ' −AC'; if (totalRed > redCnt) rt += ' (' + totalRed + ' total)'; parts.push('<span class="text-rose-600 font-semibold">' + rt + '</span>'); }
   if (absCnt > 0) parts.push('<span class="text-red-500 font-semibold">' + absCnt + ' Absent</span>');
   el.innerHTML = parts.length ? parts.join(' · ') : '<span class="text-slate-400">No marks yet</span>';
 }
 
-/* ─── Tag inputs (manual AC/Absent) ────────────────────────────────── */
+/* ─── Tag inputs (manual AC/Reduced AC/Absent) ─────────────────────── */
 function _initBulkTagInput(id, type) {
   var inp = document.getElementById('bulk-entry-' + id + '-' + type + '-input'); if (!inp) return;
   function tryAdd() {
     var val = inp.value.replace(/,/g, '').trim(); if (!val) return;
     var st  = _bulkStates[id]; if (!st) return;
-    var arr = type === 'ac' ? st.acTags : st.absentTags;
+    var arr = type === 'ac' ? st.acTags : (type === 'ac-reduced' ? st.acReducedTags : st.absentTags);
     if (type === 'absent' && arr.indexOf(val) !== -1) { inp.value = ''; return; }
     arr.push(val); inp.value = ''; _renderEntryTagBox(id, type);
   }
@@ -1816,7 +1966,7 @@ function _initBulkTagInput(id, type) {
     else if (e.key === ',') { e.preventDefault(); tryAdd(); }
     else if (e.key === 'Backspace' && inp.value === '') {
       var st = _bulkStates[id]; if (!st) return;
-      var arr = type === 'ac' ? st.acTags : st.absentTags;
+      var arr = type === 'ac' ? st.acTags : (type === 'ac-reduced' ? st.acReducedTags : st.absentTags);
       if (arr.length) { arr.pop(); _renderEntryTagBox(id, type); }
     }
   });
@@ -1827,20 +1977,20 @@ function _renderEntryTagBox(id, type) {
   var box  = document.getElementById('bulk-entry-' + id + '-' + type + '-box');
   var cntEl = document.getElementById('bulk-entry-' + id + '-' + type + '-count');
   var st   = _bulkStates[id]; if (!st || !box) return;
-  var arr  = type === 'ac' ? st.acTags : st.absentTags;
-  var cls  = type === 'ac' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600';
-  box.innerHTML = arr.map(function(tag, i) {
+  var arr  = type === 'ac' ? st.acTags : (type === 'ac-reduced' ? st.acReducedTags : st.absentTags);
+  var cls  = type === 'ac' ? 'bg-emerald-100 text-emerald-700' : (type === 'ac-reduced' ? 'bg-rose-100 text-rose-700' : 'bg-red-100 text-red-600');
+  box.innerHTML = (arr || []).map(function(tag, i) {
     return '<span class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ' + cls + '">' +
       escHtml(tag) + ' <button type="button" class="ml-0.5 leading-none opacity-60 hover:opacity-100 transition text-sm" data-be-rm-id="' + id + '" data-be-rm-type="' + type + '" data-be-rm-idx="' + i + '">×</button></span>';
   }).join('');
-  if (cntEl) cntEl.textContent = arr.length;
+  if (cntEl) cntEl.textContent = (arr || []).length;
   box.querySelectorAll('button[data-be-rm-id]').forEach(function(btn) {
     btn.addEventListener('click', function() {
       var bId  = parseInt(btn.getAttribute('data-be-rm-id'));
       var bTyp = btn.getAttribute('data-be-rm-type');
       var bIdx = parseInt(btn.getAttribute('data-be-rm-idx'));
       var bSt  = _bulkStates[bId]; if (!bSt) return;
-      var bArr = bTyp === 'ac' ? bSt.acTags : bSt.absentTags;
+      var bArr = bTyp === 'ac' ? bSt.acTags : (bTyp === 'ac-reduced' ? bSt.acReducedTags : bSt.absentTags);
       bArr.splice(bIdx, 1); _renderEntryTagBox(bId, bTyp);
     });
   });
@@ -1851,6 +2001,7 @@ function _initBulkEntry(id) {
   setEntrySessionType(id, 'group');
   setEntryMode(id, 'offline');
   _initBulkTagInput(id, 'ac');
+  _initBulkTagInput(id, 'ac-reduced');
   _initBulkTagInput(id, 'absent');
   _initBulkEntryTeachingTypeListener(id);
 
@@ -1881,16 +2032,18 @@ function _getEntryData(id) {
   var className = inp ? inp.value.trim() : '';
   if (st.selectedGroup) className = st.selectedGroup.group_name;
 
-  var acStudents = [], absentStudents = [];
+  var acStudents = [], acReducedStudents = [], absentStudents = [];
   if (st.selectedGroup) {
     Object.keys(st.studentStates).forEach(function(s) {
       var stObj = st.studentStates[s];
-      if (stObj.state === 'ac')     { for (var i = 0; i < stObj.acCount; i++) acStudents.push(s); }
+      if (stObj.state === 'ac')          { for (var i = 0; i < stObj.acCount; i++) acStudents.push(s); }
+      else if (stObj.state === 'reduce') { for (var j = 0; j < (stObj.reduceCount || 1); j++) acReducedStudents.push(s); }
       else if (stObj.state === 'absent') absentStudents.push(s);
     });
   } else {
-    acStudents     = st.acTags.slice();
-    absentStudents = st.absentTags.slice();
+    acStudents        = (st.acTags || []).slice();
+    acReducedStudents = (st.acReducedTags || []).slice();
+    absentStudents    = (st.absentTags || []).slice();
   }
 
   var dateEl    = document.getElementById('bulk-entry-' + id + '-date');
@@ -1915,6 +2068,7 @@ function _getEntryData(id) {
     subject:                subjEl  ? subjEl.value.trim()  : '',
     notes:                  notesEl ? notesEl.value.trim() : '',
     ac_students:            acStudents,
+    ac_reduced_students:    acReducedStudents,
     absent_students:        absentStudents,
     competition_groups:     [],
     partner_teacher:        ptHidden  ? ptHidden.value  : '',
@@ -1934,19 +2088,20 @@ function _getMainEntryData() {
     var cnInp = document.getElementById('class_name');
     className = cnInp ? cnInp.value.trim() : '';
   }
-  var piCheck    = document.getElementById('personal_internet_check');
-  var subjectEl  = document.getElementById('subject');
-  var notesEl    = document.getElementById('notes');
-  var acHidden   = document.getElementById('ac-hidden');
-  var absHidden  = document.getElementById('absent-hidden');
-  var compHidden = document.getElementById('competition_groups_hidden');
-  var csrfEl     = form.querySelector('[name="_csrf"]');
-  var dateEl     = form.querySelector('[name="date"]');
-  var typeEl     = form.querySelector('[name="teaching_type"]');
-  var durEl      = form.querySelector('[name="duration"]');
-  var teacherEl  = form.querySelector('[name="teacher"]');
-  var ptHidden   = document.getElementById('partner_teacher_hidden');
-  var ptNameHid  = document.getElementById('partner_teacher_name_hidden');
+  var piCheck         = document.getElementById('personal_internet_check');
+  var subjectEl       = document.getElementById('subject');
+  var notesEl         = document.getElementById('notes');
+  var acHidden        = document.getElementById('ac-hidden');
+  var acReducedHidden = document.getElementById('ac-reduced-hidden');
+  var absHidden       = document.getElementById('absent-hidden');
+  var compHidden      = document.getElementById('competition_groups_hidden');
+  var csrfEl          = form.querySelector('[name="_csrf"]');
+  var dateEl          = form.querySelector('[name="date"]');
+  var typeEl          = form.querySelector('[name="teaching_type"]');
+  var durEl           = form.querySelector('[name="duration"]');
+  var teacherEl       = form.querySelector('[name="teacher"]');
+  var ptHidden        = document.getElementById('partner_teacher_hidden');
+  var ptNameHid       = document.getElementById('partner_teacher_name_hidden');
   return {
     _csrf:                  csrfEl    ? csrfEl.value    : '',
     date:                   dateEl    ? dateEl.value    : '',
@@ -1959,8 +2114,9 @@ function _getMainEntryData() {
     uses_personal_internet: piCheck ? piCheck.checked : false,
     subject:                subjectEl ? subjectEl.value.trim() : '',
     notes:                  notesEl   ? notesEl.value.trim()   : '',
-    ac_students:            acHidden  ? acHidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [],
-    absent_students:        absHidden ? absHidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [],
+    ac_students:            acHidden        ? acHidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [],
+    ac_reduced_students:    acReducedHidden ? acReducedHidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [],
+    absent_students:        absHidden       ? absHidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [],
     competition_groups:     compHidden ? compHidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [],
     partner_teacher:        ptHidden  ? ptHidden.value  : '',
     partner_teacher_name:   ptNameHid ? ptNameHid.value : '',
@@ -2143,6 +2299,7 @@ async function submitBulkReports() {
     });
     var json = await res.json();
     if (json.ok) {
+      if (typeof clearDraft === 'function') clearDraft();
       window.__bulkSubmitting = true;
       window.location.href = '/reports';
     } else {
@@ -2171,6 +2328,8 @@ document.getElementById('report-form').addEventListener('submit', function(e) {
   if (_bulkIds.length > 0) {
     e.preventDefault();
     submitBulkReports();
+  } else {
+    if (typeof clearDraft === 'function') clearDraft();
   }
 });
 
@@ -2346,14 +2505,22 @@ function _buildEntryHtml(id, num) {
       '</div>' +
 
       /* \u2500\u2500 Manual AC / Absent \u2500\u2500 */
+      /* ─── Manual AC / Reduced AC / Absent ─── */
       '<div id="bulk-entry-' + id + '-manual">' +
-        '<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">' +
+        '<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">' +
           '<div class="space-y-1.5">' +
-            '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Achievement Card (AC)</label>' +
+            '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Achievement Card (+AC)</label>' +
             '<p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd> to add</p>' +
             '<div id="bulk-entry-' + id + '-ac-box" class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition" onclick="document.getElementById(\'bulk-entry-' + id + '-ac-input\').focus()"></div>' +
             '<input type="text" id="bulk-entry-' + id + '-ac-input" placeholder="e.g: Darren" autocomplete="off" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition"/>' +
             '<p class="text-xs text-slate-400"><span id="bulk-entry-' + id + '-ac-count">0</span> student(s) added</p>' +
+          '</div>' +
+          '<div class="space-y-1.5">' +
+            '<label class="block text-xs font-semibold text-rose-600 uppercase tracking-wider">AC Deductions (−AC)</label>' +
+            '<p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd> to add</p>' +
+            '<div id="bulk-entry-' + id + '-ac-reduced-box" class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition" onclick="document.getElementById(\'bulk-entry-' + id + '-ac-reduced-input\').focus()"></div>' +
+            '<input type="text" id="bulk-entry-' + id + '-ac-reduced-input" placeholder="e.g: Darren" autocomplete="off" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition"/>' +
+            '<p class="text-xs text-slate-400"><span id="bulk-entry-' + id + '-ac-reduced-count">0</span> student(s) added</p>' +
           '</div>' +
           '<div class="space-y-1.5">' +
             '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Absent</label>' +
@@ -2368,5 +2535,302 @@ function _buildEntryHtml(id, num) {
     '</div>' + // end body
   '</div>'; // end card
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DRAFT AUTO-SAVE & RESTORE ENGINE (Active on Add Report)
+   ═══════════════════════════════════════════════════════════════════════ */
+var _draftUserInfo = {};
+try {
+  _draftUserInfo = JSON.parse(document.getElementById('current-user-info').textContent || '{}');
+} catch(e) {}
+var DRAFT_KEY = 'dtr_report_draft_' + (_draftUserInfo.id || 'anonymous');
+var _draftSaveTimer = null;
+
+function saveDraft() {
+  if (window.__bulkSubmitting || window.__isDraftRestoring) return;
+  try {
+    var form = document.getElementById('report-form');
+    if (!form) return;
+
+    var mainData = typeof _getMainEntryData === 'function' ? _getMainEntryData() : null;
+    if (!mainData) return;
+
+    // Check if there is any user-entered content
+    var hasContent = false;
+    if (mainData.class_name || mainData.subject || mainData.notes || mainData.teaching_type || mainData.duration) hasContent = true;
+    if (mainData.ac_students && mainData.ac_students.length) hasContent = true;
+    if (mainData.ac_reduced_students && mainData.ac_reduced_students.length) hasContent = true;
+    if (mainData.absent_students && mainData.absent_students.length) hasContent = true;
+    if (typeof competitionSelectedIds !== 'undefined' && competitionSelectedIds.length) hasContent = true;
+    if (typeof _bulkIds !== 'undefined' && _bulkIds.length) hasContent = true;
+
+    if (!hasContent) {
+      return;
+    }
+
+    var draftPayload = {
+      savedAt: new Date().toISOString(),
+      mainData: mainData,
+      selectedGroupId: (typeof selectedGroup !== 'undefined' && selectedGroup) ? selectedGroup._id : null,
+      studentStates: (typeof studentStates !== 'undefined') ? studentStates : {},
+      competitionSelectedIds: (typeof competitionSelectedIds !== 'undefined') ? competitionSelectedIds : [],
+      extraEntries: (typeof _bulkIds !== 'undefined' && typeof _getEntryData === 'function')
+        ? _bulkIds.map(function(id){ return _getEntryData(id); })
+        : []
+    };
+
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draftPayload));
+  } catch (err) {
+    console.warn('Failed to auto-save draft:', err);
+  }
+}
+
+window.triggerAutoSave = function() {
+  if (window.__isDraftRestoring) return;
+  if (_draftSaveTimer) clearTimeout(_draftSaveTimer);
+  _draftSaveTimer = setTimeout(saveDraft, 350);
+};
+
+window.clearDraft = function() {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch(e) {}
+};
+
+window.discardDraft = function() {
+  function proceed() {
+    clearDraft();
+    window.location.reload();
+  }
+  if (typeof Swal !== 'undefined') {
+    Swal.fire({
+      title: 'Discard Draft?',
+      text: 'This will permanently remove your saved draft and reset the form.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'Yes, discard',
+      cancelButtonText: 'Keep draft',
+      reverseButtons: true,
+      customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl', cancelButton: 'rounded-xl' }
+    }).then(function(res) {
+      if (res.isConfirmed) proceed();
+    });
+  } else {
+    if (confirm('Discard your saved draft?')) proceed();
+  }
+};
+
+function restoreDraft() {
+  var raw = null;
+  try { raw = localStorage.getItem(DRAFT_KEY); } catch(e) {}
+  if (!raw) return;
+
+  var draft = null;
+  try { draft = JSON.parse(raw); } catch(e) { return; }
+  if (!draft || !draft.mainData) return;
+
+  // Don't restore if server already passed pre-populated form data due to validation error
+  var form = document.getElementById('report-form');
+  if (form && (form.dataset.className || form.dataset.notes || form.dataset.subject)) {
+    return;
+  }
+
+  window.__isDraftRestoring = true;
+  var d = draft.mainData;
+
+  // 1. Session Type & Mode
+  if (d.session_type) setSessionType(d.session_type);
+  if (d.session_mode) setMode(d.session_mode);
+  var pic = document.getElementById('personal_internet_check');
+  if (pic) pic.checked = !!d.uses_personal_internet;
+
+  // 2. Date, Teaching Type, Duration, Teacher
+  var dateEl = form.querySelector('[name="date"]');
+  if (dateEl && d.date) dateEl.value = d.date;
+
+  var typeEl = document.getElementById('teaching_type');
+  if (typeEl && d.teaching_type) {
+    typeEl.value = d.teaching_type;
+    typeEl.dispatchEvent(new Event('change'));
+  }
+
+  var durEl = document.getElementById('duration');
+  if (durEl && d.duration) {
+    durEl.value = d.duration;
+    durEl.dispatchEvent(new Event('input'));
+  }
+
+  var teacherEl = document.getElementById('teacher');
+  if (teacherEl && d.teacher) {
+    teacherEl.value = d.teacher;
+    teacherEl.dispatchEvent(new Event('change'));
+  }
+
+  // 3. Subject & Notes
+  var subjEl = document.getElementById('subject');
+  if (subjEl && d.subject) subjEl.value = d.subject;
+
+  var notesEl = document.getElementById('notes');
+  if (notesEl && d.notes) {
+    notesEl.value = d.notes;
+    notesEl.dispatchEvent(new Event('input'));
+  }
+
+  // 4. Partner Teacher
+  if (d.partner_teacher || d.partner_teacher_name) {
+    var ptDisp = document.getElementById('partner_teacher_display');
+    var ptHid  = document.getElementById('partner_teacher_hidden');
+    var ptNm   = document.getElementById('partner_teacher_name_hidden');
+    var ptPill = document.getElementById('partner-teacher-pill');
+    var ptPillNm = document.getElementById('partner-teacher-pill-name');
+    var ptClr  = document.getElementById('btn-clear-partner-teacher');
+    if (ptDisp) ptDisp.value = d.partner_teacher_name || '';
+    if (ptHid)  ptHid.value  = d.partner_teacher || '';
+    if (ptNm)   ptNm.value   = d.partner_teacher_name || '';
+    if (d.partner_teacher && ptPill && ptPillNm) {
+      ptPill.classList.remove('hidden');
+      ptPillNm.textContent = d.partner_teacher_name || '';
+    }
+    if (ptClr && (d.partner_teacher || d.partner_teacher_name)) {
+      ptClr.classList.remove('hidden');
+    }
+  }
+
+  // 5. Group / Competition / Manual Roster
+  if (d.session_type === 'competition' && draft.competitionSelectedIds && draft.competitionSelectedIds.length) {
+    setSessionType('competition');
+    competitionSelectedIds = draft.competitionSelectedIds.slice();
+    renderCompetitionTags();
+    renderCompetitionRoster();
+    if (draft.studentStates) {
+      studentStates = draft.studentStates;
+      renderCompetitionRoster();
+      updateHiddenInputs();
+    }
+  } else if (draft.selectedGroupId) {
+    var matchGroup = groupsData.find(function(g){ return g._id === draft.selectedGroupId; });
+    if (matchGroup) {
+      selectGroup(matchGroup._id);
+      if (draft.studentStates) {
+        studentStates = draft.studentStates;
+        renderRoster();
+        updateHiddenInputs();
+      }
+    }
+  } else {
+    if (d.session_type === 'private') {
+      setSessionType('private');
+      var pvInp = document.getElementById('private_name_input');
+      if (pvInp) pvInp.value = d.class_name || '';
+    } else {
+      setSessionType('group');
+      var cnInp = document.getElementById('class_name');
+      if (cnInp) cnInp.value = d.class_name || '';
+    }
+    if (acCtrl && d.ac_students) acCtrl.reset(d.ac_students);
+    if (acReducedCtrl && d.ac_reduced_students) acReducedCtrl.reset(d.ac_reduced_students);
+    if (absentCtrl && d.absent_students) absentCtrl.reset(d.absent_students);
+  }
+
+  // 6. Bulk Extra Entries (if any)
+  if (draft.extraEntries && draft.extraEntries.length > 0) {
+    draft.extraEntries.forEach(function(entryData) {
+      addBulkEntry();
+      var newId = _bulkIds[_bulkIds.length - 1];
+      if (!newId) return;
+
+      var bDate    = document.getElementById('bulk-entry-' + newId + '-date');
+      var bType    = document.getElementById('bulk-entry-' + newId + '-teaching-type');
+      var bDur     = document.getElementById('bulk-entry-' + newId + '-duration');
+      var bTeacher = document.getElementById('bulk-entry-' + newId + '-teacher');
+      var bSubj    = document.getElementById('bulk-entry-' + newId + '-subject');
+      var bNotes   = document.getElementById('bulk-entry-' + newId + '-notes');
+      var bPi      = document.getElementById('bulk-entry-' + newId + '-pi-check');
+
+      if (bDate && entryData.date) bDate.value = entryData.date;
+      if (bType && entryData.teaching_type) {
+        bType.value = entryData.teaching_type;
+        bType.dispatchEvent(new Event('change'));
+      }
+      if (bDur && entryData.duration) bDur.value = entryData.duration;
+      if (bTeacher && entryData.teacher) bTeacher.value = entryData.teacher;
+      if (bSubj && entryData.subject) bSubj.value = entryData.subject;
+      if (bNotes && entryData.notes) bNotes.value = entryData.notes;
+      if (bPi) bPi.checked = !!entryData.uses_personal_internet;
+
+      setEntrySessionType(newId, entryData.session_type || 'group');
+      setEntryMode(newId, entryData.session_mode || 'offline');
+
+      var gMatch = groupsData.find(function(g){ return g.group_name === entryData.class_name; });
+      if (gMatch) {
+        selectEntryGroup(newId, gMatch._id);
+        var bSt = _bulkStates[newId];
+        if (bSt && bSt.studentStates) {
+          (entryData.ac_students || []).forEach(function(s){
+            if (bSt.studentStates[s]) {
+              bSt.studentStates[s].state = 'ac';
+              bSt.studentStates[s].acCount = (bSt.studentStates[s].acCount || 0) + 1;
+            }
+          });
+          (entryData.ac_reduced_students || []).forEach(function(s){
+            if (bSt.studentStates[s]) {
+              bSt.studentStates[s].state = 'reduce';
+              bSt.studentStates[s].reduceCount = (bSt.studentStates[s].reduceCount || 0) + 1;
+            }
+          });
+          (entryData.absent_students || []).forEach(function(s){
+            if (bSt.studentStates[s]) bSt.studentStates[s].state = 'absent';
+          });
+          _renderEntryRoster(newId);
+        }
+      } else {
+        var bClassInp = document.getElementById('bulk-entry-' + newId + '-class-name');
+        if (bClassInp) bClassInp.value = entryData.class_name || '';
+        var bSt = _bulkStates[newId];
+        if (bSt) {
+          bSt.acTags = (entryData.ac_students || []).slice();
+          bSt.acReducedTags = (entryData.ac_reduced_students || []).slice();
+          bSt.absentTags = (entryData.absent_students || []).slice();
+          _renderEntryTagBox(newId, 'ac');
+          _renderEntryTagBox(newId, 'ac-reduced');
+          _renderEntryTagBox(newId, 'absent');
+        }
+      }
+    });
+  }
+
+  // 7. Show Banner
+  var banner = document.getElementById('draft-banner');
+  if (banner) {
+    banner.classList.remove('hidden');
+    if (draft.savedAt) {
+      try {
+        var dTime = new Date(draft.savedAt);
+        var bannerText = document.getElementById('draft-banner-text');
+        if (bannerText) {
+          bannerText.textContent = 'Auto-restored your unsaved draft from ' + dTime.toLocaleDateString() + ' at ' + dTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '.';
+        }
+      } catch(e) {}
+    }
+  }
+
+  window.__isDraftRestoring = false;
+}
+
+// Attach Auto-Save listeners
+var _reportFormEl = document.getElementById('report-form');
+if (_reportFormEl) {
+  _reportFormEl.addEventListener('input', triggerAutoSave);
+  _reportFormEl.addEventListener('change', triggerAutoSave);
+}
+window.addEventListener('pagehide', saveDraft);
+window.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'hidden') saveDraft();
+});
+
+// Restore draft on initial load
+setTimeout(restoreDraft, 60);
 </script>
 <% } %>

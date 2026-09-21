@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
-const Report   = require('../models/Report');
-const Group    = require('../models/Group');
-const Student  = require('../models/Student');
+const Report        = require('../models/Report');
+const Group         = require('../models/Group');
+const Student       = require('../models/Student');
+const AcTransaction = require('../models/AcTransaction');
 const { normalizeName } = require('../models/Student');
 const {
   getStudentAcTotal,
@@ -44,39 +45,76 @@ exports.index = async (req, res) => {
     }
 
     // --- 2. Build match stage for reports ---
-    const matchStage = {};
+    const matchStageAdd = {};
+    const matchStageReduce = {};
     if (group_id) {
-      // Only include reports where the group's students appear in ac_students
       const targetGroup = allGroups.find(g => String(g._id) === group_id);
       if (targetGroup && targetGroup.students.length > 0) {
-        matchStage.ac_students = { $in: targetGroup.students };
+        matchStageAdd.ac_students = { $in: targetGroup.students };
+        matchStageReduce.ac_reduced_students = { $in: targetGroup.students };
       }
     }
 
-    // --- 3. Aggregate ac_students appearances across all reports ---
-    const pipeline = [
-      { $match: matchStage },
-      { $unwind: '$ac_students' },
-      {
-        $group: {
-          _id:          '$ac_students',
-          count:        { $sum: 1 },
-          lastSeen:     { $max: '$date' },
-          uniqueDates:  { $addToSet: '$date' },
+    // --- 3. Aggregate ac_students & ac_reduced_students across reports ---
+    const [addStats, reduceStats] = await Promise.all([
+      Report.aggregate([
+        { $match: matchStageAdd },
+        { $unwind: '$ac_students' },
+        {
+          $group: {
+            _id:          '$ac_students',
+            count:        { $sum: 1 },
+            lastSeen:     { $max: '$date' },
+            uniqueDates:  { $addToSet: '$date' },
+          },
         },
-      },
-      {
-        $project: {
-          _id:         0,
-          name:        '$_id',
-          count:       1,
-          lastSeen:    1,
-          activeDays:  { $size: '$uniqueDates' },
+      ]),
+      Report.aggregate([
+        { $match: matchStageReduce },
+        { $unwind: '$ac_reduced_students' },
+        {
+          $group: {
+            _id:          '$ac_reduced_students',
+            count:        { $sum: 1 },
+            lastSeen:     { $max: '$date' },
+            uniqueDates:  { $addToSet: '$date' },
+          },
         },
-      },
-    ];
+      ]),
+    ]);
 
-    let students = await Report.aggregate(pipeline);
+    const studentStatsMap = {};
+    for (const item of addStats) {
+      studentStatsMap[item._id] = {
+        name: item._id,
+        count: item.count,
+        lastSeen: item.lastSeen,
+        uniqueDates: new Set((item.uniqueDates || []).map(d => new Date(d).toISOString().slice(0, 10))),
+      };
+    }
+    for (const item of reduceStats) {
+      if (studentStatsMap[item._id]) {
+        studentStatsMap[item._id].count -= item.count;
+        if (!studentStatsMap[item._id].lastSeen || new Date(item.lastSeen) > new Date(studentStatsMap[item._id].lastSeen)) {
+          studentStatsMap[item._id].lastSeen = item.lastSeen;
+        }
+        (item.uniqueDates || []).forEach(d => studentStatsMap[item._id].uniqueDates.add(new Date(d).toISOString().slice(0, 10)));
+      } else {
+        studentStatsMap[item._id] = {
+          name: item._id,
+          count: -item.count,
+          lastSeen: item.lastSeen,
+          uniqueDates: new Set((item.uniqueDates || []).map(d => new Date(d).toISOString().slice(0, 10))),
+        };
+      }
+    }
+
+    let students = Object.values(studentStatsMap).map(s => ({
+      name: s.name,
+      count: Math.max(0, s.count),
+      lastSeen: s.lastSeen,
+      activeDays: s.uniqueDates.size,
+    }));
 
     // --- 4. Attach group memberships ---
     students = students.map(s => {
@@ -213,10 +251,15 @@ exports.lookupByBarcode = async (req, res) => {
         })),
         acTotal,
         acHistory: acHistory.map(h => ({
+          _id:        h._id ? String(h._id) : undefined,
           date:       h.date,
           class_name: h.class_name,
           subject:    h.subject,
           count:      h.count,
+          type:       h.type,
+          source:     h.source,
+          teacher:    h.teacher,
+          note:       h.note || '',
         })),
       },
     });
@@ -262,10 +305,15 @@ exports.studentProfile = async (req, res) => {
         })),
         acTotal,
         acHistory: acHistory.map(h => ({
+          _id:        h._id ? String(h._id) : undefined,
           date:       h.date,
           class_name: h.class_name,
           subject:    h.subject,
           count:      h.count,
+          type:       h.type,
+          source:     h.source,
+          teacher:    h.teacher,
+          note:       h.note || '',
         })),
       },
     });

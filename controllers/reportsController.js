@@ -24,7 +24,7 @@ function parseStudentList(raw) {
   return raw.split(',').map(s => s.trim()).filter(Boolean);
 }
 
-function validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher, partner_teacher, partner_teacher_name, teacherUser, isAdmin }) {
+function validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, ac_reduced_students, session_mode, session_type, teacher, partner_teacher, partner_teacher_name, teacherUser, isAdmin }) {
   const errors = [];
   if (!date || isNaN(new Date(date).getTime())) errors.push('Invalid date.');
   if (isAdmin && teacher !== undefined) {
@@ -59,8 +59,10 @@ function validateReportInput({ date, subject, class_name, duration, teaching_typ
   if (notes && notes.length > 1000) errors.push('Notes max 1000 characters.');
   if (ac_students && ac_students.some(s => s.length > 50)) errors.push('AC student name max 50 characters.');
   if (absent_students && absent_students.some(s => s.length > 50)) errors.push('Absent student name max 50 characters.');
+  if (ac_reduced_students && ac_reduced_students.some(s => s.length > 50)) errors.push('AC deducted student name max 50 characters.');
   if (ac_students && ac_students.length > 500) errors.push('Max 500 AC students.');
   if (absent_students && absent_students.length > 500) errors.push('Max 500 absent students.');
+  if (ac_reduced_students && ac_reduced_students.length > 500) errors.push('Max 500 AC deducted students.');
   if (session_mode && !['online', 'offline'].includes(session_mode)) errors.push('Invalid class mode.');
   if (session_type && !['group', 'private', 'competition'].includes(session_type)) errors.push('Invalid session type.');
   return errors;
@@ -250,8 +252,9 @@ exports.create = async (req, res) => {
   try {
     const { date, subject, class_name, duration, teaching_type, notes, session_mode, session_type, teacher } = req.body;
     const uses_personal_internet = req.body.uses_personal_internet === 'true';
-    const ac_students     = parseStudentList(req.body.ac_students);
-    const absent_students = parseStudentList(req.body.absent_students);
+    const ac_students          = parseStudentList(req.body.ac_students);
+    const absent_students      = parseStudentList(req.body.absent_students);
+    const ac_reduced_students  = parseStudentList(req.body.ac_reduced_students);
     const competition_groups = session_type === 'competition' ? parseStudentList(req.body.competition_groups) : [];
     const partner_teacher_name = (req.body.partner_teacher_name || '').trim();
     const partner_teacher_id   = req.body.partner_teacher && /^[0-9a-fA-F]{24}$/.test(req.body.partner_teacher)
@@ -261,7 +264,7 @@ exports.create = async (req, res) => {
     const teacherUser = await User.findById(teacherId).select('displayName username').lean();
 
     const validationErrors = validateReportInput({
-      date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type,
+      date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, ac_reduced_students, session_mode, session_type,
       teacher: teacherId,
       partner_teacher: partner_teacher_id,
       partner_teacher_name,
@@ -286,6 +289,7 @@ exports.create = async (req, res) => {
       notes: (notes || '').trim(),
       ac_students,
       absent_students,
+      ac_reduced_students,
       session_mode: session_mode || 'offline',
       uses_personal_internet,
       session_type: session_type || 'group',
@@ -364,8 +368,9 @@ exports.createBulk = async (req, res) => {
         teacherUser = await User.findById(teacherId).select('displayName username').lean();
       }
 
-      const ac_students     = Array.isArray(entry.ac_students)     ? entry.ac_students     : parseStudentList(entry.ac_students || '');
-      const absent_students = Array.isArray(entry.absent_students) ? entry.absent_students : parseStudentList(entry.absent_students || '');
+      const ac_students          = Array.isArray(entry.ac_students)          ? entry.ac_students          : parseStudentList(entry.ac_students || '');
+      const absent_students      = Array.isArray(entry.absent_students)      ? entry.absent_students      : parseStudentList(entry.absent_students || '');
+      const ac_reduced_students  = Array.isArray(entry.ac_reduced_students)  ? entry.ac_reduced_students  : parseStudentList(entry.ac_reduced_students || '');
       const competition_groups = entry.session_type === 'competition'
         ? (Array.isArray(entry.competition_groups) ? entry.competition_groups : parseStudentList(entry.competition_groups || ''))
         : [];
@@ -380,7 +385,7 @@ exports.createBulk = async (req, res) => {
         class_name:           entry.class_name,
         subject:              entry.subject,
         notes:                entry.notes,
-        ac_students, absent_students,
+        ac_students, absent_students, ac_reduced_students,
         session_mode:         entry.session_mode,
         session_type:         entry.session_type,
         teacher:              teacherId,
@@ -394,7 +399,7 @@ exports.createBulk = async (req, res) => {
         errs.forEach(e => allErrors.push(`Report ${i + 1}: ${e}`));
       } else {
         validEntries.push({
-          teacherId, ac_students, absent_students, competition_groups,
+          teacherId, ac_students, absent_students, ac_reduced_students, competition_groups,
           partner_teacher_name, partner_teacher_id,
           data: {
             date:                   entry.date,
@@ -403,7 +408,7 @@ exports.createBulk = async (req, res) => {
             duration:               Number(entry.duration),
             teaching_type:          entry.teaching_type,
             notes:                  (entry.notes || '').trim(),
-            ac_students, absent_students,
+            ac_students, absent_students, ac_reduced_students,
             teacher:                teacherId,
             session_mode:           entry.session_mode   || 'offline',
             uses_personal_internet: entry.uses_personal_internet === true || entry.uses_personal_internet === 'true',
@@ -518,8 +523,9 @@ exports.update = async (req, res) => {
   try {
     const { date, subject, class_name, duration, teaching_type, notes, session_mode, session_type } = req.body;
     const uses_personal_internet = req.body.uses_personal_internet === 'true';
-    const ac_students     = parseStudentList(req.body.ac_students);
-    const absent_students = parseStudentList(req.body.absent_students);
+    const ac_students          = parseStudentList(req.body.ac_students);
+    const absent_students      = parseStudentList(req.body.absent_students);
+    const ac_reduced_students  = parseStudentList(req.body.ac_reduced_students);
     const competition_groups = session_type === 'competition' ? parseStudentList(req.body.competition_groups) : [];
     const partner_teacher_name = (req.body.partner_teacher_name || '').trim();
     const partner_teacher_id   = req.body.partner_teacher && /^[0-9a-fA-F]{24}$/.test(req.body.partner_teacher)
@@ -529,7 +535,7 @@ exports.update = async (req, res) => {
     const teacherUser = await User.findById(teacherId).select('displayName username').lean();
 
     const validationErrors = validateReportInput({
-      date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type,
+      date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, ac_reduced_students, session_mode, session_type,
       teacher: teacherId,
       partner_teacher: partner_teacher_id,
       partner_teacher_name,
@@ -555,6 +561,7 @@ exports.update = async (req, res) => {
       notes: (notes || '').trim(),
       ac_students,
       absent_students,
+      ac_reduced_students,
       session_mode: session_mode || 'offline',
       uses_personal_internet,
       session_type: session_type || 'group',
@@ -580,6 +587,7 @@ exports.update = async (req, res) => {
         notes:                  (notes || '').trim(),
         ac_students,
         absent_students,
+        ac_reduced_students,
         session_mode:           session_mode || 'offline',
         uses_personal_internet,
         session_type:           session_type || 'group',
@@ -885,6 +893,7 @@ exports.exportExcel = async (req, res) => {
       { key: 'session_mode' },
       { key: 'session_type' },
       { key: 'ac_students' },
+      { key: 'ac_reduced_students' },
       { key: 'absent_students' },
       { key: 'uses_personal_internet' }
     ];
@@ -895,7 +904,7 @@ exports.exportExcel = async (req, res) => {
     detailedSheet.columns = columnsConfig;
 
     // Title Row
-    detailedSheet.mergeCells('A1:L1');
+    detailedSheet.mergeCells('A1:M1');
     const titleCell = detailedSheet.getCell('A1');
     titleCell.value = 'DAILY TEACHING REPORT SUMMARY';
     titleCell.font = { name: 'Segoe UI', size: 16, bold: true, color: { argb: 'FF15803D' } };
@@ -965,7 +974,8 @@ exports.exportExcel = async (req, res) => {
       'Duration',
       'Session Mode',
       'Session Type',
-      'Active Students',
+      'AC Students (+)',
+      'AC Deductions (-)',
       'Absent Students',
       'Internet (Personal)'
     ];
@@ -1015,6 +1025,7 @@ exports.exportExcel = async (req, res) => {
         report.session_mode === 'online' ? 'Online' : 'Offline',
         report.session_type ? report.session_type.charAt(0).toUpperCase() + report.session_type.slice(1) : 'Group',
         report.ac_students && report.ac_students.length > 0 ? report.ac_students.join(', ') : '—',
+        report.ac_reduced_students && report.ac_reduced_students.length > 0 ? report.ac_reduced_students.join(', ') : '—',
         report.absent_students && report.absent_students.length > 0 ? report.absent_students.join(', ') : '—',
         report.uses_personal_internet ? 'Yes' : 'No'
       ];

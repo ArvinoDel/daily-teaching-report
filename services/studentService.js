@@ -109,26 +109,37 @@ async function matchOrCreateStudent(rawName) {
  *  getStudentAcTotal(student)
  *
  *  Returns the net AC count for a student across BOTH sources:
- *   - Report.ac_students (historical)
- *   - AcTransaction (scan-based, add minus reduce)
+ *   - Report.ac_students (positive) and Report.ac_reduced_students (negative)
+ *   - AcTransaction (scan/admin-based, add minus reduce)
  * ───────────────────────────────────────────────────────────────── */
 async function getStudentAcTotal(student) {
   const names = buildNameVariants(student);
   if (!names.length && !student._id) return 0;
 
-  // 1. From legacy Reports
-  let reportTotal = 0;
+  // 1. From Reports: positive (ac_students) and negative (ac_reduced_students)
+  let reportAdds = 0;
+  let reportReduces = 0;
   if (names.length) {
-    const result = await Report.aggregate([
+    // Count positive AC cards
+    const addResult = await Report.aggregate([
       { $match:  { ac_students: { $in: names } } },
       { $unwind: '$ac_students' },
       { $match:  { ac_students: { $in: names } } },
       { $group:  { _id: null, total: { $sum: 1 } } },
     ]);
-    reportTotal = result.length ? result[0].total : 0;
+    reportAdds = addResult.length ? addResult[0].total : 0;
+
+    // Count reduced AC cards
+    const reduceResult = await Report.aggregate([
+      { $match:  { ac_reduced_students: { $in: names } } },
+      { $unwind: '$ac_reduced_students' },
+      { $match:  { ac_reduced_students: { $in: names } } },
+      { $group:  { _id: null, total: { $sum: 1 } } },
+    ]);
+    reportReduces = reduceResult.length ? reduceResult[0].total : 0;
   }
 
-  // 2. From AcTransaction (net: add - reduce)
+  // 2. From AcTransaction (scan/admin: net add - reduce)
   let txTotal = 0;
   if (student._id) {
     const result = await AcTransaction.aggregate([
@@ -144,24 +155,24 @@ async function getStudentAcTotal(student) {
     if (result.length) txTotal = result[0].adds - result[0].reduces;
   }
 
-  return Math.max(0, reportTotal + txTotal);
+  return Math.max(0, (reportAdds - reportReduces) + txTotal);
 }
 
 /* ─────────────────────────────────────────────────────────────────
  *  getStudentAcHistory(student)
  *
  *  Returns a merged, date-sorted array of AC events from both:
- *   - Report.ac_students (historical)
- *   - AcTransaction (scan-based)
- *  Each item: { source, date, class_name, subject, teacher, count, type }
+ *   - Report.ac_students (type:'add') and Report.ac_reduced_students (type:'reduce')
+ *   - AcTransaction (scan/admin-based)
+ *  Each item: { source, date, class_name, subject, teacher, teacher_id, count, type }
  * ───────────────────────────────────────────────────────────────── */
 async function getStudentAcHistory(student) {
   const names = buildNameVariants(student);
 
-  // 1. Report-based history
-  let reportHistory = [];
+  // 1. Report-based POSITIVE history (+AC from ac_students)
+  let reportAddHistory = [];
   if (names.length) {
-    reportHistory = await Report.aggregate([
+    reportAddHistory = await Report.aggregate([
       { $match:  { ac_students: { $in: names } } },
       { $unwind: '$ac_students' },
       { $match:  { ac_students: { $in: names } } },
@@ -175,14 +186,22 @@ async function getStudentAcHistory(student) {
           teacher:    { $first: '$teacher' },
         },
       },
-      { $sort:  { date: -1 } },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'teacher',
+          foreignField: '_id',
+          as: 'teacherDoc',
+        },
+      },
+      { $sort: { date: -1 } },
       {
         $project: {
           _id:        '$_id.reportId',
           date:       1,
           class_name: 1,
           subject:    1,
-          teacher:    1,
+          teacher:    { $ifNull: [{ $arrayElemAt: ['$teacherDoc.displayName', 0] }, ''] },
           count:      1,
           source:     { $literal: 'report' },
           type:       { $literal: 'add' },
@@ -191,7 +210,48 @@ async function getStudentAcHistory(student) {
     ]);
   }
 
-  // 2. AcTransaction-based history
+  // 2. Report-based NEGATIVE history (-AC from ac_reduced_students)
+  let reportReduceHistory = [];
+  if (names.length) {
+    reportReduceHistory = await Report.aggregate([
+      { $match:  { ac_reduced_students: { $in: names } } },
+      { $unwind: '$ac_reduced_students' },
+      { $match:  { ac_reduced_students: { $in: names } } },
+      {
+        $group: {
+          _id:        { reportId: '$_id', date: '$date', class_name: '$class_name', subject: '$subject', teacher: '$teacher' },
+          count:      { $sum: 1 },
+          date:       { $first: '$date' },
+          class_name: { $first: '$class_name' },
+          subject:    { $first: '$subject' },
+          teacher:    { $first: '$teacher' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'teacher',
+          foreignField: '_id',
+          as: 'teacherDoc',
+        },
+      },
+      { $sort: { date: -1 } },
+      {
+        $project: {
+          _id:        '$_id.reportId',
+          date:       1,
+          class_name: 1,
+          subject:    1,
+          teacher:    { $ifNull: [{ $arrayElemAt: ['$teacherDoc.displayName', 0] }, ''] },
+          count:      { $multiply: ['$count', -1] },
+          source:     { $literal: 'report' },
+          type:       { $literal: 'reduce' },
+        },
+      },
+    ]);
+  }
+
+  // 3. AcTransaction-based history (scan / admin adjustments)
   let txHistory = [];
   if (student._id) {
     const txDocs = await AcTransaction.find({ student: student._id })
@@ -203,6 +263,7 @@ async function getStudentAcHistory(student) {
       class_name: t.class_name || '',
       subject:    t.subject    || '',
       teacher:    t.scanned_by_name || '',
+      teacher_id: t.scanned_by || null,
       count:      t.type === 'add' ? t.amount : -t.amount,
       source:     'scan',
       type:       t.type,
@@ -211,7 +272,7 @@ async function getStudentAcHistory(student) {
   }
 
   // Merge and sort by date descending
-  const combined = [...reportHistory, ...txHistory];
+  const combined = [...reportAddHistory, ...reportReduceHistory, ...txHistory];
   combined.sort((a, b) => new Date(b.date) - new Date(a.date));
   return combined;
 }

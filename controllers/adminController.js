@@ -28,7 +28,7 @@ function parseStudentList(raw) {
 }
 
 // 🟠 Orange: consistent English messages + stricter integer check (rejects "60.5", "60.0")
-function validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type, teacher, partner_teacher, partner_teacher_name, teacherUser }) {
+function validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, ac_reduced_students, session_mode, session_type, teacher, partner_teacher, partner_teacher_name, teacherUser }) {
   const errors = [];
   if (!date || isNaN(new Date(date).getTime())) errors.push('Invalid date.');
   if (!teacher) {
@@ -66,6 +66,8 @@ function validateReportInput({ date, class_name, duration, teaching_type, notes,
   if (notes && notes.length > 1000)                                 errors.push('Notes max 1000 characters.');
   if (ac_students     && ac_students.some(s => s.length > 50))     errors.push('AC student name max 50 characters.');
   if (absent_students && absent_students.some(s => s.length > 50)) errors.push('Absent student name max 50 characters.');
+  if (ac_reduced_students && ac_reduced_students.some(s => s.length > 50)) errors.push('AC deducted student name max 50 characters.');
+  if (ac_reduced_students && ac_reduced_students.length > 500) errors.push('Max 500 AC deducted students.');
   if (session_mode && !['online', 'offline'].includes(session_mode)) errors.push('Invalid class mode.');
   if (session_type && !['group', 'private', 'competition'].includes(session_type))  errors.push('Invalid session type.');
   return errors;
@@ -508,8 +510,9 @@ exports.reportUpdate = async (req, res) => {
   try {
     const { date, subject, class_name, duration, teaching_type, notes, session_mode, session_type, teacher } = req.body;
     const uses_personal_internet = req.body.uses_personal_internet === 'true';
-    const ac_students     = parseStudentList(req.body.ac_students);
-    const absent_students = parseStudentList(req.body.absent_students);
+    const ac_students          = parseStudentList(req.body.ac_students);
+    const absent_students      = parseStudentList(req.body.absent_students);
+    const ac_reduced_students  = parseStudentList(req.body.ac_reduced_students);
     const competition_groups = session_type === 'competition' ? parseStudentList(req.body.competition_groups) : [];
     const partner_teacher_name = (req.body.partner_teacher_name || '').trim();
     const partner_teacher_id   = req.body.partner_teacher && /^[0-9a-fA-F]{24}$/.test(req.body.partner_teacher)
@@ -517,7 +520,7 @@ exports.reportUpdate = async (req, res) => {
 
     const teacherUser = teacher ? await User.findById(teacher).select('displayName username').lean() : null;
     const validationErrors = validateReportInput({
-      date, class_name, duration, teaching_type, notes, ac_students, absent_students, session_mode, session_type,
+      date, class_name, duration, teaching_type, notes, ac_students, absent_students, ac_reduced_students, session_mode, session_type,
       teacher, partner_teacher: partner_teacher_id, partner_teacher_name, teacherUser
     });
     if (validationErrors.length > 0) {
@@ -538,7 +541,7 @@ exports.reportUpdate = async (req, res) => {
       duration:               Number(duration),
       teaching_type,
       notes:                  (notes || '').trim(),
-      ac_students, absent_students,
+      ac_students, absent_students, ac_reduced_students,
       session_mode:           session_mode || 'offline',
       uses_personal_internet,
       session_type:           session_type || 'group',
@@ -565,6 +568,7 @@ exports.reportUpdate = async (req, res) => {
         notes:                  (notes || '').trim(),
         ac_students,
         absent_students,
+        ac_reduced_students,
         session_mode:           session_mode || 'offline',
         uses_personal_internet,
         session_type:           session_type || 'group',
