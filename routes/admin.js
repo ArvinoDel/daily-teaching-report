@@ -47,15 +47,15 @@ router.delete('/groups/:id',      groupCtrl.groupDelete);
 // Commission
 router.get('/commission', ctrl.commissionIndex);
 
-// Salaries — named routes BEFORE /:id wildcards
-router.get('/salaries',              salaryCtrl.salaryIndex);
-router.post('/salaries/generate',    salaryCtrl.salaryGenerate);
-router.post('/salaries/publish',     salaryCtrl.salaryPublish);
-router.get('/salaries/export',       salaryCtrl.salaryExport);
-router.get('/salaries/:id/slip',     salaryCtrl.salarySlip);
-router.get('/salaries/:id/edit',     salaryCtrl.salaryEditForm);
-router.post('/salaries/:id/retract', salaryCtrl.salaryRetract);
-router.post('/salaries/:id',         salaryCtrl.salaryUpdate);
+// Salaries — superadmin only (named routes BEFORE /:id wildcards)
+router.get('/salaries',              requireSuperAdmin, salaryCtrl.salaryIndex);
+router.post('/salaries/generate',    requireSuperAdmin, salaryCtrl.salaryGenerate);
+router.post('/salaries/publish',     requireSuperAdmin, salaryCtrl.salaryPublish);
+router.get('/salaries/export',       requireSuperAdmin, salaryCtrl.salaryExport);
+router.get('/salaries/:id/slip',     requireSuperAdmin, salaryCtrl.salarySlip);
+router.get('/salaries/:id/edit',     requireSuperAdmin, salaryCtrl.salaryEditForm);
+router.post('/salaries/:id/retract', requireSuperAdmin, salaryCtrl.salaryRetract);
+router.post('/salaries/:id',         requireSuperAdmin, salaryCtrl.salaryUpdate);
 
 // Feedbacks
 router.get('/feedbacks',              requireSuperAdmin, feedbackCtrl.adminList);

@@ -58,6 +58,7 @@
       </svg>
       <span class="nav-expand-label">Scan</span>
     </a>
+    <% if (currentUser.role === 'superadmin') { %>
     <a href="/admin/salaries"
       class="nav-expand-link inline-flex items-center gap-0 px-2 py-1.5 rounded-lg transition-all duration-200
         <%= (typeof title !== 'undefined' && title.includes('Salar')) ? 'is-active bg-white text-green-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-white/60' %>">
@@ -66,7 +67,6 @@
       </svg>
       <span class="nav-expand-label">Salaries</span>
     </a>
-    <% if (currentUser.role === 'superadmin') { %>
     <a href="/admin/feedbacks"
       class="nav-expand-link inline-flex items-center gap-0 px-2 py-1.5 rounded-lg transition-all duration-200
         <%= (typeof title !== 'undefined' && title.includes('Feedback')) ? 'is-active bg-white text-violet-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-white/60' %>">
