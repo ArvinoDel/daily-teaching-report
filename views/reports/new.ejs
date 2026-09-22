@@ -53,7 +53,7 @@
       competitionGroupsValue: formData.competition_groups || '',
       subjectValue: formData.subject || '',
       teachingTypeValue: formData.teaching_type || '',
-      durationValue: formData.duration || '',
+      durationValue: (typeof formData !== 'undefined' && formData && formData.duration !== undefined) ? formData.duration : 60,
       notesValue: formData.notes || '',
       acStudentsValue: formData.ac_students || '',
       absentStudentsValue: formData.absent_students || '',

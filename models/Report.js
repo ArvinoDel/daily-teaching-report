@@ -29,6 +29,7 @@ const reportSchema = new mongoose.Schema(
       required: [true, 'Teaching duration is required.'],
       min: [1, 'Minimum duration is 1 minute.'],
       comment: 'Duration in minutes',
+      default: 60,
     },
     teaching_type: {
       type: String,

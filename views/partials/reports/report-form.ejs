@@ -11,7 +11,7 @@
   const _competitionGroupsValue = typeof competitionGroupsValue !== 'undefined' ? competitionGroupsValue : '';
   const _subjectValue = typeof subjectValue !== 'undefined' ? subjectValue : '';
   const _teachingTypeValue = typeof teachingTypeValue !== 'undefined' ? teachingTypeValue : '';
-  const _durationValue = typeof durationValue !== 'undefined' ? durationValue : '';
+  const _durationValue = typeof durationValue !== 'undefined' ? durationValue : (_isEdit ? '' : 60);
   const _notesValue = typeof notesValue !== 'undefined' ? notesValue : '';
   const _acStudentsValue = typeof acStudentsValue !== 'undefined' ? acStudentsValue : '';
   const _acReducedStudentsValue = typeof acReducedStudentsValue !== 'undefined' ? acReducedStudentsValue : '';
@@ -2401,7 +2401,7 @@ function _buildEntryHtml(id, num) {
         '<div class="space-y-1.5">' +
           '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Duration <span class="text-red-500">*</span></label>' +
           '<div class="relative">' +
-            '<input type="number" id="bulk-entry-' + id + '-duration" min="1" max="480" placeholder="e.g: 60"' +
+            '<input type="number" id="bulk-entry-' + id + '-duration" min="1" max="480" placeholder="e.g: 60" value="60"' +
               ' class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 pr-14 text-sm text-slate-800 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"/>' +
             '<span class="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">min</span>' +
           '</div>' +
