@@ -387,6 +387,11 @@
 
     <!-- Student card + actions -->
     <div id="state-student">
+      <!-- Inactivity countdown progress bar -->
+      <div id="timer-progress-wrap" style="height:3px;background:rgba(255,255,255,.07);overflow:hidden;position:relative;">
+        <div id="timer-progress-bar" style="height:100%;width:100%;background:linear-gradient(90deg,#6366f1,#818cf8);transition:width 1s linear;"></div>
+      </div>
+
       <div id="student-info">
         <div id="s-avatar">?</div>
         <div>
@@ -412,7 +417,10 @@
       </div>
       <div id="session-count-wrap">
         <p>Session transactions: <span id="session-total">0</span></p>
-        <button id="btn-scan-next" style="font-size:12px;font-weight:700;color:#6366f1;background:none;border:none;cursor:pointer;font-family:inherit;">Scan next →</button>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:11px;color:#94a3b8;font-weight:600;">Auto-close in <b id="countdown-secs" style="color:#c7d2fe;font-variant-numeric:tabular-nums;">15s</b></span>
+          <button id="btn-scan-next" style="font-size:12px;font-weight:700;color:#6366f1;background:none;border:none;cursor:pointer;font-family:inherit;padding:2px 0;">Scan next →</button>
+        </div>
       </div>
     </div>
 
@@ -468,6 +476,8 @@
   var btnReduce   = document.getElementById('btn-reduce');
   var btnNext     = document.getElementById('btn-scan-next');
   var sessionTot  = document.getElementById('session-total');
+  var timerProgressBar = document.getElementById('timer-progress-bar');
+  var countdownSecs    = document.getElementById('countdown-secs');
   var camError    = document.getElementById('cam-error');
   var camOverlay  = document.getElementById('cam-start-overlay');
   var toast       = document.getElementById('toast');
@@ -604,9 +614,8 @@
       if (!isScanning) return;
       if (barcodes && barcodes.length > 0) {
         var barcode = barcodes[0].rawValue;
-        if (barcode && barcode !== currentBarcode) {
+        if (barcode && barcode !== currentBarcode && !isCooldown(barcode)) {
           onBarcodeDetected(barcode);
-          return;
         }
       }
       rafId = requestAnimationFrame(runNativeLoop);
@@ -636,7 +645,7 @@
       if (!isScanning) return;
       if (result) {
         var barcode = result.getText();
-        if (barcode && barcode !== currentBarcode) {
+        if (barcode && barcode !== currentBarcode && !isCooldown(barcode)) {
           onBarcodeDetected(barcode);
         }
       }
@@ -657,23 +666,104 @@
   /* ── Restart engine (called on resetToIdle) ── */
   function resumeScanEngine() {
     isScanning = true;
-    currentBarcode = null;
     scanBadge.textContent = 'Scanning…';
     scanBadge.style.background = '#6366f1';
     if (scannerEngine === 'native') {
-      runNativeLoop();
+      if (!rafId) runNativeLoop();
     } else {
       startZxing();
     }
   }
 
   /* ══════════════════════════════════════════════════════════
+     Inactivity Timer (15s auto-refresh on idle)
+  ══════════════════════════════════════════════════════════ */
+  var INACTIVITY_SECONDS = 15;
+  var inactivityTimer    = null;
+  var countdownInterval  = null;
+  var secondsLeft        = INACTIVITY_SECONDS;
+
+  function startInactivityTimer() {
+    clearInactivityTimer();
+    secondsLeft = INACTIVITY_SECONDS;
+    updateTimerUI();
+
+    countdownInterval = setInterval(function () {
+      secondsLeft--;
+      if (secondsLeft <= 0) {
+        secondsLeft = 0;
+        updateTimerUI();
+        clearInactivityTimer();
+        resetToIdle();
+        return;
+      }
+      updateTimerUI();
+    }, 1000);
+
+    inactivityTimer = setTimeout(function () {
+      resetToIdle();
+    }, INACTIVITY_SECONDS * 1000);
+  }
+
+  function resetInactivityTimer() {
+    if (stateStud.style.display !== 'none') {
+      startInactivityTimer();
+    }
+  }
+
+  function clearInactivityTimer() {
+    if (inactivityTimer)   { clearTimeout(inactivityTimer);   inactivityTimer = null; }
+    if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+    if (timerProgressBar)  { timerProgressBar.style.width = '100%'; }
+  }
+
+  function updateTimerUI() {
+    if (countdownSecs) {
+      countdownSecs.textContent = secondsLeft + 's';
+    }
+    if (timerProgressBar) {
+      var pct = Math.max(0, Math.min(100, (secondsLeft / INACTIVITY_SECONDS) * 100));
+      timerProgressBar.style.width = pct + '%';
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     Cooldown (prevents instant re-trigger of same card on timeout)
+  ══════════════════════════════════════════════════════════ */
+  var lastDismissedBarcode = null;
+  var lastDismissedTime    = 0;
+
+  function setCooldown(barcode) {
+    lastDismissedBarcode = barcode;
+    lastDismissedTime    = Date.now();
+  }
+
+  function isCooldown(barcode) {
+    if (!lastDismissedBarcode) return false;
+    if (barcode === lastDismissedBarcode && (Date.now() - lastDismissedTime < 2500)) {
+      return true;
+    }
+    return false;
+  }
+
+  /* ══════════════════════════════════════════════════════════
      PHASE 3 — Barcode Detected Handler
   ══════════════════════════════════════════════════════════ */
+  var currentLookupId = 0;
+
   function onBarcodeDetected(barcode) {
-    stopScanEngine();
+    if (!barcode) return;
+    if (barcode === currentBarcode) return;
+    if (isCooldown(barcode)) return;
+
+    // Directly switch to the new barcode, don't get stuck on the first one
     currentBarcode = barcode;
+    clearInactivityTimer();
+
+    var thisLookupId = ++currentLookupId;
     setState('loading');
+    scanBadge.textContent = 'Scanning…';
+    scanBadge.style.background = '#6366f1';
 
     // Haptic feedback
     if (navigator.vibrate) navigator.vibrate(80);
@@ -689,13 +779,18 @@
     fetch('/admin/scan-ac/lookup?barcode=' + encodeURIComponent(barcode))
       .then(function (r) { return r.json(); })
       .then(function (res) {
+        if (thisLookupId !== currentLookupId) return; // Stale lookup from previous barcode
         if (!res.ok) {
           showError(res.error || 'Student not found. Barcode: ' + barcode);
           return;
         }
         renderStudent(res.student);
+        startInactivityTimer();
       })
-      .catch(function () { showError('Network error. Check connection and try again.'); });
+      .catch(function () {
+        if (thisLookupId !== currentLookupId) return;
+        showError('Network error. Check connection and try again.');
+      });
   }
 
   /* ══════════════════════════════════════════════════════════
@@ -724,21 +819,30 @@
     sGrade.textContent  = s.grade_school || '';
     sTotal.textContent  = s.acTotal || 0;
     setState('student');
+    scanBadge.textContent = 'Scanning…';
+    scanBadge.style.background = '#6366f1';
   }
 
   /* ══════════════════════════════════════════════════════════
      Transact
   ══════════════════════════════════════════════════════════ */
-  btnAdd.addEventListener('click',    function () { doTransact('add');    });
-  btnReduce.addEventListener('click', function () { doTransact('reduce'); });
+  btnAdd.addEventListener('click',    function () { resetInactivityTimer(); doTransact('add');    });
+  btnReduce.addEventListener('click', function () { resetInactivityTimer(); doTransact('reduce'); });
   btnNext.addEventListener('click',   function () { resetToIdle(); });
+
+  // Any user interaction on student sheet resets inactivity timer
+  stateStud.addEventListener('pointerdown', function () {
+    resetInactivityTimer();
+  });
 
   function doTransact(type) {
     if (!currentBarcode) return;
+    var txBarcode = currentBarcode;
+    resetInactivityTimer();
     btnAdd.disabled    = true;
     btnReduce.disabled = true;
 
-    var body = 'barcode=' + encodeURIComponent(currentBarcode) +
+    var body = 'barcode=' + encodeURIComponent(txBarcode) +
                '&type=' + type +
                '&_csrf=' + encodeURIComponent('<%= csrfToken %>');
 
@@ -760,13 +864,18 @@
         var delta = type === 'add' ? '+1 AC ✓' : '−1 AC ✓';
         var color = type === 'add' ? '#34d399' : '#fca5a5';
         showToast(delta, color);
-        sTotal.textContent = res.acTotal;
-        setTimeout(resetToIdle, 1500);
+        if (currentBarcode === txBarcode) {
+          sTotal.textContent = res.acTotal;
+          resetInactivityTimer();
+        }
       })
       .catch(function () {
         btnAdd.disabled    = false;
         btnReduce.disabled = false;
         showToast('⚠️ Network error');
+        if (currentBarcode === txBarcode) {
+          resetInactivityTimer();
+        }
       });
   }
 
@@ -786,6 +895,8 @@
     if (!code) return;
     manualDrawer.classList.remove('open');
     manualInput.value = '';
+    lastDismissedBarcode = null;
+    currentBarcode = null;
     onBarcodeDetected(code);
   });
   manualInput.addEventListener('keydown', function (e) {
@@ -796,8 +907,17 @@
      State machine helpers
   ══════════════════════════════════════════════════════════ */
   window.resetToIdle = function () {
+    clearInactivityTimer();
+    if (currentBarcode) {
+      setCooldown(currentBarcode);
+      currentBarcode = null;
+    }
     setState('idle');
-    resumeScanEngine();
+    scanBadge.textContent = 'Scanning…';
+    scanBadge.style.background = '#6366f1';
+    if (!isScanning) {
+      resumeScanEngine();
+    }
   };
 
   function setState(s) {
@@ -808,13 +928,17 @@
   }
 
   function showError(msg) {
+    clearInactivityTimer();
     errMsg.textContent = msg;
     setState('error');
     scanBadge.textContent = 'Not Found';
     scanBadge.style.background = '#ef4444';
-    // Auto-resume scanning after 3s on error
+    // Auto-resume scanning after 3s on error if no other scan occurred
+    var errLookupId = currentLookupId;
     setTimeout(function () {
-      if (!currentBarcode) resetToIdle();
+      if (errLookupId === currentLookupId && stateErr.style.display !== 'none') {
+        resetToIdle();
+      }
     }, 3000);
   }
 
