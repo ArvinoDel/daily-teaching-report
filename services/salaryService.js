@@ -302,7 +302,7 @@ async function generateSalariesForPeriod(opts) {
         otherIncomes:         [], // dynamic — don't carry forward one-off items
 
         // ── Deductions ───────────────────────────────────────────────
-        instalment:             0,  // kasbon resets each month
+        instalment:             0,  // installment resets each month
         miscellaneousDeduction: 0,
         bpjsKetenagakerjaan:    seed('bpjsKetenagakerjaan', 'bpjsKetenagakerjaan'),
         tax:                    seed('tax', 'tax'),

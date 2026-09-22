@@ -97,7 +97,7 @@ exports.adminUpdateStatus = async (req, res) => {
     const { status } = req.body;
 
     if (!['pending', 'resolved', 'ignored'].includes(status)) {
-      return res.status(400).render('error', { message: 'Status tidak valid.' });
+      return res.status(400).render('error', { message: 'Invalid status.' });
     }
 
     await Feedback.findByIdAndUpdate(id, { status });

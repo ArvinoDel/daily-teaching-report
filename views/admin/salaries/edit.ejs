@@ -121,7 +121,7 @@
 
         <!-- Simple money fields -->
         <% const earningFields = [
-          { label: '1. Basic Salary (Gaji Pokok)',   key: 'basicSalary'        },
+          { label: '1. Basic Salary',                key: 'basicSalary'        },
           { label: '5. Monthly Incentive',           key: 'monthlyIncentive'   },
           { label: '6. Health Allowance',            key: 'healthAllowance'    },
           { label: '7. Position Allowance',          key: 'positionAllowance'  },
@@ -131,7 +131,7 @@
           { label: '11. Game Reward',                key: 'gameReward'         },
           { label: '12. Student Commission',         key: 'studentCommission'  },
           { label: '13. Internet / Electricity',     key: 'internetCompensation'},
-          { label: '14. Overtime / Lembur',          key: 'overtime'           },
+          { label: '14. Overtime',                   key: 'overtime'           },
         ]; %>
         <% earningFields.forEach(function(f) { %>
           <div class="flex items-center gap-3">
@@ -272,9 +272,9 @@
         </h2>
 
         <% const deductFields = [
-          { label: '16. Instalment / Kasbon',        key: 'instalment'             },
+          { label: '16. Installment',                key: 'instalment'             },
           { label: '17. Miscellaneous Deduction',    key: 'miscellaneousDeduction' },
-          { label: '18. BPJS Ketenagakerjaan',       key: 'bpjsKetenagakerjaan'    },
+          { label: '18. BPJS Employment',            key: 'bpjsKetenagakerjaan'    },
           { label: '19. Last Month\'s Tax (PPH)',     key: 'tax'                    },
         ]; %>
         <% deductFields.forEach(function(f) { %>

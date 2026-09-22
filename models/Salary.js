@@ -40,7 +40,7 @@ const salarySchema = new mongoose.Schema({
      EARNINGS
   ══════════════════════════════════════════ */
 
-  // 1. Basic Salary (Gaji Pokok)
+  // 1. Basic Salary
   basicSalary: { type: Number, default: 0, min: 0 },
 
   // 2. Meal Allowance Full  →  mealFullDays × mealFullRate
@@ -61,16 +61,16 @@ const salarySchema = new mongoose.Schema({
   // 5. Monthly Incentive
   monthlyIncentive: { type: Number, default: 0, min: 0 },
 
-  // 6. Health Allowance (Tunjangan Kesehatan)
+  // 6. Health Allowance
   healthAllowance: { type: Number, default: 0, min: 0 },
 
-  // 7. Position Allowance (Tunjangan Jabatan — stage-unlocked after N months)
+  // 7. Position Allowance (stage-unlocked after N months)
   positionAllowance: { type: Number, default: 0, min: 0 },
 
-  // 8. Loyalty Allowance (Tunjangan Loyalitas)
+  // 8. Loyalty Allowance
   loyaltyAllowance: { type: Number, default: 0, min: 0 },
 
-  // 9. Wife / Child Allowance (Tunjangan Istri/Anak)
+  // 9. Wife / Child Allowance
   wifeChildAllowance: { type: Number, default: 0, min: 0 },
 
   // 10. Teaching Reward (auto-calculated from reports × commission rates; stage-gated)
@@ -85,7 +85,7 @@ const salarySchema = new mongoose.Schema({
   // 13. Internet / Electricity Compensation
   internetCompensation: { type: Number, default: 0, min: 0 },
 
-  // 14. Overtime / Lembur
+  // 14. Overtime
   overtime: { type: Number, default: 0, min: 0 },
 
   // 15. Other Incomes (dynamic label + amount pairs)
@@ -98,13 +98,13 @@ const salarySchema = new mongoose.Schema({
      DEDUCTIONS
   ══════════════════════════════════════════ */
 
-  // 16. Instalment / Kasbon / Pinjaman
+  // 16. Installment / Loan
   instalment: { type: Number, default: 0, min: 0 },
 
-  // 17. Miscellaneous Deductions (Potongan lain-lain)
+  // 17. Miscellaneous Deductions
   miscellaneousDeduction: { type: Number, default: 0, min: 0 },
 
-  // 18. BPJS Ketenagakerjaan
+  // 18. BPJS Employment
   bpjsKetenagakerjaan: { type: Number, default: 0, min: 0 },
 
   // 19. Last Month's Tax (PPH)

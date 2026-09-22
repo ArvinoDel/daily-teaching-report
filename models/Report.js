@@ -126,7 +126,7 @@ reportSchema.virtual('dateFormatted').get(function () {
   });
 });
 
-// Virtual: tanggal untuk input[type=date] (YYYY-MM-DD)
+// Virtual: date for input[type=date] (YYYY-MM-DD)
 reportSchema.virtual('dateInputFormat').get(function () {
   return this.date.toISOString().substring(0, 10);
 });

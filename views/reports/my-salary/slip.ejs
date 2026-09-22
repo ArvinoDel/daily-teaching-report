@@ -9,7 +9,7 @@
   const t  = teacher;
 
   const earningLines = [
-    { label: '1. Basic Salary (Gaji Pokok)',                                       value: sp.basicSalary },
+    { label: '1. Basic Salary',                                                    value: sp.basicSalary },
     { label: '2. Meal (Full) ' + (sp.mealFullDays||0) + '\u00d7' + fmtIDR(sp.mealFullRate),   value: sp.mealFullTotal },
     { label: '3. Meal (Half) ' + (sp.mealHalfDays||0) + '\u00d7' + fmtIDR(sp.mealHalfRate),   value: sp.mealHalfTotal },
     { label: '4. Transport ' + (sp.transportDays||0) + '\u00d7' + fmtIDR(sp.transportRate),    value: sp.transportTotal },
@@ -22,16 +22,16 @@
     { label: '11. Game Reward',                                                    value: sp.gameReward },
     { label: '12. Student Commission',                                             value: sp.studentCommission },
     { label: '13. Internet / Electricity Compensation',                            value: sp.internetCompensation },
-    { label: '14. Overtime / Lembur',                                              value: sp.overtime },
+    { label: '14. Overtime',                                                       value: sp.overtime },
     ...(sp.otherIncomes || []).map(function(i, idx) {
       return { label: (15 + idx) + '. ' + (i.label || 'Other Income'), value: i.amount };
     }),
   ];
 
   const deductLines = [
-    { label: '1. Instalment / Kasbon',       value: sp.instalment },
+    { label: '1. Installment',               value: sp.instalment },
     { label: '2. Miscellaneous Deduction',   value: sp.miscellaneousDeduction },
-    { label: '3. BPJS Ketenagakerjaan',      value: sp.bpjsKetenagakerjaan },
+    { label: '3. BPJS Employment',           value: sp.bpjsKetenagakerjaan },
     { label: '4. Last Month\'s Tax (PPH)',   value: sp.tax },
     ...(sp.otherDeductions || []).map(function(i, idx) {
       return { label: (5 + idx) + '. ' + (i.label || 'Other Deduction'), value: i.amount };
