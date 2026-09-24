@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Student QR Cards — Print Sheet</title>
+  <meta name="robots" content="noindex, nofollow" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Reset ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Screen: toolbar + page preview ── */
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Toolbar (screen only) ── */
+    .toolbar {
+      position: sticky; top: 0; z-index: 100;
+      background: white;
+      border-bottom: 1px solid #e2e8f0;
+      padding: 14px 24px;
+      display: flex; align-items: center; gap: 14px;
+      flex-wrap: wrap;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    }
+    .toolbar-left { flex: 1; min-width: 0; }
+    .toolbar-title { font-size: 16px; font-weight: 800; color: #0f172a; }
+    .toolbar-sub   { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .toolbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-size: 13px; font-weight: 700;
+      padding: 9px 18px; border-radius: 12px;
+      border: none; cursor: pointer;
+      transition: background .15s, transform .1s;
+      text-decoration: none;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-primary { background: #4f46e5; color: white; }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-outline { background: white; color: #475569; border: 1.5px solid #e2e8f0; }
+    .btn-outline:hover { background: #f8fafc; }
+    .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+    /* ── Size selector ── */
+    .size-selector {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .size-selector label { font-size: 12px; font-weight: 600; color: #64748b; }
+    .size-selector select {
+      font-size: 12px; font-weight: 600;
+      padding: 6px 10px; border-radius: 8px;
+      border: 1.5px solid #e2e8f0;
+      background: white; color: #334155;
+      cursor: pointer; outline: none;
+      font-family: inherit;
+    }
+
+    /* ── Print sheet wrapper ── */
+    .sheet-wrapper {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+
+    /* ── Empty state ── */
+    .empty-state {
+      background: white; border-radius: 20px;
+      padding: 60px 40px; text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+      max-width: 400px; margin: 40px auto;
+    }
+    .empty-icon {
+      width: 64px; height: 64px; border-radius: 20px;
+      background: #ede9fe; margin: 0 auto 16px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .empty-icon svg { width: 32px; height: 32px; color: #7c3aed; }
+    .empty-state h2 { font-size: 18px; font-weight: 800; color: #0f172a; margin-bottom: 8px; }
+    .empty-state p  { font-size: 13px; color: #64748b; line-height: 1.6; }
+
+    /* ── A4 page ── */
+    .a4-page {
+      background: white;
+      width: 210mm;
+      min-height: 297mm;
+      box-shadow: 0 4px 24px rgba(0,0,0,.12);
+      border-radius: 4px;
+      padding: 12mm 10mm;
+      break-after: page;
+      page-break-after: always;
+    }
+
+    /* ── Card grid ── */
+    .card-grid {
+      display: grid;
+      gap: 6mm;
+    }
+    /* Sizes (cols) */
+    .card-grid[data-cols="2"] { grid-template-columns: repeat(2, 1fr); }
+    .card-grid[data-cols="3"] { grid-template-columns: repeat(3, 1fr); }
+    .card-grid[data-cols="4"] { grid-template-columns: repeat(4, 1fr); }
+
+    /* ── Individual student card ── */
+    .student-card {
+      border: 1.5px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 10px 10px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      background: white;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    /* Avatar row */
+    .card-header {
+      display: flex; align-items: center; gap: 7px;
+      width: 100%;
+    }
+    .card-avatar {
+      width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 13px; font-weight: 900;
+    }
+    .card-name-block { flex: 1; min-width: 0; }
+    .card-name {
+      font-size: 11px; font-weight: 800; color: #0f172a;
+      line-height: 1.2; word-break: break-word;
+    }
+    .card-grade {
+      font-size: 9px; font-weight: 600; color: #64748b;
+      margin-top: 1px;
+    }
+
+    /* QR */
+    .card-qr {
+      width: 100%;
+      display: flex; justify-content: center;
+      background: #f8fafc;
+      border-radius: 7px;
+      padding: 6px;
+    }
+    .card-qr canvas, .card-qr img { display: block; }
+
+    /* Student code */
+    .card-code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 8px; font-weight: 600;
+      color: #94a3b8; letter-spacing: 0.06em;
+      text-align: center;
+    }
+
+    /* Groups */
+    .card-groups {
+      width: 100%;
+      display: flex; flex-wrap: wrap; gap: 3px;
+      justify-content: center;
+    }
+    .group-chip {
+      font-size: 8px; font-weight: 700;
+      padding: 2px 6px; border-radius: 5px; line-height: 1.4;
+      max-width: 100%; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+    }
+    .chip-private  { background: #f3e8ff; color: #7e22ce; }
+    .chip-regular  { background: #d1fae5; color: #065f46; }
+    .chip-default  { background: #e0e7ff; color: #3730a3; }
+
+    /* Cut guides */
+    .cut-guide {
+      font-size: 8px; color: #94a3b8;
+      text-align: center;
+      margin-top: 4mm;
+      font-style: italic;
+    }
+
+    /* ── Print styles ── */
+    @media print {
+      html, body { background: white !important; }
+      .toolbar { display: none !important; }
+      .sheet-wrapper { padding: 0 !important; gap: 0 !important; }
+      .a4-page {
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        width: 100% !important;
+        min-height: 100vh;
+        padding: 10mm 8mm !important;
+      }
+      @page { size: A4 portrait; margin: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Toolbar (screen only) ── -->
+<div class="toolbar">
+  <div class="toolbar-left">
+    <p class="toolbar-title">📄 Student QR Cards — Print Sheet</p>
+    <p class="toolbar-sub">
+      <%= students.length %> card<%= students.length !== 1 ? 's' : '' %> ready to print ·
+      Scan QR to view the student's public Achievement Card
+    </p>
+  </div>
+  <div class="toolbar-right">
+    <div class="size-selector">
+      <label for="col-select">Cards per row:</label>
+      <select id="col-select">
+        <option value="2">2</option>
+        <option value="3" selected>3 (recommended)</option>
+        <option value="4">4 (small)</option>
+      </select>
+    </div>
+    <a href="/admin/student-achievements" class="btn btn-outline">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+      </svg>
+      Back
+    </a>
+    <button onclick="window.print()" class="btn btn-primary" id="btn-print" disabled>
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.056 48.056 0 0 1 1.913-.247m10.5 0a48.536 48.536 0 0 0-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5Zm-3 0h.008v.008H15V10.5Z" />
+      </svg>
+      <span id="btn-print-label">Generating QR codes…</span>
+    </button>
+  </div>
+</div>
+
+<!-- ── Sheet content ── -->
+<div class="sheet-wrapper" id="sheet-wrapper">
+<% if (students.length === 0) { %>
+  <div class="empty-state">
+    <div class="empty-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 9.375v-4.5Z" />
+      </svg>
+    </div>
+    <h2>No Student Cards</h2>
+    <p>No students with barcodes found. Run "Sync Student Barcodes" on the Achievement page first.</p>
+  </div>
+<% } else { %>
+  <!-- Cards will be built & paginated by JS after QR generation -->
+  <div id="loading-indicator" style="padding:60px 0;text-align:center;">
+    <div style="width:40px;height:40px;border:3px solid #e0e7ff;border-top-color:#4f46e5;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px;"></div>
+    <p style="font-size:13px;color:#64748b;font-weight:600;">Generating QR codes for <strong><%= students.length %></strong> students…</p>
+    <p style="font-size:11px;color:#94a3b8;margin-top:4px;">This may take a moment for large classes.</p>
+  </div>
+  <style>@keyframes spin { to { transform:rotate(360deg); } }</style>
+<% } %>
+</div>
+
+<!-- Data for JS -->
+<script>
+window.CARD_DATA = <%- JSON.stringify(students.map(function(s) {
+  return {
+    _id:          s._id,
+    full_name:    s.full_name,
+    grade_school: s.grade_school,
+    student_code: s.student_code,
+    barcode:      s.barcode,
+    groups:       s.groups
+  };
+})) %>;
+window.BASE_URL = '<%= baseUrl %>';
+</script>
+
+<!-- QRCode.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<script>
+(function () {
+  if (!window.CARD_DATA || window.CARD_DATA.length === 0) return;
+
+  var students  = window.CARD_DATA;
+  var baseUrl   = window.BASE_URL || (window.location.protocol + '//' + window.location.host);
+  var wrapper   = document.getElementById('sheet-wrapper');
+  var colSelect = document.getElementById('col-select');
+  var printBtn  = document.getElementById('btn-print');
+  var printLbl  = document.getElementById('btn-print-label');
+
+  /* ── QR size map per columns ── */
+  var QR_SIZE = { '2': 130, '3': 100, '4': 76 };
+  /* ── Cards per page map per columns ── */
+  var PER_PAGE = { '2': 8, '3': 9, '4': 12 };
+
+  /* ── Avatar gradient ── */
+  function avatarStyle(name) {
+    var hue  = (name.charCodeAt(0) * 37) % 360;
+    var hue2 = (hue + 30) % 360;
+    return 'background:linear-gradient(135deg,hsl(' + hue + ',65%,58%),hsl(' + hue2 + ',75%,38%))';
+  }
+
+  /* ── Build identity label: "Name Grade - Level (Group)" ── */
+  function identityLabel(s) {
+    var parts = [s.full_name];
+    if (s.grade_school) parts[0] += ' ' + s.grade_school;
+    if (s.groups && s.groups.length > 0) {
+      var g = s.groups[0];
+      var suffix = '';
+      if (g.level)     suffix += g.level;
+      if (g.groupName) suffix += (suffix ? ' · ' : '') + g.groupName;
+      if (suffix) parts.push(suffix);
+    }
+    return parts.join(' — ');
+  }
+
+  /* ── Build a single student card DOM node (no QR yet) ── */
+  function buildCardNode(s) {
+    var card = document.createElement('div');
+    card.className = 'student-card';
+    card.dataset.barcode = s.barcode;
+
+    // Header: avatar + name
+    var initials = (s.full_name || '?').charAt(0).toUpperCase();
+    var gradeHtml = s.grade_school
+      ? '<div class="card-grade">' + escH(s.grade_school) + '</div>'
+      : '';
+
+    // Groups chips
+    var chipsHtml = '';
+    if (s.groups && s.groups.length) {
+      chipsHtml = '<div class="card-groups">' +
+        s.groups.map(function(g) {
+          var cls = g.type === 'PRIVATE' ? 'chip-private' : g.type === 'GROUP' ? 'chip-regular' : 'chip-default';
+          var label = escH(g.groupName) + (g.level ? ' · ' + escH(g.level) : '');
+          return '<span class="group-chip ' + cls + '">' + label + '</span>';
+        }).join('') +
+      '</div>';
+    }
+
+    card.innerHTML =
+      '<div class="card-header">' +
+        '<div class="card-avatar" style="' + avatarStyle(s.full_name) + '">' + initials + '</div>' +
+        '<div class="card-name-block">' +
+          '<div class="card-name">' + escH(s.full_name) + '</div>' +
+          gradeHtml +
+        '</div>' +
+      '</div>' +
+      '<div class="card-qr" id="qr-' + s._id + '"></div>' +
+      '<div class="card-code">' + escH(s.student_code) + '</div>' +
+      chipsHtml;
+
+    return card;
+  }
+
+  /* ── Paginate cards into A4 pages ── */
+  function buildPages(cardNodes, cols) {
+    var perPage = PER_PAGE[String(cols)] || 9;
+    var pages   = [];
+    for (var i = 0; i < cardNodes.length; i += perPage) {
+      pages.push(cardNodes.slice(i, i + perPage));
+    }
+    return pages;
+  }
+
+  /* ── Main render ── */
+  function render(cols) {
+    var qrSize = QR_SIZE[String(cols)] || 100;
+
+    // Build card nodes
+    var cardNodes = students.map(buildCardNode);
+
+    // Paginate and inject into DOM
+    var loading = document.getElementById('loading-indicator');
+    if (loading) loading.remove();
+
+    // Remove old pages
+    wrapper.querySelectorAll('.a4-page').forEach(function(p) { p.remove(); });
+
+    var pages = buildPages(cardNodes, cols);
+    pages.forEach(function(group, pageIdx) {
+      var page = document.createElement('div');
+      page.className = 'a4-page';
+
+      var grid = document.createElement('div');
+      grid.className = 'card-grid';
+      grid.dataset.cols = String(cols);
+      group.forEach(function(node) { grid.appendChild(node); });
+      page.appendChild(grid);
+
+      var guide = document.createElement('div');
+      guide.className = 'cut-guide';
+      guide.textContent = 'Cut along card borders · Page ' + (pageIdx + 1) + ' of ' + pages.length;
+      page.appendChild(guide);
+
+      wrapper.appendChild(page);
+    });
+
+    // Generate QR codes (batched via rAF to avoid locking the UI)
+    var i = 0;
+    function genNext() {
+      if (i >= students.length) {
+        // All done — enable print button
+        printBtn.disabled = false;
+        printLbl.textContent = 'Print / Save as PDF';
+        return;
+      }
+      var s       = students[i++];
+      var el      = document.getElementById('qr-' + s._id);
+      if (el && s.barcode) {
+        try {
+          new QRCode(el, {
+            text:         baseUrl + '/student-card/' + encodeURIComponent(s.barcode),
+            width:        qrSize,
+            height:       qrSize,
+            colorDark:    '#1e1b4b',
+            colorLight:   '#f8fafc',
+            correctLevel: QRCode.CorrectLevel.M,
+          });
+        } catch(e) {
+          el.innerHTML = '<span style="font-size:9px;color:#94a3b8;">QR error</span>';
+        }
+      }
+      requestAnimationFrame(genNext);
+    }
+    requestAnimationFrame(genNext);
+  }
+
+  // Initial render
+  render(3);
+
+  // Column selector
+  colSelect.addEventListener('change', function() {
+    printBtn.disabled = true;
+    printLbl.textContent = 'Regenerating…';
+    // Brief delay so browser can update UI
+    setTimeout(function() { render(parseInt(colSelect.value, 10)); }, 50);
+  });
+
+  /* ── Helpers ── */
+  function escH(str) {
+    return String(str || '')
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+})();
+</script>
+
+</body>
+</html>
