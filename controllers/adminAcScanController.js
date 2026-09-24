@@ -14,6 +14,24 @@ const Student        = require('../models/Student');
 const AcTransaction  = require('../models/AcTransaction');
 const { recordAcTransaction, getStudentAcTotal } = require('../services/studentService');
 
+/**
+ * Extracts the raw barcode string from a QR scan value.
+ * Handles both plain barcodes (e.g. "AC12345") and full card URLs
+ * (e.g. "https://domain.com/student-card/AC12345" or "/c/AC12345").
+ */
+function extractBarcode(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  raw = raw.trim();
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const url   = new URL(raw);
+      const match = url.pathname.match(/\/(?:student-card|c)\/([^/]+)/i);
+      if (match && match[1]) return decodeURIComponent(match[1]);
+    } catch (e) { /* not a valid URL */ }
+  }
+  return raw;
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    GET /admin/scan-ac
    Render the full-screen scanner page.
@@ -37,12 +55,13 @@ exports.mobileScanPage = (_req, res) => {
 ═════════════════════════════════════════════════════════════════════ */
 exports.lookup = async (req, res) => {
   try {
-    const { barcode } = req.query;
-    if (!barcode || !barcode.trim()) {
+    const raw = req.query.barcode;
+    const barcode = extractBarcode(raw);
+    if (!barcode) {
       return res.status(400).json({ ok: false, error: 'No barcode provided.' });
     }
 
-    const student = await Student.findOne({ barcode: barcode.trim() }).lean();
+    const student = await Student.findOne({ barcode }).lean();
     if (!student) {
       return res.status(404).json({ ok: false, error: 'Student not found. Check the barcode and try again.' });
     }
@@ -73,9 +92,10 @@ exports.lookup = async (req, res) => {
 ═════════════════════════════════════════════════════════════════════ */
 exports.transact = async (req, res) => {
   try {
-    const { barcode, type, subject, class_name, note } = req.body;
+    const { type, subject, class_name, note } = req.body;
+    const barcode = extractBarcode(req.body.barcode);
 
-    if (!barcode || !barcode.trim()) {
+    if (!barcode) {
       return res.status(400).json({ ok: false, error: 'No barcode provided.' });
     }
     if (!['add', 'reduce'].includes(type)) {

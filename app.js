@@ -10,12 +10,13 @@ const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 
 const csrfProtection = require('./middleware/csrf');
-const reportRoutes  = require('./routes/reports');
-const authRoutes    = require('./routes/auth');
-const profileRoutes = require('./routes/profile');
-const adminRoutes   = require('./routes/admin');
+const reportRoutes   = require('./routes/reports');
+const authRoutes     = require('./routes/auth');
+const profileRoutes  = require('./routes/profile');
+const adminRoutes    = require('./routes/admin');
 const feedbackRoutes = require('./routes/feedback');
 const notificationRoutes = require('./routes/notifications');
+const publicCardRoutes   = require('./routes/publicCard');
 const Notification   = require('./models/Notification');
 const Feedback = require('./models/Feedback');
 const { requireAuth } = require('./middleware/auth');
@@ -25,6 +26,9 @@ app.set('trust proxy', 1);
 
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/daily_teaching_report';
+// Public base URL for QR codes — set APP_BASE_URL in .env for a tunnel/production URL.
+// Falls back to the current request origin dynamically (see app.locals middleware below).
+const APP_BASE_URL = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
 
 // Enforce SESSION_SECRET — refuse to start with the insecure default
 const SESSION_SECRET = process.env.SESSION_SECRET;
@@ -172,12 +176,20 @@ app.use(async (req, res, next) => {
   next();
 });
 
+// Inject baseUrl into every response — used by QR code generator in views
+app.use((req, res, next) => {
+  res.locals.baseUrl = APP_BASE_URL || (req.protocol + '://' + req.get('host'));
+  next();
+});
+
 app.use('/auth',    authRoutes);
 app.use('/reports', requireAuth, reportRoutes);
 app.use('/profile', requireAuth, profileRoutes);
 app.use('/notifications', requireAuth, notificationRoutes);
 app.use('/admin',   adminRoutes);
 app.use('/feedback', feedbackRoutes);
+// Public (unauthenticated) routes — student card view via QR/camera scan
+app.use('/', publicCardRoutes);
 app.get('/score-calculator', requireAuth, (req, res) => res.render('score-calculator'));
 app.get('/', (req, res) => res.redirect('/reports'));
 

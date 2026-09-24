@@ -746,12 +746,32 @@
     return false;
   }
 
+  /* ── Extract barcode from raw scan value (handles QR URLs & raw codes) ── */
+  function extractBarcode(raw) {
+    if (!raw) return '';
+    raw = raw.trim();
+    // If it looks like a URL (http:// or https://), try to extract the barcode from path
+    if (/^https?:\/\//i.test(raw)) {
+      try {
+        var url  = new URL(raw);
+        var path = url.pathname; // e.g. /student-card/AC12345 or /c/AC12345
+        var match = path.match(/\/(?:student-card|c)\/([^\/]+)/i);
+        if (match && match[1]) {
+          return decodeURIComponent(match[1]);
+        }
+      } catch (e) { /* not a valid URL, fall through */ }
+    }
+    return raw;
+  }
+
   /* ══════════════════════════════════════════════════════════
      PHASE 3 — Barcode Detected Handler
   ══════════════════════════════════════════════════════════ */
   var currentLookupId = 0;
 
-  function onBarcodeDetected(barcode) {
+  function onBarcodeDetected(raw) {
+    if (!raw) return;
+    var barcode = extractBarcode(raw);
     if (!barcode) return;
     if (barcode === currentBarcode) return;
     if (isCooldown(barcode)) return;

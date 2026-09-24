@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title><%= student.full_name %>'s Achievement Card</title>
+  <meta name="description" content="View <%= student.full_name %>'s Achievement Card — <%= student.acTotal %> total achievement cards earned." />
+  <!-- Prevent indexing of individual student cards -->
+  <meta name="robots" content="noindex, nofollow" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900;1,14..32,400&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --indigo-50:  #eef2ff;
+      --indigo-100: #e0e7ff;
+      --indigo-400: #818cf8;
+      --indigo-500: #6366f1;
+      --indigo-600: #4f46e5;
+      --indigo-700: #4338ca;
+      --amber-50:   #fffbeb;
+      --amber-100:  #fef3c7;
+      --amber-400:  #fbbf24;
+      --amber-500:  #f59e0b;
+      --amber-600:  #d97706;
+      --slate-50:   #f8fafc;
+      --slate-100:  #f1f5f9;
+      --slate-200:  #e2e8f0;
+      --slate-400:  #94a3b8;
+      --slate-500:  #64748b;
+      --slate-600:  #475569;
+      --slate-700:  #334155;
+      --slate-800:  #1e293b;
+      --slate-900:  #0f172a;
+      --emerald-100:#d1fae5;
+      --emerald-500:#10b981;
+      --emerald-700:#047857;
+      --rose-100:   #ffe4e6;
+      --rose-500:   #f43f5e;
+      --rose-700:   #be123c;
+      --purple-100: #f3e8ff;
+      --purple-700: #7e22ce;
+    }
+
+    html, body {
+      min-height: 100%;
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #f0f4ff 0%, #fafafa 50%, #fff7ed 100%);
+      color: var(--slate-800);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Page wrapper ── */
+    .page {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 16px 40px;
+    }
+
+    /* ── Brand bar ── */
+    .brand-bar {
+      width: 100%;
+      max-width: 440px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0 20px;
+    }
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .brand-logo-mark {
+      width: 30px; height: 30px;
+      background: linear-gradient(135deg, var(--indigo-500), var(--indigo-700));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .brand-logo-mark svg { width: 16px; height: 16px; color: white; }
+    .brand-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--slate-600);
+    }
+    .brand-badge {
+      font-size: 10px;
+      font-weight: 700;
+      background: var(--indigo-50);
+      color: var(--indigo-600);
+      border: 1px solid var(--indigo-100);
+      padding: 3px 10px;
+      border-radius: 99px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    /* ── Card ── */
+    .card {
+      width: 100%;
+      max-width: 440px;
+      background: white;
+      border-radius: 28px;
+      box-shadow:
+        0 1px 3px rgba(0,0,0,.06),
+        0 8px 32px rgba(99,102,241,.10),
+        0 24px 64px rgba(0,0,0,.06);
+      overflow: hidden;
+      animation: slideUp .4s cubic-bezier(.22,1,.36,1) both;
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0);    }
+    }
+
+    /* ── Card header ── */
+    .card-header {
+      padding: 24px 24px 20px;
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+    }
+    .avatar {
+      width: 56px; height: 56px; flex-shrink: 0;
+      border-radius: 18px;
+      background: linear-gradient(135deg, var(--indigo-400), var(--indigo-700));
+      display: flex; align-items: center; justify-content: center;
+      color: white;
+      font-size: 24px; font-weight: 900;
+      box-shadow: 0 4px 16px rgba(99,102,241,.35);
+    }
+    .header-info { flex: 1; min-width: 0; }
+    .student-name {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--slate-900);
+      line-height: 1.2;
+    }
+    .student-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 99px;
+      line-height: 1.4;
+    }
+    .badge-grade { background: var(--slate-100); color: var(--slate-600); }
+    .badge-verified {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    /* ── QR section ── */
+    .qr-section {
+      margin: 0 20px;
+      background: var(--slate-50);
+      border: 2px solid var(--slate-100);
+      border-radius: 20px;
+      padding: 24px 20px 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+    .qr-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--slate-400);
+    }
+    #qr-container {
+      width: 160px; height: 160px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #qr-container img, #qr-container canvas {
+      border-radius: 8px;
+    }
+    .student-code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--slate-500);
+      letter-spacing: 0.12em;
+    }
+    .qr-hint {
+      font-size: 10px;
+      color: var(--slate-400);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    /* ── Classes ── */
+    .section {
+      padding: 16px 24px;
+    }
+    .section-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--slate-400);
+      margin-bottom: 10px;
+    }
+    .classes-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .class-chip {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 10px;
+      line-height: 1.4;
+    }
+    .class-chip-private   { background: var(--purple-100); color: var(--purple-700); }
+    .class-chip-regular   { background: var(--emerald-100); color: var(--emerald-700); }
+    .class-chip-default   { background: var(--indigo-50); color: var(--indigo-600); }
+    .no-classes {
+      font-size: 12px;
+      color: var(--slate-400);
+      font-style: italic;
+    }
+
+    /* ── AC Total banner ── */
+    .ac-banner {
+      margin: 0 20px 16px;
+      background: var(--amber-50);
+      border: 1.5px solid var(--amber-100);
+      border-radius: 20px;
+      padding: 20px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .ac-banner-info { flex: 1; }
+    .ac-banner-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--amber-500);
+      margin-bottom: 4px;
+    }
+    .ac-count {
+      font-size: 48px;
+      font-weight: 900;
+      color: var(--amber-600);
+      line-height: 1;
+    }
+    .ac-banner-icon {
+      width: 52px; height: 52px; flex-shrink: 0;
+      background: var(--amber-100);
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ac-banner-icon svg { width: 26px; height: 26px; color: var(--amber-500); }
+
+    /* ── Divider ── */
+    .divider {
+      height: 1px;
+      background: var(--slate-100);
+      margin: 0;
+    }
+
+    /* ── History ── */
+    .history-header {
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--slate-50);
+      border-bottom: 1px solid var(--slate-100);
+    }
+    .history-header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .history-header-left svg { width: 14px; height: 14px; color: var(--slate-400); flex-shrink: 0; }
+    .history-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--slate-500);
+    }
+    .history-count-badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: white;
+      border: 1px solid var(--slate-200);
+      color: var(--slate-600);
+      padding: 2px 10px;
+      border-radius: 99px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.04);
+    }
+
+    .history-empty {
+      padding: 36px 24px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--slate-400);
+    }
+
+    .history-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--slate-50);
+      transition: background .15s;
+    }
+    .history-item:hover { background: var(--slate-50); }
+    .history-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+    .dot-add    { background: var(--emerald-500); }
+    .dot-reduce { background: var(--rose-500); }
+    .history-body { flex: 1; min-width: 0; }
+    .history-class {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--slate-800);
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .history-meta {
+      font-size: 11px;
+      color: var(--slate-400);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .history-date {
+      font-size: 11px;
+      color: var(--slate-400);
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+
+    /* Inline badges */
+    .tag {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 5px;
+    }
+    .tag-scan   { background: #e0e7ff; color: #3730a3; }
+    .tag-report { background: var(--slate-100); color: var(--slate-600); }
+    .tag-add    { background: #d1fae5; color: #065f46; }
+    .tag-reduce { background: #ffe4e6; color: #9f1239; }
+
+    /* ── Footer ── */
+    .card-footer {
+      padding: 18px 24px;
+      background: var(--slate-50);
+      border-top: 1px solid var(--slate-100);
+      text-align: center;
+    }
+    .footer-text {
+      font-size: 11px;
+      color: var(--slate-400);
+      line-height: 1.6;
+    }
+    .footer-text strong { color: var(--slate-500); }
+
+    /* ── Responsive tweaks ── */
+    @media (min-width: 480px) {
+      .card { border-radius: 32px; }
+      .card-header { padding: 28px 28px 22px; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Brand bar -->
+  <div class="brand-bar">
+    <div class="brand-logo">
+      <div class="brand-logo-mark">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
+        </svg>
+      </div>
+      <span class="brand-name">Achievement Card</span>
+    </div>
+    <span class="brand-badge">Verified</span>
+  </div>
+
+  <!-- Main card -->
+  <div class="card">
+
+    <!-- Header: Avatar + Name -->
+    <div class="card-header">
+      <div class="avatar" id="student-avatar"><%= student.full_name.charAt(0).toUpperCase() %></div>
+      <div class="header-info">
+        <h1 class="student-name"><%= student.full_name %></h1>
+        <div class="student-meta">
+          <% if (student.grade_school) { %>
+            <span class="badge badge-grade"><%= student.grade_school %></span>
+          <% } %>
+          <span class="badge badge-verified">
+            <svg xmlns="http://www.w3.org/2000/svg" style="width:11px;height:11px;margin-right:4px;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+            Verified Student
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- QR Code section (this card's own QR, for re-sharing) -->
+    <div class="qr-section">
+      <span class="qr-label">Student Card QR</span>
+      <div id="qr-container"></div>
+      <span class="student-code"><%= student.student_code %></span>
+      <p class="qr-hint">Scan this code to view this card anytime</p>
+    </div>
+
+    <!-- Classes -->
+    <div class="section">
+      <p class="section-label">Classes</p>
+      <% if (student.groups && student.groups.length > 0) { %>
+        <div class="classes-list">
+          <% student.groups.forEach(function(g) { %>
+            <%
+              var chipClass = 'class-chip-default';
+              if (g.type === 'PRIVATE') chipClass = 'class-chip-private';
+              else if (g.type === 'GROUP') chipClass = 'class-chip-regular';
+            %>
+            <span class="class-chip <%= chipClass %>">
+              <%= g.groupName %><% if (g.level) { %> · <%= g.level %><% } %>
+            </span>
+          <% }); %>
+        </div>
+      <% } else { %>
+        <p class="no-classes">No classes enrolled yet.</p>
+      <% } %>
+    </div>
+
+    <!-- Total AC Banner -->
+    <div class="ac-banner">
+      <div class="ac-banner-info">
+        <p class="ac-banner-label">Total Achievement Cards</p>
+        <p class="ac-count"><%= student.acTotal %></p>
+      </div>
+      <div class="ac-banner-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
+        </svg>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- AC History -->
+    <div class="history-header">
+      <div class="history-header-left">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+        <span class="history-title">AC History</span>
+      </div>
+      <span class="history-count-badge"><%= student.acHistory.length %></span>
+    </div>
+
+    <% if (!student.acHistory || student.acHistory.length === 0) { %>
+      <div class="history-empty">No achievement history recorded yet.</div>
+    <% } else { %>
+      <% student.acHistory.forEach(function(h) { %>
+        <%
+          var isAdd     = h.type !== 'reduce';
+          var dotClass  = isAdd ? 'dot-add' : 'dot-reduce';
+          var absCount  = Math.abs(h.count || 1);
+          var d = new Date(h.date);
+          var dateStr = isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' });
+          var metaParts = [];
+          if (h.subject)  metaParts.push(h.subject);
+          if (h.teacher)  metaParts.push('by ' + h.teacher);
+          if (h.note)     metaParts.push('"' + h.note + '"');
+          var metaStr = metaParts.join(' · ');
+        %>
+        <div class="history-item">
+          <div class="history-dot <%= dotClass %>"></div>
+          <div class="history-body">
+            <div class="history-class">
+              <%= h.class_name %>
+              <% if (h.source === 'scan') { %>
+                <span class="tag tag-scan">SCAN</span>
+              <% } else { %>
+                <span class="tag tag-report">REPORT</span>
+              <% } %>
+              <% if (isAdd) { %>
+                <span class="tag tag-add">+<%= absCount %></span>
+              <% } else { %>
+                <span class="tag tag-reduce">−<%= absCount %></span>
+              <% } %>
+            </div>
+            <% if (metaStr) { %>
+              <div class="history-meta"><%= metaStr %></div>
+            <% } %>
+          </div>
+          <span class="history-date"><%= dateStr %></span>
+        </div>
+      <% }); %>
+    <% } %>
+
+    <!-- Footer -->
+    <div class="card-footer">
+      <p class="footer-text">
+        <strong>Achievement Card</strong> · Verified Student Record<br />
+        This page is read-only. Only teachers can add or remove cards.
+      </p>
+    </div>
+
+  </div><!-- /card -->
+</div><!-- /page -->
+
+<!-- QR code library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+(function () {
+  // Render the self-referencing QR code for this card page
+  var cardUrl = '<%= baseUrl %>/student-card/<%= encodeURIComponent(student.barcode) %>';
+  try {
+    new QRCode(document.getElementById('qr-container'), {
+      text:         cardUrl,
+      width:        160,
+      height:       160,
+      colorDark:    '#1e1b4b',
+      colorLight:   '#f8fafc',
+      correctLevel: QRCode.CorrectLevel.M,
+    });
+  } catch (e) {
+    document.getElementById('qr-container').innerHTML =
+      '<p style="font-size:11px;color:#94a3b8;text-align:center;padding:16px;">QR unavailable</p>';
+  }
+
+  // Assign gradient avatar color based on first character
+  var name  = '<%= student.full_name.charAt(0).toUpperCase() %>';
+  var hue   = (name.charCodeAt(0) * 37) % 360;
+  var avatar = document.getElementById('student-avatar');
+  if (avatar) {
+    avatar.style.background = 'linear-gradient(135deg, hsl(' + hue + ',65%,58%), hsl(' + (hue + 30) + ',75%,38%))';
+  }
+})();
+</script>
+</body>
+</html>

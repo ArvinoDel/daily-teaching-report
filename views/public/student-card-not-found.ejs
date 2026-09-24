@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Card Not Found</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      min-height: 100%; font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #f0f4ff 0%, #fafafa 50%, #fff7ed 100%);
+      color: #1e293b; -webkit-font-smoothing: antialiased;
+    }
+    .page {
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 24px 16px;
+    }
+    .card {
+      width: 100%; max-width: 380px;
+      background: white; border-radius: 28px;
+      box-shadow: 0 8px 32px rgba(99,102,241,.10), 0 1px 3px rgba(0,0,0,.06);
+      padding: 40px 32px;
+      text-align: center;
+      animation: pop .4s cubic-bezier(.22,1,.36,1) both;
+    }
+    @keyframes pop { from { opacity:0; transform:scale(.95); } to { opacity:1; transform:scale(1); } }
+    .icon-wrap {
+      width: 72px; height: 72px; border-radius: 24px;
+      background: #fef3c7; margin: 0 auto 20px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .icon-wrap svg { width: 36px; height: 36px; color: #d97706; }
+    h1 { font-size: 20px; font-weight: 800; color: #0f172a; margin-bottom: 10px; }
+    p  { font-size: 13px; color: #64748b; line-height: 1.6; }
+    .barcode-pill {
+      display: inline-block;
+      margin-top: 14px;
+      font-family: monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: #475569;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      padding: 6px 16px;
+      border-radius: 99px;
+    }
+    .hint {
+      margin-top: 20px; font-size: 12px; color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="card">
+    <div class="icon-wrap">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+      </svg>
+    </div>
+    <h1>Card Not Found</h1>
+    <p>We couldn't find a student card for this code.<br />It may have been removed or the code is invalid.</p>
+    <span class="barcode-pill"><%= barcode %></span>
+    <p class="hint">If you believe this is an error, please contact your teacher.</p>
+  </div>
+</div>
+</body>
+</html>

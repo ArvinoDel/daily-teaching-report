@@ -231,8 +231,24 @@
     lookupBarcode(barcode);
   });
 
+  /* ── Extract barcode from raw scan or typed value (handles QR URLs) ── */
+  function extractBarcode(raw) {
+    if (!raw) return '';
+    raw = raw.trim();
+    if (/^https?:\/\//i.test(raw)) {
+      try {
+        var url = new URL(raw);
+        var match = url.pathname.match(/\/(?:student-card|c)\/([^\/]+)/i);
+        if (match && match[1]) return decodeURIComponent(match[1]);
+      } catch (e) {}
+    }
+    return raw;
+  }
+
   /* ── Lookup ─────────────────────────────────────────────── */
-  function lookupBarcode(barcode) {
+  function lookupBarcode(raw) {
+    var barcode = extractBarcode(raw);
+    if (!barcode) return;
     hideError();
     fetch('/admin/scan-ac/lookup?barcode=' + encodeURIComponent(barcode))
       .then(function (r) { return r.json(); })
