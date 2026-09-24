@@ -264,38 +264,81 @@
 </div>
 
 <!-- Data for JS -->
-<script>
-window.CARD_DATA = <%- JSON.stringify(students.map(function(s) {
-  return {
-    _id:          s._id,
-    full_name:    s.full_name,
-    grade_school: s.grade_school,
-    student_code: s.student_code,
-    barcode:      s.barcode,
-    groups:       s.groups
-  };
-})) %>;
-window.BASE_URL = '<%= baseUrl %>';
-</script>
+<script id="card-data-json" type="application/json"><%- JSON.stringify({
+  baseUrl: typeof baseUrl !== 'undefined' ? baseUrl : '',
+  students: (typeof students !== 'undefined' ? students : []).map(function(s) {
+    return {
+      _id:          s._id,
+      full_name:    s.full_name,
+      grade_school: s.grade_school,
+      student_code: s.student_code,
+      barcode:      s.barcode,
+      groups:       s.groups
+    };
+  })
+}) %></script>
 
 <!-- QRCode.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <script>
 (function () {
-  if (!window.CARD_DATA || window.CARD_DATA.length === 0) return;
+  var cardDataEl = document.getElementById('card-data-json');
+  var cardConfig = {};
+  try {
+    cardConfig = cardDataEl ? JSON.parse(cardDataEl.textContent || '{}') : {};
+  } catch (e) {
+    console.error('Failed to parse card data:', e);
+  }
 
-  var students  = window.CARD_DATA;
-  var baseUrl   = window.BASE_URL || (window.location.protocol + '//' + window.location.host);
+  var students = cardConfig.students || [];
+  if (!students || students.length === 0) return;
+
+  var baseUrl  = cardConfig.baseUrl || (window.location.protocol + '//' + window.location.host);
+  window.CARD_DATA = students;
+  window.BASE_URL  = baseUrl;
+
   var wrapper   = document.getElementById('sheet-wrapper');
   var colSelect = document.getElementById('col-select');
   var printBtn  = document.getElementById('btn-print');
   var printLbl  = document.getElementById('btn-print-label');
 
   /* ── QR size map per columns ── */
-  var QR_SIZE = { '2': 130, '3': 100, '4': 76 };
+  var QR_SIZE  = { '2': 130, '3': 100, '4': 76 };
   /* ── Cards per page map per columns ── */
-  var PER_PAGE = { '2': 8, '3': 9, '4': 12 };
+  var PER_PAGE = { '2': 8,   '3': 9,   '4': 12 };
+
+  /* ══════════════════════════════════════════════════════════
+     STEP 1 — Expand students → one entry per (student, group)
+     A student in 2 groups gets 2 separate entries / cards.
+     A student with no group gets 1 entry with group = null.
+  ══════════════════════════════════════════════════════════ */
+  var entries = []; // { student, group, uid }
+  students.forEach(function(s) {
+    if (!s.groups || s.groups.length === 0) {
+      entries.push({ student: s, group: null, uid: s._id + '_0' });
+    } else {
+      s.groups.forEach(function(g, gi) {
+        entries.push({ student: s, group: g, uid: s._id + '_' + gi });
+      });
+    }
+  });
+
+  // Sort entries: by group name then student name — keeps each class together
+  entries.sort(function(a, b) {
+    var ga = a.group ? a.group.groupName : '';
+    var gb = b.group ? b.group.groupName : '';
+    if (ga !== gb) return ga.localeCompare(gb);
+    return a.student.full_name.localeCompare(b.student.full_name);
+  });
+
+  // Update toolbar subtitle with real card count
+  var subEl = document.querySelector('.toolbar-sub');
+  if (subEl) {
+    subEl.textContent = entries.length + ' card' + (entries.length !== 1 ? 's' : '') +
+      ' (' + students.length + ' student' + (students.length !== 1 ? 's' : '') + ') ready to print · ' +
+      'Scan QR to view the student\'s public Achievement Card';
+  }
 
   /* ── Avatar gradient ── */
   function avatarStyle(name) {
@@ -304,42 +347,31 @@ window.BASE_URL = '<%= baseUrl %>';
     return 'background:linear-gradient(135deg,hsl(' + hue + ',65%,58%),hsl(' + hue2 + ',75%,38%))';
   }
 
-  /* ── Build identity label: "Name Grade - Level (Group)" ── */
-  function identityLabel(s) {
-    var parts = [s.full_name];
-    if (s.grade_school) parts[0] += ' ' + s.grade_school;
-    if (s.groups && s.groups.length > 0) {
-      var g = s.groups[0];
-      var suffix = '';
-      if (g.level)     suffix += g.level;
-      if (g.groupName) suffix += (suffix ? ' · ' : '') + g.groupName;
-      if (suffix) parts.push(suffix);
-    }
-    return parts.join(' — ');
-  }
+  /* ══════════════════════════════════════════════════════════
+     STEP 2 — Build one card DOM node per entry
+     Each card only shows ITS OWN group chip (not all groups).
+  ══════════════════════════════════════════════════════════ */
+  function buildCardNode(entry) {
+    var s   = entry.student;
+    var g   = entry.group;
+    var uid = entry.uid;
 
-  /* ── Build a single student card DOM node (no QR yet) ── */
-  function buildCardNode(s) {
     var card = document.createElement('div');
     card.className = 'student-card';
-    card.dataset.barcode = s.barcode;
+    card.dataset.uid = uid;
 
-    // Header: avatar + name
-    var initials = (s.full_name || '?').charAt(0).toUpperCase();
+    // Header: avatar + name + grade
+    var initials  = (s.full_name || '?').charAt(0).toUpperCase();
     var gradeHtml = s.grade_school
       ? '<div class="card-grade">' + escH(s.grade_school) + '</div>'
       : '';
 
-    // Groups chips
-    var chipsHtml = '';
-    if (s.groups && s.groups.length) {
-      chipsHtml = '<div class="card-groups">' +
-        s.groups.map(function(g) {
-          var cls = g.type === 'PRIVATE' ? 'chip-private' : g.type === 'GROUP' ? 'chip-regular' : 'chip-default';
-          var label = escH(g.groupName) + (g.level ? ' · ' + escH(g.level) : '');
-          return '<span class="group-chip ' + cls + '">' + label + '</span>';
-        }).join('') +
-      '</div>';
+    // Single group chip for THIS entry only
+    var chipHtml = '';
+    if (g) {
+      var cls   = g.type === 'PRIVATE' ? 'chip-private' : g.type === 'GROUP' ? 'chip-regular' : 'chip-default';
+      var label = escH(g.groupName) + (g.level ? ' · ' + escH(g.level) : '');
+      chipHtml  = '<div class="card-groups"><span class="group-chip ' + cls + '">' + label + '</span></div>';
     }
 
     card.innerHTML =
@@ -350,9 +382,9 @@ window.BASE_URL = '<%= baseUrl %>';
           gradeHtml +
         '</div>' +
       '</div>' +
-      '<div class="card-qr" id="qr-' + s._id + '"></div>' +
+      '<div class="card-qr" id="qr-' + uid + '"></div>' +
       '<div class="card-code">' + escH(s.student_code) + '</div>' +
-      chipsHtml;
+      chipHtml;
 
     return card;
   }
@@ -371,8 +403,8 @@ window.BASE_URL = '<%= baseUrl %>';
   function render(cols) {
     var qrSize = QR_SIZE[String(cols)] || 100;
 
-    // Build card nodes
-    var cardNodes = students.map(buildCardNode);
+    // Build one card node per entry
+    var cardNodes = entries.map(buildCardNode);
 
     // Paginate and inject into DOM
     var loading = document.getElementById('loading-indicator');
@@ -400,17 +432,21 @@ window.BASE_URL = '<%= baseUrl %>';
       wrapper.appendChild(page);
     });
 
-    // Generate QR codes (batched via rAF to avoid locking the UI)
+    /* ══════════════════════════════════════════════════════════
+       STEP 3 — Generate QR codes via rAF batching
+       One QR per entry (same barcode, different uid element).
+    ══════════════════════════════════════════════════════════ */
     var i = 0;
     function genNext() {
-      if (i >= students.length) {
-        // All done — enable print button
+      if (i >= entries.length) {
         printBtn.disabled = false;
         printLbl.textContent = 'Print / Save as PDF';
         return;
       }
-      var s       = students[i++];
-      var el      = document.getElementById('qr-' + s._id);
+      var entry = entries[i++];
+      var s     = entry.student;
+      var uid   = entry.uid;
+      var el    = document.getElementById('qr-' + uid);
       if (el && s.barcode) {
         try {
           new QRCode(el, {
@@ -437,7 +473,6 @@ window.BASE_URL = '<%= baseUrl %>';
   colSelect.addEventListener('change', function() {
     printBtn.disabled = true;
     printLbl.textContent = 'Regenerating…';
-    // Brief delay so browser can update UI
     setTimeout(function() { render(parseInt(colSelect.value, 10)); }, 50);
   });
 
