@@ -56,9 +56,10 @@ exports.index = async (req, res) => {
     }
 
     // --- 3. Aggregate ac_students & ac_reduced_students across reports ---
+    // Bug #3 fix: exclude auto-generated linked reports to prevent double-counting
     const [addStats, reduceStats] = await Promise.all([
       Report.aggregate([
-        { $match: matchStageAdd },
+        { $match: { ...matchStageAdd,    is_auto_generated: { $ne: true } } },
         { $unwind: '$ac_students' },
         {
           $group: {
@@ -70,7 +71,7 @@ exports.index = async (req, res) => {
         },
       ]),
       Report.aggregate([
-        { $match: matchStageReduce },
+        { $match: { ...matchStageReduce, is_auto_generated: { $ne: true } } },
         { $unwind: '$ac_reduced_students' },
         {
           $group: {
@@ -229,9 +230,13 @@ exports.lookupByBarcode = async (req, res) => {
     ]);
 
     // Fetch group names
-    const groups = await Group.find({ student_ids: student._id })
-      .select('group_name type level')
-      .lean();
+    // Bug #11 fix: fall back to string-name match when student_ids not yet populated
+    const groups = await Group.find({
+      $or: [
+        { student_ids: student._id },
+        { students: { $in: [student.raw_name, student.full_name].filter(Boolean) } },
+      ],
+    }).select('group_name type level').lean();
 
     return res.json({
       ok: true,
@@ -283,9 +288,13 @@ exports.studentProfile = async (req, res) => {
       getStudentAcHistory(student),
     ]);
 
-    const groups = await Group.find({ student_ids: student._id })
-      .select('group_name type level')
-      .lean();
+    // Bug #11 fix: fall back to string-name match when student_ids not yet populated
+    const groups = await Group.find({
+      $or: [
+        { student_ids: student._id },
+        { students: { $in: [student.raw_name, student.full_name].filter(Boolean) } },
+      ],
+    }).select('group_name type level').lean();
 
     return res.json({
       ok: true,

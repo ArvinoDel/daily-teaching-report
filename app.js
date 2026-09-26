@@ -8,6 +8,7 @@ const { MongoStore } = require('connect-mongo');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const multer = require('multer');
+const compression = require('compression'); // ⚡ gzip compression
 
 const csrfProtection = require('./middleware/csrf');
 const reportRoutes   = require('./routes/reports');
@@ -37,7 +38,11 @@ if (!SESSION_SECRET) {
   process.exit(1);
 }
 
-mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 8000 })
+mongoose.connect(MONGO_URI, {
+  serverSelectionTimeoutMS: 8000,
+  maxPoolSize: 20, // ⚡ allow more concurrent DB operations (default is 5)
+  minPoolSize: 5,
+})
   .then(() => {
     console.log('✅ MongoDB connected');
     // Initialize weekly backup scheduler
@@ -45,6 +50,11 @@ mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 8000 })
     backupService.initScheduler();
   })
   .catch(err => console.error('❌ MongoDB error:', err));
+
+// ⚡ Enable EJS view caching in production (templates compiled once, reused)
+if (process.env.NODE_ENV === 'production') {
+  app.set('view cache', true);
+}
 
 // Security headers via Helmet
 app.use(helmet({
@@ -112,6 +122,7 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
 app.use(generalLimiter);
+app.use(compression()); // ⚡ gzip all responses — reduces page size by 70–85%
 
 // Body size limits — 10MB to accommodate image uploads & large JSON payloads
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -124,7 +135,10 @@ app.use(methodOverride(function (req) {
     return method;
   }
 }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '7d',    // ⚡ browsers cache static files for 7 days — zero re-fetches on repeat visits
+  etag:   true,
+}));
 
 app.use(session({
   secret: SESSION_SECRET,
@@ -153,22 +167,33 @@ app.use(async (req, res, next) => {
     return next();
   }
   const now = Date.now();
-  const lastTracked = req.session._lastTracked || 0;
-  const needsUpdate = now - lastTracked > 60000;
+  const lastTracked    = req.session._lastTracked    || 0;
+  const lastNotifCheck = req.session._lastNotifCheck || 0;
+  const needsTrackUpdate  = now - lastTracked    > 60000;  // 1-min debounce (unchanged)
+  const needsNotifRefresh = now - lastNotifCheck > 15000;  // Bug #10 fix: 15-sec cache
 
   try {
     const User = require('./models/User');
-    if (needsUpdate) {
-      req.session._lastTracked = now;
-      await User.findByIdAndUpdate(req.session.user._id, { lastActiveAt: new Date() });
-    }
-    // Always fetch fresh user data for dropdown
-    const [user, unreadCount] = await Promise.all([
+    // Always fetch fresh user data for nav dropdown; only hit notification count every 15 s
+    const parallelOps = [
       User.findById(req.session.user._id).select('username displayName role joinDate commission profilePicture lastActiveAt'),
-      Notification.countDocuments({ recipient: req.session.user._id, isRead: false }),
-    ]);
+      needsNotifRefresh
+        ? Notification.countDocuments({ recipient: req.session.user._id, isRead: false })
+        : Promise.resolve(null),
+    ];
+    if (needsTrackUpdate) {
+      req.session._lastTracked = now;
+      parallelOps.push(User.findByIdAndUpdate(req.session.user._id, { lastActiveAt: new Date() }));
+    }
+
+    const [user, notifResult] = await Promise.all(parallelOps);
     res.locals.currentUser = user || null;
-    res.locals.unreadNotificationCount = unreadCount || 0;
+
+    if (needsNotifRefresh && notifResult !== null) {
+      req.session._cachedUnreadCount = notifResult || 0;
+      req.session._lastNotifCheck    = now;
+    }
+    res.locals.unreadNotificationCount = req.session._cachedUnreadCount || 0;
   } catch (e) {
     res.locals.currentUser = req.session.user || null;
     res.locals.unreadNotificationCount = 0;

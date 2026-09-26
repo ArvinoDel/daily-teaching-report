@@ -67,6 +67,8 @@ function validateReportInput({ date, class_name, duration, teaching_type, notes,
   if (ac_students     && ac_students.some(s => s.length > 50))     errors.push('AC student name max 50 characters.');
   if (absent_students && absent_students.some(s => s.length > 50)) errors.push('Absent student name max 50 characters.');
   if (ac_reduced_students && ac_reduced_students.some(s => s.length > 50)) errors.push('AC deducted student name max 50 characters.');
+  if (ac_students     && ac_students.length     > 500) errors.push('Max 500 AC students.');     // Bug #2 fix
+  if (absent_students && absent_students.length > 500) errors.push('Max 500 absent students.'); // Bug #2 fix
   if (ac_reduced_students && ac_reduced_students.length > 500) errors.push('Max 500 AC deducted students.');
   if (session_mode && !['online', 'offline'].includes(session_mode)) errors.push('Invalid class mode.');
   if (session_type && !['group', 'private', 'competition'].includes(session_type))  errors.push('Invalid session type.');
@@ -403,9 +405,16 @@ exports.userDelete = async (req, res) => {
     }
 
     const label = `${user.displayName} (@${user.username})`;
+
+    // Bug #5 fix: nullify partner refs in other teachers' reports before deleting
+    const userReportIds = await Report.find({ teacher: user._id }).distinct('_id');
     await Promise.all([
       Report.deleteMany({ teacher: user._id }),
       Salary.deleteMany({ teacher: user._id }),
+      Report.updateMany({ partner_teacher: user._id }, { $set: { partner_teacher: null } }),
+      userReportIds.length > 0
+        ? Report.updateMany({ linked_report: { $in: userReportIds } }, { $set: { linked_report: null } })
+        : Promise.resolve(),
     ]);
     await user.deleteOne();
     await logAudit(req, 'delete', 'user', user._id, label); // 🟢 log
@@ -439,9 +448,15 @@ exports.usersBulkDelete = async (req, res) => {
       }
     }
 
+    // Bug #5 fix: nullify partner refs in other teachers' reports before bulk delete
+    const bulkReportIds = await Report.find({ teacher: { $in: ids } }).distinct('_id');
     await Promise.all([
       Report.deleteMany({ teacher: { $in: ids } }),
       Salary.deleteMany({ teacher: { $in: ids } }),
+      Report.updateMany({ partner_teacher: { $in: ids } }, { $set: { partner_teacher: null } }),
+      bulkReportIds.length > 0
+        ? Report.updateMany({ linked_report: { $in: bulkReportIds } }, { $set: { linked_report: null } })
+        : Promise.resolve(),
     ]);
     const result = await User.deleteMany({ _id: { $in: ids } });
     await logAudit(req, 'delete', 'user', ids[0], `Bulk delete — ${result.deletedCount} user(s)`);
@@ -560,6 +575,10 @@ exports.reportUpdate = async (req, res) => {
 
     // Sync linked report fields if one exists
     if (report.linked_report) {
+      // Bug #6 fix: recalculate partner teaching_type when original changes
+      const linkedTypeUpdate = {};
+      if (teaching_type === 'Assistant Teacher') linkedTypeUpdate.teaching_type = 'Prime Teacher (Assisted)';
+      else if (teaching_type === '1/2 Prime Teacher') linkedTypeUpdate.teaching_type = '1/2 Prime Teacher';
       await Report.findByIdAndUpdate(report.linked_report, {
         date,
         subject:                subject ? subject.trim() : '',
@@ -573,6 +592,7 @@ exports.reportUpdate = async (req, res) => {
         uses_personal_internet,
         session_type:           session_type || 'group',
         competition_groups,
+        ...linkedTypeUpdate,
       });
     }
 

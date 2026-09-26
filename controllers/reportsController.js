@@ -33,7 +33,7 @@ function validateReportInput({ date, subject, class_name, duration, teaching_typ
   }
   if (subject && subject.trim().length > 100) errors.push('Subject max 100 characters.');
   if (!class_name || class_name.trim().length === 0) errors.push('Class name is required.');
-  if (class_name && class_name.trim().length > 200) errors.push('Class name max 200 characters.');
+  if (class_name && class_name.trim().length > 50) errors.push('Class name max 50 characters.'); // Bug #4 fix: match schema maxlength
   const dur = Number(duration);
   if (!duration || isNaN(dur) || dur < 1 || !Number.isInteger(dur)) errors.push('Duration must be an integer of at least 1 minute.');
   if (!teaching_type || !TEACHING_TYPES.includes(teaching_type)) errors.push('Invalid teaching type.');
@@ -72,40 +72,63 @@ function formatIDR(n) {
   return 'Rp\u00a0' + n.toLocaleString('en-US');
 }
 
-// 🟢 Fetch groups as safe JSON for embedding in views
+// ⚡ 5-minute in-memory TTL cache for groups and teachers
+//    These lists change rarely (admin actions only); caching avoids
+//    2 DB queries on every new-report / edit-report page load.
+const CACHE_TTL = 5 * 60 * 1000;
+let _groupsCache     = null, _groupsCacheTime    = 0;
+let _teachersDocs    = null, _teachersJson       = null, _teachersCacheTime = 0;
+
 async function getGroupsJson() {
+  if (_groupsCache && Date.now() - _groupsCacheTime < CACHE_TTL) return _groupsCache;
   try {
     const groups = await Group.find()
       .sort({ group_name: 1 })
-      .select('group_name type level students');
-    return safeJsonForHtml(groups.map(g => ({
+      .select('group_name type level students')
+      .lean();
+    _groupsCache     = safeJsonForHtml(groups.map(g => ({
       _id:        String(g._id),
       group_name: g.group_name,
       type:       g.type,
       level:      g.level || '',
       students:   g.students,
     })));
+    _groupsCacheTime = Date.now();
+    return _groupsCache;
   } catch (e) {
     console.error('getGroupsJson error:', e);
     return '[]';
   }
 }
 
-// 🟢 Fetch all teachers as safe JSON for partner-teacher autocomplete
-async function getTeachersJson() {
+// Returns { json: safeJsonString, docs: plainObjectArray }
+// Docs are used directly for admin <select> lists — avoids a second DB query.
+async function getTeachersData() {
+  if (_teachersDocs && Date.now() - _teachersCacheTime < CACHE_TTL) {
+    return { json: _teachersJson, docs: _teachersDocs };
+  }
   try {
     const teachers = await User.find({ role: 'teacher' })
       .select('displayName username')
-      .sort({ displayName: 1 });
-    return safeJsonForHtml(teachers.map(t => ({
+      .sort({ displayName: 1 })
+      .lean();
+    _teachersDocs      = teachers;
+    _teachersJson      = safeJsonForHtml(teachers.map(t => ({
       _id:         String(t._id),
       displayName: t.displayName,
       username:    t.username,
     })));
+    _teachersCacheTime = Date.now();
+    return { json: _teachersJson, docs: _teachersDocs };
   } catch (e) {
-    console.error('getTeachersJson error:', e);
-    return '[]';
+    console.error('getTeachersData error:', e);
+    return { json: '[]', docs: [] };
   }
+}
+
+// Legacy alias used in a few places — delegates to the unified cache
+async function getTeachersJson() {
+  return (await getTeachersData()).json;
 }
 
 // GET / — Dashboard
@@ -136,22 +159,51 @@ exports.index = async (req, res) => {
     const monthLabel     = new Date(selectedYear, selectedMonth, 1)
       .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-    const allReports    = await Report.find({ teacher: req.session.user._id });
-    const totalMinutes  = allReports.reduce((sum, r) => sum + r.duration, 0);
-    const totalHours    = (totalMinutes / 60).toFixed(1);
-    const totalReports  = allReports.length;
-
+    // ⚡ Perf fix: replaced Report.find (loads ALL docs) with a lightweight aggregation.
+    //   One pass computes all-time stats + current-month stats without loading documents.
     const now2 = new Date();
-    const thisMonthReports = allReports.filter(r => {
-      const d = new Date(r.date);
-      return d.getMonth() === now2.getMonth() && d.getFullYear() === now2.getFullYear();
-    });
-    const monthlyHours = (thisMonthReports.reduce((sum, r) => sum + r.duration, 0) / 60).toFixed(1);
+    const curMonthStart = new Date(now2.getFullYear(), now2.getMonth(), 1);
+    const curMonthEnd   = new Date(now2.getFullYear(), now2.getMonth() + 1, 0, 23, 59, 59, 999);
 
-    const selectedMonthReports = await Report.find({
-      teacher: req.session.user._id,
-      date: { $gte: monthStart, $lte: monthEnd },
-    }).sort({ date: 1 });
+    const listFilter = { teacher: req.session.user._id };
+    if (teaching_type && TEACHING_TYPES.includes(teaching_type)) listFilter.teaching_type = teaching_type;
+    if (session_mode && ['online', 'offline'].includes(session_mode)) listFilter.session_mode = session_mode;
+    if (session_type && ['group', 'private', 'competition'].includes(session_type)) listFilter.session_type = session_type;
+
+    const mongoose = require('mongoose');
+    const [statsAgg, selectedMonthReports, reports] = await Promise.all([
+      // All-time + current-month stats via aggregation (no docs loaded into memory)
+      Report.aggregate([
+        { $match: { teacher: new mongoose.Types.ObjectId(req.session.user._id) } },
+        { $group: {
+          _id:            null,
+          totalMinutes:   { $sum: '$duration' },
+          totalReports:   { $sum: 1 },
+          monthlyMinutes: { $sum: { $cond: [
+            { $and: [{ $gte: ['$date', curMonthStart] }, { $lte: ['$date', curMonthEnd] }] },
+            '$duration', 0,
+          ]}},
+          monthlyCount:   { $sum: { $cond: [
+            { $and: [{ $gte: ['$date', curMonthStart] }, { $lte: ['$date', curMonthEnd] }] },
+            1, 0,
+          ]}},
+        }},
+      ]),
+      // Selected-month reports for the daily calendar view
+      Report.find({
+        teacher: req.session.user._id,
+        date: { $gte: monthStart, $lte: monthEnd },
+      }).sort({ date: 1 }),
+      // Full list (with optional type/mode filters) for the report table
+      Report.find(listFilter).sort({ date: -1 }),
+    ]);
+
+    const statsDoc     = statsAgg[0] || { totalMinutes: 0, totalReports: 0, monthlyMinutes: 0, monthlyCount: 0 };
+    const totalMinutes = statsDoc.totalMinutes;
+    const totalHours   = (totalMinutes / 60).toFixed(1);
+    const totalReports = statsDoc.totalReports;
+    const monthlyHours = (statsDoc.monthlyMinutes / 60).toFixed(1);
+    const monthlyReportsCount = statsDoc.monthlyCount;
 
     const countByType = (type) => selectedMonthReports.filter(r => r.teaching_type === type).length;
 
@@ -169,14 +221,8 @@ exports.index = async (req, res) => {
     }
     const dailySummary = Object.values(dailyMap).sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    const listFilter = { teacher: req.session.user._id };
-    if (teaching_type && TEACHING_TYPES.includes(teaching_type)) listFilter.teaching_type = teaching_type;
-    if (session_mode && ['online', 'offline'].includes(session_mode)) listFilter.session_mode = session_mode;
-    if (session_type && ['group', 'private', 'competition'].includes(session_type)) listFilter.session_type = session_type;
-    const reports = await Report.find(listFilter).sort({ date: -1 });
-
-    const currentUser = await User.findById(req.session.user._id).select('commission');
-    const comm = currentUser?.commission || {};
+    // ⚡ Perf fix: reuse currentUser from res.locals instead of a second User.findById
+    const comm = res.locals.currentUser?.commission || {};
     const commMap = {
       'Prime Teacher (Full)':     comm.primeFull     || 0,
       'Prime Teacher (Assisted)': comm.primeAssisted || 0,
@@ -204,7 +250,7 @@ exports.index = async (req, res) => {
       selectedSessionType: session_type || '',
       stats: {
         totalReports, totalHours, monthlyHours,
-        monthlyReports: thisMonthReports.length,
+        monthlyReports: monthlyReportsCount,
         primeCount:         countByType('Prime Teacher (Full)'),
         assistCount:        countByType('Assistant Teacher'),
         halfCount:          countByType('1/2 Prime Teacher'),
@@ -236,11 +282,14 @@ exports.index = async (req, res) => {
 // 🟢 Now async — fetches groups + teachers for autocomplete
 exports.newForm = async (req, res) => {
   try {
-    const [groupsJson, teachersJson] = await Promise.all([getGroupsJson(), getTeachersJson()]);
     const isAdmin = req.session.user && (req.session.user.role === 'admin' || req.session.user.role === 'superadmin');
-    const teachers = isAdmin
-      ? await User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 })
-      : [];
+    // ⚡ getTeachersData() returns both JSON (for autocomplete) and docs (for admin select)
+    //    in one cached call — no second User.find() needed for admins
+    const [groupsJson, { json: teachersJson, docs: teacherDocs }] = await Promise.all([
+      getGroupsJson(),
+      getTeachersData(),
+    ]);
+    const teachers = isAdmin ? teacherDocs : [];
     res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson, teachersJson, teachers });
   } catch (err) {
     res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson: '[]', teachersJson: '[]', teachers: [] });
@@ -434,16 +483,23 @@ exports.createBulk = async (req, res) => {
     const mainSubmitter = await User.findById(mainTeacherId).select('displayName').lean();
     const mainSubmitterName = mainSubmitter ? mainSubmitter.displayName : '';
 
+    // Bug #9 fix: pre-fetch all unique teacher display names to avoid N+1 queries in loop
+    const uniqueOtherTeacherIds = [...new Set(
+      validEntries
+        .filter(ve => isAdmin && String(ve.teacherId) !== String(mainTeacherId))
+        .map(ve => String(ve.teacherId))
+    )];
+    const teacherNameMap = { [String(mainTeacherId)]: mainSubmitterName };
+    if (uniqueOtherTeacherIds.length > 0) {
+      const extraTeachers = await User.find({ _id: { $in: uniqueOtherTeacherIds } }).select('displayName').lean();
+      extraTeachers.forEach(t => { teacherNameMap[String(t._id)] = t.displayName; });
+    }
+
     for (let i = 0; i < savedReports.length; i++) {
       const saved  = savedReports[i];
       const ve     = validEntries[i];
       if ((saved.teaching_type === 'Assistant Teacher' || saved.teaching_type === '1/2 Prime Teacher') && ve.partner_teacher_id) {
-        // Submitter name: for admin-created reports on behalf of another teacher, look up that teacher
-        let submitterName = mainSubmitterName;
-        if (isAdmin && String(ve.teacherId) !== String(mainTeacherId)) {
-          const tDoc = await User.findById(ve.teacherId).select('displayName').lean();
-          submitterName = tDoc ? tDoc.displayName : '';
-        }
+        const submitterName = teacherNameMap[String(ve.teacherId)] || mainSubmitterName;
         const partnerTeachingType = saved.teaching_type === 'Assistant Teacher'
           ? 'Prime Teacher (Assisted)'
           : '1/2 Prime Teacher';
@@ -457,6 +513,7 @@ exports.createBulk = async (req, res) => {
           notes:                  saved.notes,
           ac_students:            saved.ac_students,
           absent_students:        saved.absent_students,
+          ac_reduced_students:    saved.ac_reduced_students,
           session_mode:           saved.session_mode,
           uses_personal_internet: saved.uses_personal_internet,
           session_type:           saved.session_type,
@@ -579,6 +636,10 @@ exports.update = async (req, res) => {
 
     // Sync linked report if one exists
     if (report.linked_report) {
+      // Bug #6 fix: recalculate partner teaching_type when original changes
+      const linkedTypeUpdate = {};
+      if (teaching_type === 'Assistant Teacher') linkedTypeUpdate.teaching_type = 'Prime Teacher (Assisted)';
+      else if (teaching_type === '1/2 Prime Teacher') linkedTypeUpdate.teaching_type = '1/2 Prime Teacher';
       await Report.findByIdAndUpdate(report.linked_report, {
         date,
         subject:                subject ? subject.trim() : '',
@@ -592,6 +653,7 @@ exports.update = async (req, res) => {
         uses_personal_internet,
         session_type:           session_type || 'group',
         competition_groups,
+        ...linkedTypeUpdate,
       });
     }
 

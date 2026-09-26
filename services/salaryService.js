@@ -66,53 +66,51 @@ function buildPeriodLabel(start, end) {
 ══════════════════════════════════════════════════════════════ */
 
 /**
- * Returns a map of { teacherId → { typeName → sessionCount } }
- * for all reports within [periodStart, periodEnd].
+ * ⚡ Returns BOTH { sessionMap, daysMap } in a single aggregation pass.
+ *   Replaces the previous buildSessionMap + buildDistinctDaysMap pair,
+ *   halving the number of DB round-trips on every salary generation.
+ *
+ * sessionMap:  { teacherId → { teaching_type → count } }
+ * daysMap:     { teacherId → distinctDays }
  */
-async function buildSessionMap(periodStart, periodEnd) {
+async function buildSessionAndDaysMap(periodStart, periodEnd) {
   const agg = await Report.aggregate([
     { $match: { date: { $gte: new Date(periodStart), $lte: new Date(periodEnd) } } },
+    // Step 1: deduplicate to (teacher, type, date) triples
     { $group: {
-      _id:      { teacher: '$teacher', teaching_type: '$teaching_type' },
+      _id: {
+        teacher:       '$teacher',
+        teaching_type: '$teaching_type',
+        dateKey:       { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
+      },
+    }},
+    // Step 2: group by teacher+type; collect unique dateKeys for later union
+    { $group: {
+      _id:      { teacher: '$_id.teacher', teaching_type: '$_id.teaching_type' },
       sessions: { $sum: 1 },
+      dates:    { $addToSet: '$_id.dateKey' },
     }},
   ]);
 
-  const map = {};
+  const sessionMap = {};
+  const teacherDates = {}; // teacher → Set<dateKey>
+
   for (const row of agg) {
     const tid  = String(row._id.teacher);
     const type = row._id.teaching_type;
-    if (!map[tid]) map[tid] = {};
-    map[tid][type] = (map[tid][type] || 0) + row.sessions;
-  }
-  return map;
-}
+    if (!sessionMap[tid]) sessionMap[tid] = {};
+    sessionMap[tid][type] = row.sessions;
 
-/**
- * Returns a map of { teacherId → distinctDays }
- * Counts the number of unique teaching dates in the period.
- */
-async function buildDistinctDaysMap(periodStart, periodEnd) {
-  const agg = await Report.aggregate([
-    { $match: { date: { $gte: new Date(periodStart), $lte: new Date(periodEnd) } } },
-    { $group: {
-      _id: {
-        teacher: '$teacher',
-        // Normalise to YYYY-MM-DD so time zone shifts don't double-count
-        date: { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
-      },
-    }},
-    { $group: {
-      _id:          '$_id.teacher',
-      distinctDays: { $sum: 1 },
-    }},
-  ]);
-
-  const map = {};
-  for (const row of agg) {
-    map[String(row._id)] = row.distinctDays;
+    if (!teacherDates[tid]) teacherDates[tid] = new Set();
+    for (const d of row.dates) teacherDates[tid].add(d);
   }
-  return map;
+
+  const daysMap = {};
+  for (const [tid, dates] of Object.entries(teacherDates)) {
+    daysMap[tid] = dates.size;
+  }
+
+  return { sessionMap, daysMap };
 }
 
 /**
@@ -174,11 +172,8 @@ async function generateSalariesForPeriod(opts) {
   // Fetch all teachers with their salary profile + commission rates
   const teachers = await User.find({ role: 'teacher' }).sort({ displayName: 1 });
 
-  // Pre-compute shared report data with a single aggregation each
-  const [sessionMap, daysMap] = await Promise.all([
-    buildSessionMap(ps, pe),
-    buildDistinctDaysMap(ps, pe),
-  ]);
+  // ⚡ Perf fix: single aggregation pass replaces two separate DB scans
+  const { sessionMap, daysMap } = await buildSessionAndDaysMap(ps, pe);
 
   const saved = [];
 

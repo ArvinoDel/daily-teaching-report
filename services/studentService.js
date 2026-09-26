@@ -20,18 +20,27 @@ const {
 
 /* ── Counter helper (atomic, no external deps) ──────────────────── */
 
-let _codeSeq = null; // lazy-loaded from DB
+let _codeSeq = null;
+let _codeSeqInit = null; // shared pending-init promise — prevents concurrent DB reads
 
 /**
  * Get the next integer sequence number for student codes.
- * Uses the current Student count as a starting baseline so the
- * first generated code after migration doesn't collide.
+ * Bug #7 fix: uses a shared initialization promise so concurrent callers
+ * wait on the same DB read instead of each reading the same count and
+ * returning duplicate sequence numbers.
  */
 async function nextSequence() {
-  const count = await Student.countDocuments();
-  if (_codeSeq === null || _codeSeq <= count) {
-    _codeSeq = count + 1;
+  // If already initialized, increment synchronously — no interleaving risk
+  if (_codeSeq !== null) return _codeSeq++;
+
+  // First caller creates the init promise; subsequent concurrent callers await it
+  if (!_codeSeqInit) {
+    _codeSeqInit = Student.countDocuments().then(count => {
+      if (_codeSeq === null) _codeSeq = count + 1;
+      _codeSeqInit = null;
+    });
   }
+  await _codeSeqInit;
   return _codeSeq++;
 }
 
@@ -117,12 +126,13 @@ async function getStudentAcTotal(student) {
   if (!names.length && !student._id) return 0;
 
   // 1. From Reports: positive (ac_students) and negative (ac_reduced_students)
+  // Bug #3 fix: exclude auto-generated linked reports to prevent double-counting
   let reportAdds = 0;
   let reportReduces = 0;
   if (names.length) {
     // Count positive AC cards
     const addResult = await Report.aggregate([
-      { $match:  { ac_students: { $in: names } } },
+      { $match:  { ac_students: { $in: names }, is_auto_generated: { $ne: true } } },
       { $unwind: '$ac_students' },
       { $match:  { ac_students: { $in: names } } },
       { $group:  { _id: null, total: { $sum: 1 } } },
@@ -131,7 +141,7 @@ async function getStudentAcTotal(student) {
 
     // Count reduced AC cards
     const reduceResult = await Report.aggregate([
-      { $match:  { ac_reduced_students: { $in: names } } },
+      { $match:  { ac_reduced_students: { $in: names }, is_auto_generated: { $ne: true } } },
       { $unwind: '$ac_reduced_students' },
       { $match:  { ac_reduced_students: { $in: names } } },
       { $group:  { _id: null, total: { $sum: 1 } } },
@@ -170,10 +180,11 @@ async function getStudentAcHistory(student) {
   const names = buildNameVariants(student);
 
   // 1. Report-based POSITIVE history (+AC from ac_students)
+  // Bug #3 fix: exclude auto-generated linked reports to prevent double-counting
   let reportAddHistory = [];
   if (names.length) {
     reportAddHistory = await Report.aggregate([
-      { $match:  { ac_students: { $in: names } } },
+      { $match:  { ac_students: { $in: names }, is_auto_generated: { $ne: true } } },
       { $unwind: '$ac_students' },
       { $match:  { ac_students: { $in: names } } },
       {
@@ -211,10 +222,11 @@ async function getStudentAcHistory(student) {
   }
 
   // 2. Report-based NEGATIVE history (-AC from ac_reduced_students)
+  // Bug #3 fix: exclude auto-generated linked reports to prevent double-counting
   let reportReduceHistory = [];
   if (names.length) {
     reportReduceHistory = await Report.aggregate([
-      { $match:  { ac_reduced_students: { $in: names } } },
+      { $match:  { ac_reduced_students: { $in: names }, is_auto_generated: { $ne: true } } },
       { $unwind: '$ac_reduced_students' },
       { $match:  { ac_reduced_students: { $in: names } } },
       {

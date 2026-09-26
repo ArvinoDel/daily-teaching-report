@@ -59,7 +59,10 @@ exports.renderPage = async (req, res) => {
       title: 'Reward Crosscheck',
       commMap,
       hasCommission,
-      rcConfigJson: JSON.stringify(rcConfig),
+      rcConfigJson: JSON.stringify(rcConfig) // Bug #8 fix: escape HTML-unsafe chars to prevent XSS
+        .replace(/</g, '\\u003c')
+        .replace(/>/g, '\\u003e')
+        .replace(/&/g, '\\u0026'),
       selectedYear,
       selectedMonth,
       monthLabel,
