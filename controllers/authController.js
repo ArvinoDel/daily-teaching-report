@@ -24,6 +24,10 @@ exports.login = async (req, res) => {
       return res.render('auth/login', { error: 'Invalid username or password.' });
     }
 
+    // Update lastActiveAt immediately on login
+    const loginNow = new Date();
+    await User.findByIdAndUpdate(user._id, { lastActiveAt: loginNow });
+
     req.session.user = {
       _id: user._id,
       username: user.username,
@@ -31,6 +35,7 @@ exports.login = async (req, res) => {
       role: user.role,
       profilePicture: user.profilePicture || null,
     };
+    req.session._lastTracked = loginNow.getTime();
 
     // Validate returnTo to prevent open redirect
     const returnTo = req.session.returnTo;
@@ -46,8 +51,20 @@ exports.login = async (req, res) => {
 };
 
 // POST /auth/logout
-exports.logout = (req, res) => {
+exports.logout = async (req, res) => {
+  try {
+    if (req.session && req.session.user) {
+      await User.findByIdAndUpdate(req.session.user._id, { lastActiveAt: null });
+    }
+  } catch (err) {
+    console.error('[auth] Failed to clear lastActiveAt on logout:', err);
+  }
   req.session.destroy(() => res.redirect('/auth/login'));
+};
+
+// GET /auth/heartbeat - Keepalive ping for online presence
+exports.heartbeat = (req, res) => {
+  res.status(200).json({ ok: true, isOnline: !!(req.session && req.session.user) });
 };
 
 // GET /auth/register
@@ -88,7 +105,14 @@ exports.register = async (req, res) => {
       });
     }
 
-    const newUser = await User.create({ username, password, displayName, joinDate });
+    const regNow = new Date();
+    const newUser = await User.create({
+      username,
+      password,
+      displayName,
+      joinDate,
+      lastActiveAt: regNow,
+    });
 
     // Send welcome notification instructing teacher to fill teaching reward amount
     try {
@@ -105,6 +129,7 @@ exports.register = async (req, res) => {
       role: newUser.role,
       profilePicture: newUser.profilePicture || null,
     };
+    req.session._lastTracked = regNow.getTime();
     req.session.flash = `Welcome, ${newUser.displayName}! Your account is ready.`;
 
     return res.redirect('/reports');

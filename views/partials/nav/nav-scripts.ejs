@@ -25,4 +25,26 @@
     if (dropdown) dropdown.classList.add('hidden');
     if (chevron)  chevron.classList.remove('rotate-180');
   });
+
+  /* Keepalive heartbeat every 2.5 minutes while tab is active */
+  <% if (typeof currentUser !== 'undefined' && currentUser) { %>
+  (function () {
+    var lastPing = Date.now();
+    function sendHeartbeat() {
+      fetch('/auth/heartbeat', { method: 'GET', credentials: 'same-origin' }).catch(function () {});
+      lastPing = Date.now();
+    }
+    setInterval(function () {
+      if (document.visibilityState === 'visible') {
+        sendHeartbeat();
+      }
+    }, 2.5 * 60 * 1000);
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible' && Date.now() - lastPing > 60 * 1000) {
+        sendHeartbeat();
+      }
+    });
+  })();
+  <% } %>
 </script>

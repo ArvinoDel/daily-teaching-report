@@ -174,19 +174,27 @@ app.use(async (req, res, next) => {
 
   try {
     const User = require('./models/User');
-    // Always fetch fresh user data for nav dropdown; only hit notification count every 15 s
-    const parallelOps = [
-      User.findById(req.session.user._id).select('username displayName role joinDate commission profilePicture lastActiveAt'),
+    // Atomic update if needsTrackUpdate is true to guarantee fresh lastActiveAt without race conditions
+    const userQuery = needsTrackUpdate
+      ? User.findByIdAndUpdate(
+          req.session.user._id,
+          { lastActiveAt: new Date(now) },
+          { new: true }
+        ).select('username displayName role joinDate commission profilePicture lastActiveAt')
+      : User.findById(req.session.user._id)
+          .select('username displayName role joinDate commission profilePicture lastActiveAt');
+
+    if (needsTrackUpdate) {
+      req.session._lastTracked = now;
+    }
+
+    const [user, notifResult] = await Promise.all([
+      userQuery,
       needsNotifRefresh
         ? Notification.countDocuments({ recipient: req.session.user._id, isRead: false })
         : Promise.resolve(null),
-    ];
-    if (needsTrackUpdate) {
-      req.session._lastTracked = now;
-      parallelOps.push(User.findByIdAndUpdate(req.session.user._id, { lastActiveAt: new Date() }));
-    }
+    ]);
 
-    const [user, notifResult] = await Promise.all(parallelOps);
     res.locals.currentUser = user || null;
 
     if (needsNotifRefresh && notifResult !== null) {

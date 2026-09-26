@@ -171,7 +171,7 @@ exports.dashboard = async (req, res) => {
 
     const [totalUsers, onlineCount, totalReports, monthlyReports] = await Promise.all([
       User.countDocuments({ role: 'teacher' }),
-      User.countDocuments({ lastActiveAt: { $gte: fiveMinAgo }, role: 'teacher' }),
+      User.countDocuments({ lastActiveAt: { $gte: fiveMinAgo } }),
       Report.countDocuments(),
       Report.countDocuments({ date: { $gte: monthStart, $lte: monthEnd } }),
     ]);
@@ -236,7 +236,7 @@ exports.usersList = async (req, res) => {
 
     const usersData = users.map(u => ({
       ...u.toObject({ virtuals: true }),
-      isOnline:    !!(u.lastActiveAt && u.lastActiveAt >= fiveMinAgo),
+      isOnline:    !!(u.lastActiveAt && new Date(u.lastActiveAt).getTime() >= fiveMinAgo.getTime()),
       reportCount: countMap[String(u._id)] || 0,
     }));
 
