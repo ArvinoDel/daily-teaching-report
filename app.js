@@ -136,7 +136,7 @@ app.use(methodOverride(function (req) {
   }
 }));
 app.use(express.static(path.join(__dirname, 'public'), {
-  maxAge: '7d',    // ⚡ browsers cache static files for 7 days — zero re-fetches on repeat visits
+  maxAge: process.env.NODE_ENV === 'production' ? '7d' : 0, // ⚡ 7d cache in prod, instant reload in dev
   etag:   true,
 }));
 

@@ -620,6 +620,7 @@ exports.reportDelete = async (req, res) => {
     // Delete auto-generated linked report if it exists
     if (report.linked_report) {
       await Report.findOneAndDelete({ _id: report.linked_report, is_auto_generated: true });
+      await Report.findByIdAndUpdate(report.linked_report, { $set: { linked_report: null } });
     }
 
     await report.deleteOne();

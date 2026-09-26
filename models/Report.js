@@ -134,8 +134,6 @@ reportSchema.virtual('dateInputFormat').get(function () {
 reportSchema.set('toJSON', { virtuals: true });
 reportSchema.set('toObject', { virtuals: true });
 
-module.exports = mongoose.model('Report', reportSchema);
-
 // ── Compound indexes for common query patterns ──────────────────────────────
 // Without these every query is a full collection scan.
 
@@ -152,3 +150,5 @@ reportSchema.index({ ac_reduced_students: 1, is_auto_generated: 1 });
 // Linked-report and partner cleanup queries
 reportSchema.index({ linked_report:   1 });
 reportSchema.index({ partner_teacher: 1 });
+
+module.exports = mongoose.model('Report', reportSchema);

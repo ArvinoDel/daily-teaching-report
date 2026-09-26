@@ -38,6 +38,9 @@ async function nextSequence() {
     _codeSeqInit = Student.countDocuments().then(count => {
       if (_codeSeq === null) _codeSeq = count + 1;
       _codeSeqInit = null;
+    }).catch(err => {
+      _codeSeqInit = null;
+      throw err;
     });
   }
   await _codeSeqInit;

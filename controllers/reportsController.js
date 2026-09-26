@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Report = require('../models/Report');
 const User   = require('../models/User');
 const Group  = require('../models/Group'); // 🟢 Added for autocomplete
@@ -170,7 +171,6 @@ exports.index = async (req, res) => {
     if (session_mode && ['online', 'offline'].includes(session_mode)) listFilter.session_mode = session_mode;
     if (session_type && ['group', 'private', 'competition'].includes(session_type)) listFilter.session_type = session_type;
 
-    const mongoose = require('mongoose');
     const [statsAgg, selectedMonthReports, reports] = await Promise.all([
       // All-time + current-month stats via aggregation (no docs loaded into memory)
       Report.aggregate([
@@ -222,7 +222,12 @@ exports.index = async (req, res) => {
     const dailySummary = Object.values(dailyMap).sort((a, b) => new Date(b.date) - new Date(a.date));
 
     // ⚡ Perf fix: reuse currentUser from res.locals instead of a second User.findById
-    const comm = res.locals.currentUser?.commission || {};
+    let comm = res.locals.currentUser?.commission;
+    if (!comm && req.session.user?._id) {
+      const u = await User.findById(req.session.user._id).select('commission').lean();
+      comm = u?.commission;
+    }
+    comm = comm || {};
     const commMap = {
       'Prime Teacher (Full)':     comm.primeFull     || 0,
       'Prime Teacher (Assisted)': comm.primeAssisted || 0,
@@ -678,6 +683,7 @@ exports.destroy = async (req, res) => {
     // Delete auto-generated linked report (created for the tagged partner)
     if (report.linked_report) {
       await Report.findOneAndDelete({ _id: report.linked_report, is_auto_generated: true });
+      await Report.findByIdAndUpdate(report.linked_report, { $set: { linked_report: null } });
     }
 
     await report.deleteOne();

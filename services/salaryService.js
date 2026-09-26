@@ -76,19 +76,10 @@ function buildPeriodLabel(start, end) {
 async function buildSessionAndDaysMap(periodStart, periodEnd) {
   const agg = await Report.aggregate([
     { $match: { date: { $gte: new Date(periodStart), $lte: new Date(periodEnd) } } },
-    // Step 1: deduplicate to (teacher, type, date) triples
     { $group: {
-      _id: {
-        teacher:       '$teacher',
-        teaching_type: '$teaching_type',
-        dateKey:       { $dateToString: { format: '%Y-%m-%d', date: '$date' } },
-      },
-    }},
-    // Step 2: group by teacher+type; collect unique dateKeys for later union
-    { $group: {
-      _id:      { teacher: '$_id.teacher', teaching_type: '$_id.teaching_type' },
+      _id:      { teacher: '$teacher', teaching_type: '$teaching_type' },
       sessions: { $sum: 1 },
-      dates:    { $addToSet: '$_id.dateKey' },
+      dates:    { $addToSet: { $dateToString: { format: '%Y-%m-%d', date: '$date' } } },
     }},
   ]);
 
