@@ -58,8 +58,7 @@ async function run() {
     for (const g of groups) {
       if (g.group_name) {
         const lvl = (g.level || '').trim().toUpperCase();
-        const validLvl = (Group.LEVELS && Group.LEVELS.includes(lvl)) ? lvl : '';
-        groupLevelMap.set(g.group_name.trim().toLowerCase(), validLvl);
+        groupLevelMap.set(g.group_name.trim().toLowerCase(), lvl);
       }
     }
     console.log(`Loaded ${groups.length} groups into level lookup map.`);

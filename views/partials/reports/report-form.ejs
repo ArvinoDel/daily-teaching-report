@@ -1629,10 +1629,24 @@ function attachMaterialAutocomplete(inputEl, dropdownEl, getLevel) {
     var currentLevel = (typeof getLevel === 'function' ? (getLevel() || '') : '').trim().toUpperCase();
     var allMaterials = getRawMaterials();
 
-    // 1. Filter: substring match on normalized name
+    // 1. Filter: match level with current group level (prevent global leakage across levels)
     var matched = [];
     for (var i = 0; i < allMaterials.length; i++) {
       var m = allMaterials[i];
+      var mLvl = (m.level || '').trim().toUpperCase();
+
+      // If group level is known, only show materials matching that level (or universal ones)
+      // If group has no level, do not show materials tied to a specific level
+      if (currentLevel) {
+        if (mLvl && mLvl !== currentLevel) {
+          continue; // Mismatch: do not show globally across levels
+        }
+      } else {
+        if (mLvl) {
+          continue; // Material is level-specific, but current group has no level
+        }
+      }
+
       var mNorm = m._norm || clientNormalize(m.name);
       m._norm = mNorm;
       if (!qNorm || mNorm.indexOf(qNorm) !== -1) {
@@ -1828,6 +1842,14 @@ if (mainSubjInp && mainSubjList) {
     if (sType === 'competition') return '';
     if (typeof selectedGroup !== 'undefined' && selectedGroup && selectedGroup.level) {
       return selectedGroup.level;
+    }
+    var cInp = document.getElementById('class_name');
+    if (cInp && cInp.value && typeof groupsData !== 'undefined' && Array.isArray(groupsData)) {
+      var val = cInp.value.trim().toLowerCase();
+      var found = groupsData.find(function(g) {
+        return g.group_name && g.group_name.trim().toLowerCase() === val;
+      });
+      if (found && found.level) return found.level;
     }
     return '';
   });
@@ -2306,7 +2328,16 @@ function _initBulkEntry(id) {
     attachMaterialAutocomplete(bSubjInp, bSubjList, function() {
       var st = _bulkStates[id];
       if (!st || st.sessionType === 'competition') return '';
-      return (st.selectedGroup && st.selectedGroup.level) ? st.selectedGroup.level : '';
+      if (st.selectedGroup && st.selectedGroup.level) return st.selectedGroup.level;
+      var bInp = document.getElementById('bulk-entry-' + id + '-class');
+      if (bInp && bInp.value && typeof groupsData !== 'undefined' && Array.isArray(groupsData)) {
+        var bVal = bInp.value.trim().toLowerCase();
+        var bFound = groupsData.find(function(g) {
+          return g.group_name && g.group_name.trim().toLowerCase() === bVal;
+        });
+        if (bFound && bFound.level) return bFound.level;
+      }
+      return '';
     });
   }
 

@@ -802,9 +802,25 @@ exports.reportsSummaryIndex = async (req, res) => {
       isCurrentMonth, monthLabel, selectedMonthStr,
     } = getMonthRange(req.query);
 
-    const reports = await Report.find({ date: { $gte: monthStart, $lte: monthEnd } })
-      .sort({ date: -1, createdAt: -1 })
-      .populate('teacher', 'displayName username');
+    const [reports, groups] = await Promise.all([
+      Report.find({ date: { $gte: monthStart, $lte: monthEnd } })
+        .sort({ date: -1, createdAt: -1 })
+        .populate('teacher', 'displayName username'),
+      Group.find().select('group_name level').lean(),
+    ]);
+
+    // Map group_name (case-insensitive) to level
+    const groupLevelMap = new Map();
+    for (const g of groups) {
+      if (g.group_name && g.level) {
+        groupLevelMap.set(g.group_name.trim().toLowerCase(), g.level.trim().toUpperCase());
+      }
+    }
+
+    // Attach groupLevel to each report
+    for (const r of reports) {
+      r.groupLevel = r.class_name ? groupLevelMap.get(r.class_name.trim().toLowerCase()) || '' : '';
+    }
 
     // Group by calendar date (YYYY-MM-DD) — already sorted desc so day order is preserved
     const byDate = {};

@@ -189,12 +189,12 @@ async function resolveGroupLevel(className, sessionType) {
   if (sessionType === 'competition') return '';
   if (!className || !className.trim()) return '';
   try {
-    const group = await Group.findOne({ group_name: className.trim() })
-      .select('level')
-      .lean();
+    const escaped = className.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const group = await Group.findOne({
+      group_name: { $regex: '^' + escaped + '$', $options: 'i' },
+    }).select('level').lean();
     if (!group || !group.level) return '';
-    const lvl = group.level.trim().toUpperCase();
-    return Group.LEVELS.includes(lvl) ? lvl : '';
+    return group.level.trim().toUpperCase();
   } catch (e) {
     console.error('resolveGroupLevel error:', e);
     return '';
