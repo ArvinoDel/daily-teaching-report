@@ -3,6 +3,7 @@ const Report   = require('../models/Report');
 const Salary   = require('../models/Salary');
 const AuditLog = require('../models/AuditLog'); // 🟢 Audit log
 const Group    = require('../models/Group');
+const Material = require('../models/Material'); // 🟢 Added for material autocomplete
 
 const TEACHING_TYPES = [
   'Prime Teacher (Full)',
@@ -114,6 +115,25 @@ async function getTeachersJson() {
     })));
   } catch (e) {
     console.error('getTeachersJson error:', e);
+    return '[]';
+  }
+}
+
+// 🟢 Fetch materials as safe JSON for embedding in the report form
+async function getMaterialsJson() {
+  try {
+    const materials = await Material.find()
+      .select('name level usageCount')
+      .sort({ usageCount: -1, name: 1 })
+      .lean();
+    return safeJson(materials.map(function(m) { return {
+      _id:        String(m._id),
+      name:       m.name,
+      level:      m.level || '',
+      usageCount: m.usageCount || 0,
+    }; }));
+  } catch (e) {
+    console.error('getMaterialsJson (admin) error:', e);
     return '[]';
   }
 }
@@ -508,14 +528,15 @@ exports.reportsList = async (req, res) => {
 
 exports.reportEditForm = async (req, res) => {
   try {
-    const [report, groupsJson, teachersJson, teachers] = await Promise.all([
+    const [report, groupsJson, teachersJson, teachers, materialsJson] = await Promise.all([
       Report.findById(req.params.id).populate('teacher', 'displayName username'),
       getGroupsJson(),
       getTeachersJson(),
       User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),
+      getMaterialsJson(),
     ]);
     if (!report) return res.render('error', { message: 'Report not found.' });
-    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [], groupsJson, teachersJson, teachers });
+    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [], groupsJson, teachersJson, teachers, materialsJson });
   } catch (err) {
     res.render('error', { message: 'Report not found.' });
   }
@@ -539,13 +560,14 @@ exports.reportUpdate = async (req, res) => {
       teacher, partner_teacher: partner_teacher_id, partner_teacher_name, teacherUser
     });
     if (validationErrors.length > 0) {
-      const [report, groupsJson, teachersJson, teachers] = await Promise.all([
+      const [report, groupsJson, teachersJson, teachers, materialsJson] = await Promise.all([
         Report.findById(req.params.id).populate('teacher', 'displayName username'),
         getGroupsJson(),
         getTeachersJson(),
         User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),
+        getMaterialsJson(),
       ]);
-      return res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors, groupsJson, teachersJson, teachers });
+      return res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors, groupsJson, teachersJson, teachers, materialsJson });
     }
 
     const sharedUpdate = {
@@ -601,13 +623,14 @@ exports.reportUpdate = async (req, res) => {
     res.redirect('/admin/reports');
   } catch (err) {
     console.error(err);
-    const [report, groupsJson, teachersJson, teachers] = await Promise.all([
+    const [report, groupsJson, teachersJson, teachers, materialsJson] = await Promise.all([
       Report.findById(req.params.id).populate('teacher', 'displayName username').catch(() => null),
       getGroupsJson(),
       getTeachersJson(),
       User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),
+      getMaterialsJson(),
     ]);
-    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: ['Something went wrong.'], groupsJson, teachersJson, teachers });
+    res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: ['Something went wrong.'], groupsJson, teachersJson, teachers, materialsJson });
   }
 };
 

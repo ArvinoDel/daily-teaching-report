@@ -2,6 +2,8 @@
 
 <!-- Embedded groups data for autocomplete -->
 <script id="groups-json" type="application/json"><%- groupsJson %></script>
+<!-- Embedded materials data for autocomplete -->
+<script id="materials-json" type="application/json"><%- typeof materialsJson !== 'undefined' ? materialsJson : '[]' %></script>
 
 <div class="max-w-2xl mx-auto">
 
@@ -63,7 +65,8 @@
       teachers: typeof teachers !== 'undefined' ? teachers : [],
       teachersJson: typeof teachersJson !== 'undefined' ? teachersJson : '[]',
       partnerTeacherName: formData.partner_teacher_name || '',
-      partnerTeacherId: formData.partner_teacher || ''
+      partnerTeacherId: formData.partner_teacher || '',
+      materialsJson: typeof materialsJson !== 'undefined' ? materialsJson : '[]',
     }) %>
 
   </div>

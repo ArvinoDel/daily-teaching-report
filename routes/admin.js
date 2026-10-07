@@ -1,7 +1,8 @@
 const express    = require('express');
 const router     = express.Router();
 const ctrl       = require('../controllers/adminController');
-const groupCtrl  = require('../controllers/adminGroupController');
+const groupCtrl    = require('../controllers/adminGroupController');
+const materialCtrl = require('../controllers/adminMaterialController');
 const importCtrl = require('../controllers/adminImportController');
 const feedbackCtrl = require('../controllers/feedbackController');
 const { requireAuth }  = require('../middleware/auth');
@@ -44,6 +45,13 @@ router.post('/groups',            groupCtrl.groupCreate);
 router.get('/groups/:id/edit',    groupCtrl.groupEditForm);
 router.post('/groups/:id',        groupCtrl.groupUpdate);
 router.delete('/groups/:id',      groupCtrl.groupDelete);
+
+// Materials — autocomplete suggestions management
+router.get('/materials',             materialCtrl.materialsList);
+router.post('/materials/:id/edit',   materialCtrl.materialUpdate);
+router.put('/materials/:id',         materialCtrl.materialUpdate);
+router.post('/materials/:id/merge',  materialCtrl.materialMerge);
+router.delete('/materials/:id',      materialCtrl.materialDelete);
 
 // Commission
 router.get('/commission', ctrl.commissionIndex);

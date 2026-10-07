@@ -2,6 +2,8 @@
 
 <!-- Embedded groups data for autocomplete -->
 <script id="groups-json" type="application/json"><%- groupsJson %></script>
+<!-- Embedded materials data for autocomplete -->
+<script id="materials-json" type="application/json"><%- typeof materialsJson !== 'undefined' ? materialsJson : '[]' %></script>
 
 <div class="max-w-2xl mx-auto">
   <a href="/admin/reports" id="back-link" class="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-brand-600 mb-6 transition font-medium">
@@ -61,7 +63,8 @@
       teachers: typeof teachers !== 'undefined' ? teachers : [],
       teachersJson: typeof teachersJson !== 'undefined' ? teachersJson : '[]',
       partnerTeacherName: report.partner_teacher_name || '',
-      partnerTeacherId: report.partner_teacher ? String(report.partner_teacher) : ''
+      partnerTeacherId: report.partner_teacher ? String(report.partner_teacher) : '',
+      materialsJson: typeof materialsJson !== 'undefined' ? materialsJson : '[]',
     }) %>
 
   </div>

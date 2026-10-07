@@ -22,11 +22,38 @@
   const _partnerTeacherName = typeof partnerTeacherName !== 'undefined' ? partnerTeacherName : '';
   const _partnerTeacherId   = typeof partnerTeacherId   !== 'undefined' ? partnerTeacherId   : '';
   const _teachersJson = typeof teachersJson !== 'undefined' ? teachersJson : '[]';
+  const _materialsJson = typeof materialsJson !== 'undefined' ? materialsJson : '[]';
 %>
 
 <!-- Embedded teachers data for partner-teacher autocomplete -->
 <script id="teachers-json" type="application/json"><%- _teachersJson %></script>
 <script id="current-user-info" type="application/json"><%- JSON.stringify((typeof currentUser !== 'undefined' && currentUser) ? { id: String(currentUser._id), displayName: currentUser.displayName, username: currentUser.username } : {}) %></script>
+
+<!-- Embedded materials data for material autocomplete -->
+<script id="report-form-materials-json" type="application/json"><%- _materialsJson %></script>
+
+<!-- Material autocomplete dropdown styles (scoped to .mat-ac-wrap) -->
+<style>
+.mat-ac-wrap { position: relative; }
+.mat-ac-list {
+  position: absolute; left: 0; right: 0; top: 100%;
+  z-index: 50; margin-top: 4px;
+  background: #fff; border: 1px solid #e2e8f0;
+  border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.10);
+  max-height: 220px; overflow-y: auto;
+  padding: 4px 0;
+  display: none;
+}
+.mat-ac-list.open { display: block; }
+.mat-ac-item {
+  padding: 8px 14px; font-size: 13px; cursor: pointer;
+  color: #334155; line-height: 1.4;
+  transition: background .12s;
+}
+.mat-ac-item:hover, .mat-ac-item.active { background: #f1f5f9; }
+.mat-ac-item-hint { font-size: 11px; color: #94a3b8; margin-left: 6px; }
+.mat-ac-empty { padding: 10px 14px; font-size: 12px; color: #94a3b8; }
+</style>
 
 <form action="<%= _actionUrl %>" method="POST" class="px-8 py-7 space-y-6"
   id="report-form"
@@ -200,10 +227,15 @@
     <label for="subject" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
       Material <span class="ml-1 font-normal normal-case text-slate-400">— optional</span>
     </label>
-    <input type="text" id="subject" name="subject"
-      value="<%= _subjectValue %>"
-      placeholder="e.g: Folder AA-BB"
-      class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
+    <div class="mat-ac-wrap">
+      <input type="text" id="subject" name="subject"
+        value="<%= _subjectValue %>"
+        placeholder="e.g: Folder AA-BB"
+        autocomplete="off"
+        maxlength="100"
+        class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
+      <div id="subject-mat-ac-list" class="mat-ac-list" role="listbox" aria-label="Material suggestions"></div>
+    </div>
   </div>
 
   <!-- Teaching Type & Duration -->
@@ -517,6 +549,8 @@ function setSessionType(type) {
     groupHint.className = 'text-xs';
     renderCompetitionRoster();
   }
+  var subEl = document.getElementById('subject');
+  if (subEl && typeof subEl._matAcReRank === 'function') subEl._matAcReRank();
 }
 
 function setMode(mode) {
@@ -1001,6 +1035,8 @@ function selectGroup(id, opts) {
   if (selectedGroup.type !== 'PRIVATE' && clearBtn) clearBtn.classList.remove('hidden');
   if (selectedGroup.type === 'GROUP') setGroupHintSelected();
   updateHiddenInputs();
+  var subEl = document.getElementById('subject');
+  if (subEl && typeof subEl._matAcReRank === 'function') subEl._matAcReRank();
 }
 
 function clearGroupSelection() {
@@ -1016,6 +1052,8 @@ function clearGroupSelection() {
   if (acReducedCtrl) acReducedCtrl.reset([]);
   if (absentCtrl) absentCtrl.reset([]);
   setGroupHintDefault();
+  var subEl = document.getElementById('subject');
+  if (subEl && typeof subEl._matAcReRank === 'function') subEl._matAcReRank();
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1544,6 +1582,256 @@ if (rosterStudentsEl) {
     }
   });
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Material Autocomplete
+   Shared between single report form and bulk report entries.
+   ═══════════════════════════════════════════════════════════════ */
+function attachMaterialAutocomplete(inputEl, dropdownEl, getLevel) {
+  if (!inputEl || !dropdownEl) return;
+
+  var activeIndex = -1;
+  var visibleItems = [];
+
+  function getRawMaterials() {
+    var raw = [];
+    try {
+      var el = document.getElementById('report-form-materials-json') || document.getElementById('materials-json');
+      if (el && el.textContent) {
+        raw = JSON.parse(el.textContent);
+      }
+    } catch (e) {
+      raw = [];
+    }
+    return raw || [];
+  }
+
+  function clientNormalize(raw) {
+    if (!raw || typeof raw !== 'string') return '';
+    try {
+      return raw.trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    } catch (e) {
+      return raw.trim().toLowerCase().replace(/[^a-z0-9]+/gi, ' ').trim();
+    }
+  }
+
+  function hideDropdown() {
+    dropdownEl.classList.add('hidden');
+    dropdownEl.classList.remove('open');
+    dropdownEl.innerHTML = '';
+    activeIndex = -1;
+    visibleItems = [];
+  }
+
+  function showDropdown() {
+    var query = inputEl.value || '';
+    var qNorm = clientNormalize(query);
+    var currentLevel = (typeof getLevel === 'function' ? (getLevel() || '') : '').trim().toUpperCase();
+    var allMaterials = getRawMaterials();
+
+    // 1. Filter: substring match on normalized name
+    var matched = [];
+    for (var i = 0; i < allMaterials.length; i++) {
+      var m = allMaterials[i];
+      var mNorm = m._norm || clientNormalize(m.name);
+      m._norm = mNorm;
+      if (!qNorm || mNorm.indexOf(qNorm) !== -1) {
+        matched.push(m);
+      }
+    }
+
+    // 2. Ranking: level match first, then usageCount desc, then name asc
+    matched.sort(function(a, b) {
+      var aLvl = (a.level || '').trim().toUpperCase();
+      var bLvl = (b.level || '').trim().toUpperCase();
+      var aLevelMatch = currentLevel && aLvl === currentLevel ? 1 : 0;
+      var bLevelMatch = currentLevel && bLvl === currentLevel ? 1 : 0;
+
+      if (aLevelMatch !== bLevelMatch) {
+        return bLevelMatch - aLevelMatch;
+      }
+      var aUsage = a.usageCount || 0;
+      var bUsage = b.usageCount || 0;
+      if (bUsage !== aUsage) {
+        return bUsage - aUsage;
+      }
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
+    // Deduplicate by (normalizedName, level)
+    var deduped = [];
+    var seenKeys = {};
+    for (var j = 0; j < matched.length; j++) {
+      var item = matched[j];
+      var key = (item._norm || '') + '|' + (item.level || '').trim().toUpperCase();
+      if (!seenKeys[key]) {
+        seenKeys[key] = true;
+        deduped.push(item);
+      }
+    }
+
+    var suggestions = deduped.slice(0, 8);
+
+    // 3. Exact match check for (typed text, current level)
+    var exactMatch = false;
+    if (qNorm) {
+      for (var k = 0; k < deduped.length; k++) {
+        var itm = deduped[k];
+        var itmLvl = (itm.level || '').trim().toUpperCase();
+        if (itm._norm === qNorm && itmLvl === currentLevel) {
+          exactMatch = true;
+          break;
+        }
+      }
+    }
+
+    visibleItems = [];
+    var html = '';
+
+    if (qNorm && !exactMatch) {
+      var cleanTyped = query.trim();
+      visibleItems.push({
+        isNewOption: true,
+        text: cleanTyped
+      });
+      html += '<button type="button" class="mat-ac-item w-full text-left px-4 py-2.5 transition flex items-center justify-between gap-3 border-b border-slate-100 bg-brand-50/40 hover:bg-brand-50" data-idx="0">' +
+        '<div class="flex-1 min-w-0">' +
+          '<p class="text-sm font-semibold text-brand-700 truncate">+ Use &ldquo;' + escHtml(cleanTyped) + '&rdquo; as new material</p>' +
+          '<p class="text-[11px] text-slate-400 mt-0.5">Will be saved to suggestions when report is submitted</p>' +
+        '</div>' +
+        (currentLevel ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-100 text-brand-700">' + escHtml(currentLevel) + '</span>' : '<span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">No level</span>') +
+      '</button>';
+    }
+
+    for (var s = 0; s < suggestions.length; s++) {
+      var sug = suggestions[s];
+      var idx = visibleItems.length;
+      visibleItems.push({
+        isNewOption: false,
+        item: sug
+      });
+      var sLvl = (sug.level || '').trim().toUpperCase();
+      var lvlBadge = sLvl
+        ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700">' + escHtml(sLvl) + '</span>'
+        : '<span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400">No level</span>';
+
+      html += '<button type="button" class="mat-ac-item w-full text-left px-4 py-2.5 hover:bg-slate-50 transition flex items-center justify-between gap-3" data-idx="' + idx + '">' +
+        '<div class="flex-1 min-w-0">' +
+          '<p class="text-sm font-semibold text-slate-800 truncate">' + escHtml(sug.name) + '</p>' +
+          (sug.usageCount ? '<p class="text-[11px] text-slate-400 mt-0.5">Used ' + sug.usageCount + ' time' + (sug.usageCount === 1 ? '' : 's') + '</p>' : '') +
+        '</div>' +
+        '<div class="flex-shrink-0 flex items-center gap-1.5">' +
+          lvlBadge +
+        '</div>' +
+      '</button>';
+    }
+
+    if (visibleItems.length === 0) {
+      hideDropdown();
+      return;
+    }
+
+    dropdownEl.innerHTML = html;
+    dropdownEl.classList.remove('hidden');
+    dropdownEl.classList.add('open');
+    activeIndex = -1;
+  }
+
+  function selectIndex(idx) {
+    if (idx < 0 || idx >= visibleItems.length) return;
+    var target = visibleItems[idx];
+    if (target.isNewOption) {
+      inputEl.value = target.text;
+    } else if (target.item) {
+      inputEl.value = target.item.name;
+    }
+    hideDropdown();
+    try {
+      var evt = new Event('input', { bubbles: true });
+      inputEl.dispatchEvent(evt);
+    } catch (e) {}
+  }
+
+  function updateActiveVisual() {
+    var buttons = dropdownEl.querySelectorAll('.mat-ac-item');
+    for (var b = 0; b < buttons.length; b++) {
+      if (b === activeIndex) {
+        buttons[b].classList.add('bg-slate-100');
+        buttons[b].classList.add('active');
+        try { buttons[b].scrollIntoView({ block: 'nearest' }); } catch (e) {}
+      } else {
+        buttons[b].classList.remove('bg-slate-100');
+        buttons[b].classList.remove('active');
+      }
+    }
+  }
+
+  inputEl.addEventListener('focus', function() {
+    showDropdown();
+  });
+
+  inputEl.addEventListener('input', function() {
+    showDropdown();
+  });
+
+  inputEl.addEventListener('keydown', function(e) {
+    if (dropdownEl.classList.contains('hidden') || visibleItems.length === 0) {
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = (activeIndex + 1) >= visibleItems.length ? 0 : activeIndex + 1;
+      updateActiveVisual();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = activeIndex <= 0 ? visibleItems.length - 1 : activeIndex - 1;
+      updateActiveVisual();
+    } else if (e.key === 'Enter') {
+      if (activeIndex >= 0 && activeIndex < visibleItems.length) {
+        e.preventDefault();
+        selectIndex(activeIndex);
+      }
+    } else if (e.key === 'Escape' || e.key === 'Tab') {
+      hideDropdown();
+    }
+  });
+
+  dropdownEl.addEventListener('click', function(e) {
+    var btn = e.target.closest('.mat-ac-item');
+    if (!btn) return;
+    var idx = parseInt(btn.getAttribute('data-idx'), 10);
+    if (!isNaN(idx)) {
+      selectIndex(idx);
+    }
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!inputEl.contains(e.target) && !dropdownEl.contains(e.target)) {
+      hideDropdown();
+    }
+  });
+
+  inputEl._matAcReRank = function() {
+    if (!dropdownEl.classList.contains('hidden')) {
+      showDropdown();
+    }
+  };
+}
+window.attachMaterialAutocomplete = attachMaterialAutocomplete;
+
+// Initialize material autocomplete for single form
+var mainSubjInp = document.getElementById('subject');
+var mainSubjList = document.getElementById('subject-mat-ac-list');
+if (mainSubjInp && mainSubjList) {
+  attachMaterialAutocomplete(mainSubjInp, mainSubjList, function() {
+    var sType = (document.getElementById('session_type_input') || {}).value;
+    if (sType === 'competition') return '';
+    if (typeof selectedGroup !== 'undefined' && selectedGroup && selectedGroup.level) {
+      return selectedGroup.level;
+    }
+    return '';
+  });
+}
 </script>
 
 <!-- 🟠 Unsaved changes warning -->
@@ -1711,6 +1999,8 @@ function setEntrySessionType(id, type) {
   if (type === 'group'       && btnG) btnG.className = 'flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition border-brand-500 bg-brand-50 text-brand-700';
   if (type === 'private'     && btnP) btnP.className = 'flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition border-purple-400 bg-purple-50 text-purple-700';
   if (type === 'competition' && btnC) btnC.className = 'flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition border-orange-500 bg-orange-50 text-orange-700';
+  var bSub = document.getElementById('bulk-entry-' + id + '-subject');
+  if (bSub && typeof bSub._matAcReRank === 'function') bSub._matAcReRank();
 }
 
 /* ─── Session Mode ──────────────────────────────────────────────────── */
@@ -1800,6 +2090,8 @@ function selectEntryGroup(id, groupId) {
   _renderEntryRoster(id);
   _showEntryRoster(id);
   _entryHintSelected(id);
+  var bSub = document.getElementById('bulk-entry-' + id + '-subject');
+  if (bSub && typeof bSub._matAcReRank === 'function') bSub._matAcReRank();
 }
 
 function clearEntryGroup(id) {
@@ -1814,6 +2106,8 @@ function clearEntryGroup(id) {
   _renderEntryTagBox(id, 'ac-reduced');
   _renderEntryTagBox(id, 'absent');
   _entryHintDefault(id);
+  var bSub = document.getElementById('bulk-entry-' + id + '-subject');
+  if (bSub && typeof bSub._matAcReRank === 'function') bSub._matAcReRank();
   var idx     = _bulkIds.indexOf(id);
   var titleEl = document.getElementById('bulk-entry-' + id + '-title');
   if (titleEl) titleEl.textContent = 'Class ' + (idx + 2);
@@ -2004,6 +2298,17 @@ function _initBulkEntry(id) {
   _initBulkTagInput(id, 'ac-reduced');
   _initBulkTagInput(id, 'absent');
   _initBulkEntryTeachingTypeListener(id);
+
+  // Material autocomplete
+  var bSubjInp = document.getElementById('bulk-entry-' + id + '-subject');
+  var bSubjList = document.getElementById('bulk-entry-' + id + '-subject-mat-ac-list');
+  if (bSubjInp && bSubjList && typeof attachMaterialAutocomplete === 'function') {
+    attachMaterialAutocomplete(bSubjInp, bSubjList, function() {
+      var st = _bulkStates[id];
+      if (!st || st.sessionType === 'competition') return '';
+      return (st.selectedGroup && st.selectedGroup.level) ? st.selectedGroup.level : '';
+    });
+  }
 
   // Roster click delegation
   var rosterEl = document.getElementById('bulk-entry-' + id + '-roster-students');
@@ -2487,7 +2792,10 @@ function _buildEntryHtml(id, num) {
       /* \u2500\u2500 Subject \u2500\u2500 */
       '<div class="space-y-1.5">' +
         '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Material <span class="ml-1 font-normal normal-case text-slate-400">\u2014 optional</span></label>' +
-        '<input type="text" id="bulk-entry-' + id + '-subject" placeholder="e.g: Folder AA-BB" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"/>' +
+        '<div class="mat-ac-wrap">' +
+          '<input type="text" id="bulk-entry-' + id + '-subject" placeholder="e.g: Folder AA-BB" autocomplete="off" maxlength="100" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"/>' +
+          '<div id="bulk-entry-' + id + '-subject-mat-ac-list" class="mat-ac-list" role="listbox" aria-label="Material suggestions"></div>' +
+        '</div>' +
       '</div>' +
 
       /* \u2500\u2500 Notes \u2500\u2500 */
