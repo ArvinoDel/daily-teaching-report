@@ -7,7 +7,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
-const { computeRosterDiff, resolveDbGroupStudents } = require('../services/groupImportDiffService');
+const { computeRosterDiff, resolveDbGroupStudents, countGhostIds } = require('../services/groupImportDiffService');
 const { normalizeName } = require('../models/Student');
 
 function makeObjectId() {
@@ -70,8 +70,8 @@ test('1. Student moved between two CSV groups', () => {
 
   const result = computeRosterDiff(csvDocs, existingGroups, existingStudents);
 
-  // Total moved tally includes MOVED_OUT (1) and MOVED_IN (1)
-  assert.equal(result.summaryChips.movedStudents, 2);
+  // Total moved tally counts distinct student moves (MOVED_IN only, not double-counting MOVED_OUT)
+  assert.equal(result.summaryChips.movedStudents, 1);
 
   // Class A removal should be MOVED_OUT
   const cardA = result.changedGroups.find(g => g.name === 'Class A');
@@ -327,10 +327,10 @@ test('6. Rename candidate at >=50% overlap and not below', () => {
   assert.equal(cardB.renameCandidate, null, 'New Class B at 25% overlap should NOT have renameCandidate');
 });
 
-test('7. DB group with misaligned students/student_ids resolves by name and flags inconsistentGroups', () => {
+test('7. DB group with misaligned students/student_ids resolves by name; ghost id is NOT a roster member', () => {
   const s1 = makeStudent('Student One');
   const s2 = makeStudent('Student Two');
-  const s3Id = makeObjectId(); // Orphan ID
+  const s3Id = makeObjectId(); // Ghost ID — no matching name
 
   const studentById = new Map();
   const studentByNorm = new Map();
@@ -339,19 +339,19 @@ test('7. DB group with misaligned students/student_ids resolves by name and flag
   studentByNorm.set(s1.normalized_name, s1);
   studentByNorm.set(s2.normalized_name, s2);
 
-  // Group where names and ids are reversed and length is mismatched
+  // Group where names and ids are reversed and length is mismatched (s3Id is ghost)
   const misalignedGroup = {
     _id: makeObjectId(),
     group_name: 'Shuffled Group',
     type: 'GROUP',
     level: 'Beginner',
     students: ['Student One', 'Student Two'],
-    student_ids: [s2._id, s1._id, s3Id], // Shuffled + extra id
+    student_ids: [s2._id, s1._id, s3Id], // Shuffled + extra ghost id
   };
 
-  // 1. Direct resolveDbGroupStudents test
+  // resolveDbGroupStudents must only return 2 members (the two named students)
   const resolved = resolveDbGroupStudents(misalignedGroup, studentById, studentByNorm);
-  // First item must be Student One by name, not s2._id by index!
+  assert.equal(resolved.length, 2, 'Ghost id must not become a roster member');
   assert.equal(resolved[0].rawName, 'Student One');
   assert.equal(String(resolved[0].studentId), String(s1._id));
   assert.equal(resolved[0].key, `id:${s1._id}`);
@@ -359,7 +359,10 @@ test('7. DB group with misaligned students/student_ids resolves by name and flag
   assert.equal(resolved[1].rawName, 'Student Two');
   assert.equal(String(resolved[1].studentId), String(s2._id));
 
-  // 2. Full computeRosterDiff test flags inconsistentGroups
+  // Ghost id counted correctly
+  assert.equal(countGhostIds(misalignedGroup, studentByNorm), 1, 'Should count 1 ghost id (s3Id)');
+
+  // Full diff flags inconsistentGroups and ghostIds
   const csvDocs = [
     {
       group_name: 'Shuffled Group',
@@ -371,6 +374,12 @@ test('7. DB group with misaligned students/student_ids resolves by name and flag
 
   const diffResult = computeRosterDiff(csvDocs, [misalignedGroup], [s1, s2]);
   assert.equal(diffResult.summaryChips.inconsistentGroups, 1, 'Should flag 1 inconsistent group');
+  assert.equal(diffResult.summaryChips.ghostIds, 1, 'Should report 1 ghost id');
+  assert.equal(diffResult.summaryChips.groupsWithGhostIds, 1, 'Should report 1 group with ghost ids');
+
+  // No removals (ghost id must not produce a removal row)
+  const card = diffResult.changedGroups.find(g => g.name === 'Shuffled Group');
+  assert.equal(card, undefined, 'No roster changes when CSV matches the named students exactly');
 });
 
 test('8. Name containing a double quote passes through diff untouched', () => {
@@ -421,3 +430,108 @@ test('8. Name containing a double quote passes through diff untouched', () => {
   assert.ok(brandNewCard);
   assert.equal(brandNewCard.additions[0].rawName, 'Another "Quoted" Name');
 });
+
+test('9. Ghost student_ids without matching names do not appear as roster members, removals, or "Student" rows', () => {
+  const alice = makeStudent('Alice Smith');
+  const bob = makeStudent('Bob Jones');
+  const ghost1 = makeObjectId();
+  const ghost2 = makeObjectId();
+
+  const groupWithGhosts = {
+    _id: makeObjectId(),
+    group_name: 'Ghost Class',
+    type: 'GROUP',
+    level: 'Intermediate',
+    students: ['Alice Smith', 'Bob Jones'],
+    student_ids: [alice._id, bob._id, ghost1, ghost2],
+  };
+
+  const studentById = new Map([
+    [String(alice._id), alice],
+    [String(bob._id), bob],
+  ]);
+  const studentByNorm = new Map([
+    [alice.normalized_name, alice],
+    [bob.normalized_name, bob],
+  ]);
+
+  // resolveDbGroupStudents only returns Alice and Bob
+  const resolved = resolveDbGroupStudents(groupWithGhosts, studentById, studentByNorm);
+  assert.equal(resolved.length, 2, 'Must only resolve the 2 named students');
+  assert.equal(resolved[0].rawName, 'Alice Smith');
+  assert.equal(resolved[1].rawName, 'Bob Jones');
+
+  // countGhostIds returns 2
+  assert.equal(countGhostIds(groupWithGhosts, studentByNorm), 2, 'Should count 2 ghost IDs');
+
+  // When CSV matches named students exactly:
+  const csvDocs = [
+    {
+      group_name: 'Ghost Class',
+      type: 'GROUP',
+      level: 'Intermediate',
+      students: ['Alice Smith', 'Bob Jones'],
+    },
+  ];
+
+  const diffResult = computeRosterDiff(csvDocs, [groupWithGhosts], [alice, bob]);
+  const card = diffResult.changedGroups.find(g => g.name === 'Ghost Class');
+  assert.equal(card, undefined, 'No changes should be reported since CSV matches named members');
+
+  assert.equal(diffResult.summaryChips.ghostIds, 2);
+  assert.equal(diffResult.summaryChips.groupsWithGhostIds, 1);
+
+  // allowedRemovalsByGroup has no removals for this group
+  const removals = diffResult.allowedRemovalsByGroup.get('Ghost Class') || [];
+  assert.equal(removals.length, 0, 'No removals should be allowed for ghost IDs');
+});
+
+test('10. student_ids containing a real DB student ID but missing from group.students does NOT make them a roster member', () => {
+  const alice = makeStudent('Alice Smith');
+  const bob = makeStudent('Bob Jones');
+  const charlie = makeStudent('Charlie Brown'); // Real student doc, but NOT in group.students
+
+  const group = {
+    _id: makeObjectId(),
+    group_name: 'Two Person Class',
+    type: 'GROUP',
+    level: 'Beginner',
+    students: ['Alice Smith', 'Bob Jones'],
+    student_ids: [alice._id, charlie._id], // Charlie is in student_ids, but not students[]
+  };
+
+  const studentById = new Map([
+    [String(alice._id), alice],
+    [String(bob._id), bob],
+    [String(charlie._id), charlie],
+  ]);
+  const studentByNorm = new Map([
+    [alice.normalized_name, alice],
+    [bob.normalized_name, bob],
+    [charlie.normalized_name, charlie],
+  ]);
+
+  // Names in group.students[] are the single source of truth
+  const resolved = resolveDbGroupStudents(group, studentById, studentByNorm);
+  assert.equal(resolved.length, 2, 'Must only resolve Alice and Bob');
+  assert.deepEqual(resolved.map(r => r.rawName), ['Alice Smith', 'Bob Jones']);
+  assert.ok(!resolved.some(r => r.rawName === 'Charlie Brown' || r.rawName === 'Student'), 'Charlie must not be a roster member');
+
+  // countGhostIds returns 1 (charlie._id is not represented by any name in group.students)
+  assert.equal(countGhostIds(group, studentByNorm), 1);
+
+  // When CSV has Alice and Bob, no removals are generated for Charlie
+  const csvDocs = [
+    {
+      group_name: 'Two Person Class',
+      type: 'GROUP',
+      level: 'Beginner',
+      students: ['Alice Smith', 'Bob Jones'],
+    },
+  ];
+
+  const diffResult = computeRosterDiff(csvDocs, [group], [alice, bob, charlie]);
+  const card = diffResult.changedGroups.find(g => g.name === 'Two Person Class');
+  assert.equal(card, undefined, 'No changes should be reported since CSV matches group.students');
+});
+

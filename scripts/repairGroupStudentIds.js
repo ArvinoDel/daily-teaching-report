@@ -34,7 +34,15 @@ async function main() {
   console.log('══════════════════════════════════════════════════════');
 
   await mongoose.connect(MONGO_URI);
-  console.log('✓ Connected to MongoDB\n');
+
+  // Print connection info without credentials
+  const connHost = mongoose.connection.host;
+  const connDb   = mongoose.connection.db.databaseName;
+  console.log(`✓ Connected to MongoDB  host=${connHost}  db=${connDb}\n`);
+
+  if (APPLY) {
+    console.log(`⚠️  LIVE RUN: changes will be written to ${connDb} on ${connHost}`);
+  }
 
   // 1. Load all students and index by normalized_name
   const students = await Student.find({}, '_id normalized_name full_name').lean();

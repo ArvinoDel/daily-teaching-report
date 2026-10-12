@@ -344,25 +344,7 @@ exports.importExecute = (req, res) => {
             });
           }
 
-          // Also include any IDs from targetGroup.student_ids not represented by any name
-          const currentIdList = Array.isArray(targetGroup.student_ids) ? targetGroup.student_ids : [];
-          for (const id of currentIdList) {
-            if (!id) continue;
-            const sIdStr = String(id);
-            if (!seenIds.has(sIdStr)) {
-              seenIds.add(sIdStr);
-              const sDoc = studentById.get(sIdStr);
-              const norm = (sDoc && sDoc.normalized_name) || '';
-              if (!norm || !seenNorms.has(norm)) {
-                if (norm) seenNorms.add(norm);
-                existingPairs.push({
-                  name: (sDoc && (sDoc.raw_name || sDoc.full_name)) || 'Student',
-                  norm: norm,
-                  id:   sDoc ? sDoc._id : id,
-                });
-              }
-            }
-          }
+
 
           // Apply confirmed removals by normalized name / resolved id
           let survivingPairs = existingPairs;

@@ -20,9 +20,9 @@ function resolveDbGroupStudents(group, studentById, studentByNorm) {
   const list = [];
   const seenKeys = new Set();
   const rawList = Array.isArray(group.students) ? group.students : [];
-  const idList  = Array.isArray(group.student_ids) ? group.student_ids : [];
 
-  // 1. Resolve each name in group.students by normalized name first (no index pairing)
+  // Names in group.students[] are the single source of truth for membership.
+  // IDs in student_ids that are not represented by a name are ghost ids — skip them.
   for (const raw of rawList) {
     const trimmed = (raw || '').trim();
     if (!trimmed) continue;
@@ -42,25 +42,33 @@ function resolveDbGroupStudents(group, studentById, studentByNorm) {
     }
   }
 
-  // 2. Use student_ids only to add IDs not already represented by any name
-  for (const id of idList) {
-    if (!id) continue;
-    const sId = String(id);
-    const key = `id:${sId}`;
-    if (!seenKeys.has(key)) {
-      seenKeys.add(key);
-      const sDoc = studentById.get(sId);
-      const norm = (sDoc && sDoc.normalized_name) || '';
-      list.push({
-        rawName: (sDoc && (sDoc.raw_name || sDoc.full_name)) || 'Student',
-        normKey: norm,
-        studentId: sId,
-        key,
-      });
-    }
+  return list;
+}
+
+/**
+ * Counts ghost student_ids: ids in group.student_ids that are not represented
+ * by any name in group.students (resolved via normalized name).
+ */
+function countGhostIds(group, studentByNorm) {
+  const rawList = Array.isArray(group.students) ? group.students : [];
+  const idList  = Array.isArray(group.student_ids) ? group.student_ids : [];
+
+  // Collect all student ids that ARE represented by a name
+  const representedIds = new Set();
+  for (const raw of rawList) {
+    const trimmed = (raw || '').trim();
+    if (!trimmed) continue;
+    const norm = normalizeName(trimmed);
+    const sDoc = norm ? studentByNorm.get(norm) : null;
+    if (sDoc) representedIds.add(String(sDoc._id));
   }
 
-  return list;
+  let ghostCount = 0;
+  for (const id of idList) {
+    if (!id) continue;
+    if (!representedIds.has(String(id))) ghostCount++;
+  }
+  return ghostCount;
 }
 
 /**
@@ -116,12 +124,15 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
     }
   }
 
-  // 1c. Surface inconsistent groups in dry run
+  // 1c. Surface inconsistent groups and ghost ids
   let inconsistentGroupsCount = 0;
+  let totalGhostIds = 0;
+  let groupsWithGhostIds = 0;
   for (const g of existingGroups) {
     const rawList = Array.isArray(g.students) ? g.students : [];
     const idList  = Array.isArray(g.student_ids) ? g.student_ids : [];
 
+    // Detect misaligned (length mismatch or id doesn't match resolved name)
     let isInconsistent = rawList.length !== idList.length;
     if (!isInconsistent) {
       for (let i = 0; i < rawList.length; i++) {
@@ -133,9 +144,13 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
         }
       }
     }
+    if (isInconsistent) inconsistentGroupsCount++;
 
-    if (isInconsistent) {
-      inconsistentGroupsCount++;
+    // Count ghost ids for this group
+    const ghostCount = countGhostIds(g, studentByNorm);
+    if (ghostCount > 0) {
+      totalGhostIds += ghostCount;
+      groupsWithGhostIds++;
     }
   }
 
@@ -454,14 +469,14 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
           allowedRemovalsByGroup.get(dbId).set(rem.key, rem);
         }
 
-        // Tally chips counts (only MOVED_IN counts toward movedStudents)
+        // Tally chips counts — movedStudents counts MOVED_IN only (student moved once)
         for (const add of diff.additions) {
           if (add.status === 'NEW') newStudentsCount++;
           if (add.status === 'MOVED_IN') movedStudentsCount++;
         }
         for (const rem of diff.removals) {
           if (rem.status === 'NOT_IN_CSV') notInCsvStudentsCount++;
-          if (rem.status === 'MOVED_OUT') movedStudentsCount++;
+          // MOVED_OUT is the counterpart; don't double-count movedStudents
         }
 
         changedGroups.push({
@@ -547,6 +562,9 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
     return !exactMatchDbIds.has(id) && !claimedDbIds.has(id);
   }).length;
 
+  // Collect CSV group names that appear in changedGroups (saved by this import)
+  const changedGroupNames = new Set(changedGroups.map(g => g.name));
+
   return {
     changedGroups,
     summaryChips: {
@@ -557,6 +575,8 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
       possibleRenames: renameCandidatesByCsvName.size,
       untouchedDbGroups: untouchedDbGroupsCount,
       inconsistentGroups: inconsistentGroupsCount,
+      ghostIds: totalGhostIds,
+      groupsWithGhostIds,
     },
     authoritativeRenames,
     allowedRemovalsByGroup,
@@ -567,5 +587,6 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
 module.exports = {
   resolveDbGroupStudents,
   resolveCsvGroupStudents,
+  countGhostIds,
   computeRosterDiff,
 };
