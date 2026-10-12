@@ -182,6 +182,13 @@ exports.importExecute = (req, res) => {
         Student.find({}, { _id: 1, normalized_name: 1, raw_name: 1, full_name: 1 }).lean(),
       ]);
 
+      const studentById = new Map();
+      const studentByNorm = new Map();
+      for (const s of existingStudents) {
+        studentById.set(String(s._id), s);
+        if (s.normalized_name) studentByNorm.set(s.normalized_name, s);
+      }
+
       const diffResult = computeRosterDiff(docs, existingGroups, existingStudents);
 
       // Parse admin decisions from multipart form
@@ -292,8 +299,13 @@ exports.importExecute = (req, res) => {
           const result = await matchOrCreateStudent(rawName);
           if (!result) continue;
           const { student, created } = result;
-          if (created) newStudentsAdded++;
-          else         existingStudentsKept++;
+          if (created) {
+            newStudentsAdded++;
+            studentById.set(String(student._id), student);
+            if (student.normalized_name) studentByNorm.set(student.normalized_name, student);
+          } else {
+            existingStudentsKept++;
+          }
           studentIds.push(student._id);
           studentNames.push(rawName);
         }
@@ -305,54 +317,133 @@ exports.importExecute = (req, res) => {
         }
 
         if (targetGroup) {
-          // Merge additions
-          const currentStrings = new Set(targetGroup.students.map(s => normalizeName(s)));
-          const newStrings = studentNames.filter(n => !currentStrings.has(normalizeName(n)));
-          const currentIds = new Set(targetGroup.student_ids.map(id => String(id)));
-          const newIds     = studentIds.filter(id => !currentIds.has(String(id)));
-
+          const targetIdStr = String(targetGroup._id);
           let modified = false;
-          if (newStrings.length || newIds.length) {
-            targetGroup.students    = [...targetGroup.students, ...newStrings];
-            targetGroup.student_ids = [...targetGroup.student_ids, ...newIds];
-            modified = true;
+
+          // Build list of { name, norm, id } pairs by resolving existing names (never index pairing)
+          const existingPairs = [];
+          const seenNorms = new Set();
+          const seenIds   = new Set();
+
+          const rawList = Array.isArray(targetGroup.students) ? targetGroup.students : [];
+          for (const raw of rawList) {
+            const trimmed = (raw || '').trim();
+            if (!trimmed) continue;
+            const norm = normalizeName(trimmed);
+            if (norm && seenNorms.has(norm)) continue;
+            if (norm) seenNorms.add(norm);
+
+            const sDoc = norm ? studentByNorm.get(norm) : null;
+            const sId  = sDoc ? sDoc._id : null;
+            if (sId) seenIds.add(String(sId));
+
+            existingPairs.push({
+              name: trimmed,
+              norm: norm,
+              id:   sId,
+            });
           }
 
-          // Apply confirmed removals for this group
-          const targetIdStr = String(targetGroup._id);
+          // Also include any IDs from targetGroup.student_ids not represented by any name
+          const currentIdList = Array.isArray(targetGroup.student_ids) ? targetGroup.student_ids : [];
+          for (const id of currentIdList) {
+            if (!id) continue;
+            const sIdStr = String(id);
+            if (!seenIds.has(sIdStr)) {
+              seenIds.add(sIdStr);
+              const sDoc = studentById.get(sIdStr);
+              const norm = (sDoc && sDoc.normalized_name) || '';
+              if (!norm || !seenNorms.has(norm)) {
+                if (norm) seenNorms.add(norm);
+                existingPairs.push({
+                  name: (sDoc && (sDoc.raw_name || sDoc.full_name)) || 'Student',
+                  norm: norm,
+                  id:   sDoc ? sDoc._id : id,
+                });
+              }
+            }
+          }
+
+          // Apply confirmed removals by normalized name / resolved id
+          let survivingPairs = existingPairs;
           if (confirmedRemovalsByGroup.has(targetIdStr)) {
             const removalsForGroup = confirmedRemovalsByGroup.get(targetIdStr);
-            const filteredStrings = [];
-            const filteredIds     = [];
+            survivingPairs = [];
             let groupRemovedCount = 0;
 
-            for (let i = 0; i < targetGroup.students.length; i++) {
-              const str = targetGroup.students[i];
-              const sId = targetGroup.student_ids[i] ? String(targetGroup.student_ids[i]) : null;
-              const norm = normalizeName(str);
-
-              const shouldRemove = (sId && removalsForGroup.has(`id:${sId}`)) ||
-                                   (norm && removalsForGroup.has(`norm:${norm}`));
+            for (const p of existingPairs) {
+              const shouldRemove = (p.id && removalsForGroup.has(`id:${String(p.id)}`)) ||
+                                   (p.norm && removalsForGroup.has(`norm:${p.norm}`));
 
               if (shouldRemove) {
                 groupRemovedCount++;
-                const remMeta = diffResult.allowedRemovalsByGroup.get(targetIdStr)?.get(sId ? `id:${sId}` : `norm:${norm}`);
+                const remMeta = diffResult.allowedRemovalsByGroup.get(targetIdStr)?.get(p.id ? `id:${String(p.id)}` : `norm:${p.norm}`);
                 if (remMeta && remMeta.status === 'MOVED_OUT') {
                   movedCount++;
                 }
               } else {
-                filteredStrings.push(str);
-                if (targetGroup.student_ids[i]) filteredIds.push(targetGroup.student_ids[i]);
+                survivingPairs.push(p);
               }
             }
 
             if (groupRemovedCount > 0) {
-              targetGroup.students    = filteredStrings;
-              targetGroup.student_ids = filteredIds;
-              removedFromGroups      += groupRemovedCount;
+              removedFromGroups += groupRemovedCount;
               modified = true;
             }
           }
+
+          // Apply additions as one pair (name + id together) only if neither norm nor id is already in group
+          const currentGroupNorms = new Set(survivingPairs.map(p => p.norm).filter(Boolean));
+          const currentGroupIds   = new Set(survivingPairs.map(p => String(p.id)).filter(Boolean));
+
+          for (let i = 0; i < studentNames.length; i++) {
+            const rawName = studentNames[i];
+            const sId     = studentIds[i];
+            const norm    = normalizeName(rawName);
+
+            const alreadyInGroup = (norm && currentGroupNorms.has(norm)) ||
+                                   (sId && currentGroupIds.has(String(sId)));
+
+            if (!alreadyInGroup) {
+              survivingPairs.push({
+                name: rawName,
+                norm: norm,
+                id:   sId,
+              });
+              if (norm) currentGroupNorms.add(norm);
+              if (sId)  currentGroupIds.add(String(sId));
+              modified = true;
+            }
+          }
+
+          // Write back students = pairs' names (deduped by normalized name) and student_ids = resolved ids (deduped)
+          const finalNames = [];
+          const finalIds   = [];
+          const seenFinalNorms = new Set();
+          const seenFinalIds   = new Set();
+
+          for (const p of survivingPairs) {
+            if (p.norm && !seenFinalNorms.has(p.norm)) {
+              seenFinalNorms.add(p.norm);
+              finalNames.push(p.name);
+            } else if (!p.norm) {
+              finalNames.push(p.name);
+            }
+
+            if (p.id && !seenFinalIds.has(String(p.id))) {
+              seenFinalIds.add(String(p.id));
+              finalIds.push(p.id);
+            }
+          }
+
+          const namesChanged = JSON.stringify(targetGroup.students) !== JSON.stringify(finalNames);
+          const idsChanged   = JSON.stringify((targetGroup.student_ids || []).map(String)) !== JSON.stringify(finalIds.map(String));
+          if (namesChanged || idsChanged) {
+            modified = true;
+          }
+
+          targetGroup.students    = finalNames;
+          targetGroup.student_ids = finalIds;
 
           if (doc.level && doc.level !== targetGroup.level) {
             targetGroup.level = doc.level;

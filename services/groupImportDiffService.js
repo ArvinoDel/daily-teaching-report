@@ -22,24 +22,19 @@ function resolveDbGroupStudents(group, studentById, studentByNorm) {
   const rawList = Array.isArray(group.students) ? group.students : [];
   const idList  = Array.isArray(group.student_ids) ? group.student_ids : [];
 
-  for (let i = 0; i < rawList.length; i++) {
-    const raw = (rawList[i] || '').trim();
-    if (!raw) continue;
-    const norm = normalizeName(raw);
-    let sDoc = null;
-    if (idList[i] && studentById.has(String(idList[i]))) {
-      sDoc = studentById.get(String(idList[i]));
-    } else if (norm && studentByNorm.has(norm)) {
-      sDoc = studentByNorm.get(norm);
-    }
-
-    const studentId = sDoc ? String(sDoc._id) : (idList[i] ? String(idList[i]) : null);
+  // 1. Resolve each name in group.students by normalized name first (no index pairing)
+  for (const raw of rawList) {
+    const trimmed = (raw || '').trim();
+    if (!trimmed) continue;
+    const norm = normalizeName(trimmed);
+    const sDoc = norm ? studentByNorm.get(norm) : null;
+    const studentId = sDoc ? String(sDoc._id) : null;
     const key = studentId ? `id:${studentId}` : `norm:${norm}`;
 
     if (!seenKeys.has(key)) {
       seenKeys.add(key);
       list.push({
-        rawName: raw,
+        rawName: trimmed,
         normKey: norm,
         studentId,
         key,
@@ -47,7 +42,7 @@ function resolveDbGroupStudents(group, studentById, studentByNorm) {
     }
   }
 
-  // Include any student_ids in idList not indexed in rawList
+  // 2. Use student_ids only to add IDs not already represented by any name
   for (const id of idList) {
     if (!id) continue;
     const sId = String(id);
@@ -55,9 +50,10 @@ function resolveDbGroupStudents(group, studentById, studentByNorm) {
     if (!seenKeys.has(key)) {
       seenKeys.add(key);
       const sDoc = studentById.get(sId);
+      const norm = (sDoc && sDoc.normalized_name) || '';
       list.push({
         rawName: (sDoc && (sDoc.raw_name || sDoc.full_name)) || 'Student',
-        normKey: (sDoc && sDoc.normalized_name) || '',
+        normKey: norm,
         studentId: sId,
         key,
       });
@@ -117,6 +113,29 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
     studentById.set(String(s._id), s);
     if (s.normalized_name) {
       studentByNorm.set(s.normalized_name, s);
+    }
+  }
+
+  // 1c. Surface inconsistent groups in dry run
+  let inconsistentGroupsCount = 0;
+  for (const g of existingGroups) {
+    const rawList = Array.isArray(g.students) ? g.students : [];
+    const idList  = Array.isArray(g.student_ids) ? g.student_ids : [];
+
+    let isInconsistent = rawList.length !== idList.length;
+    if (!isInconsistent) {
+      for (let i = 0; i < rawList.length; i++) {
+        const norm = normalizeName(rawList[i]);
+        const sDoc = norm ? studentByNorm.get(norm) : null;
+        if (sDoc && String(sDoc._id) !== String(idList[i])) {
+          isInconsistent = true;
+          break;
+        }
+      }
+    }
+
+    if (isInconsistent) {
+      inconsistentGroupsCount++;
     }
   }
 
@@ -232,7 +251,28 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
     }
   }
 
-  // 4. Compute student memberships across all groups of the same type
+  // 4. Map DB groups to their representing CSV group (exact match or claimed rename candidate)
+  const dbGroupToCsvGroupMap = new Map();
+  for (const type of ['GROUP', 'PRIVATE']) {
+    const csvList = csvGroupResolved.filter(c => c.type === type);
+    const dbList  = dbGroupsByType[type];
+
+    for (const c of csvList) {
+      const exactMatch = dbList.find(d => d.group.group_name === c.doc.group_name);
+      if (exactMatch) {
+        dbGroupToCsvGroupMap.set(String(exactMatch.group._id), c);
+      }
+    }
+
+    for (const [csvName, cand] of renameCandidatesByCsvName.entries()) {
+      const csvItem = csvList.find(c => c.doc.group_name === csvName);
+      if (csvItem && cand.dbGroupId) {
+        dbGroupToCsvGroupMap.set(cand.dbGroupId, csvItem);
+      }
+    }
+  }
+
+  // Compute student memberships across all groups of the same type
   const dbMembershipsByType = { GROUP: new Map(), PRIVATE: new Map() };
   const csvMembershipsByType = { GROUP: new Map(), PRIVATE: new Map() };
 
@@ -282,17 +322,28 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
             label: 'New student',
           });
         } else {
-          // Check if student belonged to another DB group of the same type that is missing them in CSV
+          // Check all other DB groups of the same type that currently contain this student
           const otherDbGroups = (dbMembershipsByType[type].get(s.key) || [])
             .filter(g => !dItem || g.groupId !== String(dItem.group._id));
 
           let movedFrom = null;
+          let notInCsvGroup = null;
+
           for (const og of otherDbGroups) {
-            const inCsvGroups = (csvMembershipsByType[type].get(s.key) || [])
-              .map(x => x.groupName);
-            if (!inCsvGroups.includes(og.groupName)) {
-              movedFrom = og.groupName;
-              break;
+            // Is og present in the CSV (either by exact name or as claimed rename candidate)?
+            if (dbGroupToCsvGroupMap.has(og.groupId)) {
+              const targetCsvGroup = dbGroupToCsvGroupMap.get(og.groupId);
+              const inTargetCsv = targetCsvGroup.students.some(st => st.key === s.key);
+              if (!inTargetCsv) {
+                // Student was in og and is missing in og's CSV group -> true move!
+                movedFrom = og.groupName;
+                break;
+              }
+            } else {
+              // og is NOT in the CSV at all
+              if (!notInCsvGroup) {
+                notInCsvGroup = og.groupName;
+              }
             }
           }
 
@@ -302,6 +353,13 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
               status: 'MOVED_IN',
               fromGroup: movedFrom,
               label: `Moved from ${movedFrom}`,
+            });
+          } else if (notInCsvGroup) {
+            additions.push({
+              ...s,
+              status: 'EXISTING',
+              note: `Also in ${notInCsvGroup} (not in this CSV, stays there)`,
+              label: `Also in ${notInCsvGroup} (not in this CSV, stays there)`,
             });
           } else {
             additions.push({
@@ -396,7 +454,7 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
           allowedRemovalsByGroup.get(dbId).set(rem.key, rem);
         }
 
-        // Tally chips counts
+        // Tally chips counts (only MOVED_IN counts toward movedStudents)
         for (const add of diff.additions) {
           if (add.status === 'NEW') newStudentsCount++;
           if (add.status === 'MOVED_IN') movedStudentsCount++;
@@ -498,6 +556,7 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
       notInCsvStudents: notInCsvStudentsCount,
       possibleRenames: renameCandidatesByCsvName.size,
       untouchedDbGroups: untouchedDbGroupsCount,
+      inconsistentGroups: inconsistentGroupsCount,
     },
     authoritativeRenames,
     allowedRemovalsByGroup,
