@@ -1,6 +1,7 @@
-const multer  = require('multer');
-const Group   = require('../models/Group');
-const Student = require('../models/Student');
+const mongoose = require('mongoose');
+const multer   = require('multer');
+const Group    = require('../models/Group');
+const Student  = require('../models/Student');
 const AuditLog = require('../models/AuditLog');
 const {
   parseGroupsCsvFromString,
@@ -9,6 +10,7 @@ const {
 } = require('../scripts/lib/parseRoster');
 const { matchOrCreateStudent } = require('../services/studentService');
 const { normalizeName }        = require('../models/Student');
+const { computeRosterDiff }    = require('../services/groupImportDiffService');
 
 /* ── Multer: memory storage (no temp files — works on serverless) ── */
 const upload = multer({
@@ -131,103 +133,159 @@ exports.importExecute = (req, res) => {
       };
 
       if (dryRun) {
-        // Count how many students would be NEW vs existing (bulk query)
-        let wouldCreate  = 0;
-        let wouldRetain  = 0;
-        const seen = new Set();
-        const allStudentKeys = [];
+        // Fetch existing DB groups and existing students
+        const [existingGroups, existingStudents] = await Promise.all([
+          Group.find({}).lean(),
+          Student.find({}, { _id: 1, normalized_name: 1, raw_name: 1, full_name: 1 }).lean(),
+        ]);
+
+        // Student identity counts (wouldCreate, wouldRetain)
+        const seenNorms = new Set();
+        const allStudentNorms = [];
         for (const doc of docs) {
           for (const rawName of doc.students) {
             const key = normalizeName(rawName);
-            if (!key || seen.has(key)) continue;
-            seen.add(key);
-            allStudentKeys.push(key);
-          }
-        }
-
-        const existingStudents = await Student.find(
-          { normalized_name: { $in: allStudentKeys } },
-          { normalized_name: 1 }
-        ).lean();
-        const existingStudentKeys = new Set(existingStudents.map(s => s.normalized_name));
-
-        for (const key of allStudentKeys) {
-          if (existingStudentKeys.has(key)) wouldRetain++;
-          else                              wouldCreate++;
-        }
-
-        // Compare against existing groups in DB
-        const groupNames = docs.map(d => d.group_name);
-        const existingGroups = await Group.find({ group_name: { $in: groupNames } }).lean();
-        const existingGroupMap = new Map(existingGroups.map(g => [g.group_name, g]));
-
-        const changedGroups = [];
-        for (const doc of docs) {
-          const existingGroup = existingGroupMap.get(doc.group_name);
-          if (!existingGroup) {
-            changedGroups.push({
-              name:         doc.group_name,
-              type:         doc.type,
-              level:        doc.level || '—',
-              studentCount: doc.students.length,
-              status:       'NEW',
-              details:      'New group',
-            });
-          } else {
-            const currentStrings = new Set((existingGroup.students || []).map(s => normalizeName(s)));
-            const addedStudents = (doc.students || []).filter(n => !currentStrings.has(normalizeName(n)));
-            const levelChanged = Boolean(doc.level && doc.level !== existingGroup.level);
-            const typeChanged  = Boolean(doc.type && doc.type !== existingGroup.type);
-
-            if (addedStudents.length > 0 || levelChanged || typeChanged) {
-              const detailsList = [];
-              if (addedStudents.length > 0) {
-                detailsList.push(`+${addedStudents.length} new student${addedStudents.length > 1 ? 's' : ''}`);
-              }
-              if (levelChanged) {
-                detailsList.push(`Level: ${existingGroup.level || 'None'} → ${doc.level}`);
-              }
-              if (typeChanged) {
-                detailsList.push(`Type: ${existingGroup.type} → ${doc.type}`);
-              }
-
-              changedGroups.push({
-                name:         doc.group_name,
-                type:         doc.type,
-                level:        doc.level || existingGroup.level || '—',
-                studentCount: (existingGroup.students || []).length + addedStudents.length,
-                status:       'UPDATED',
-                details:      detailsList.join(', '),
-              });
+            if (key && !seenNorms.has(key)) {
+              seenNorms.add(key);
+              allStudentNorms.push(key);
             }
           }
         }
 
-        const PREVIEW_CAP = 50;
-        const sample = changedGroups.slice(0, PREVIEW_CAP);
-        summary.totalChanged = changedGroups.length;
+        const existingStudentNorms = new Set(existingStudents.map(s => s.normalized_name));
+        let wouldCreate = 0;
+        let wouldRetain = 0;
+        for (const key of allStudentNorms) {
+          if (existingStudentNorms.has(key)) wouldRetain++;
+          else                              wouldCreate++;
+        }
+
+        // Run group-based roster diff
+        const diffResult = computeRosterDiff(docs, existingGroups, existingStudents);
 
         return res.json({
           ok: true,
           dryRun: true,
           summary,
           preview: { wouldCreate, wouldRetain },
-          sample,
-          totalChanged: changedGroups.length,
+          changedGroups: diffResult.changedGroups,
+          summaryChips: diffResult.summaryChips,
         });
       }
 
       // ══════════════════════════════════════════════════════════
-      //  NON-DESTRUCTIVE LIVE IMPORT
+      //  LIVE IMPORT WITH ADMIN DECISIONS
       // ══════════════════════════════════════════════════════════
-      let newStudentsAdded      = 0;
-      let existingStudentsKept  = 0;
-      let groupsCreated         = 0;
-      let groupsUpdated         = 0;
+      // Fetch fresh DB groups and students to recompute authoritative diff
+      const [existingGroups, existingStudents] = await Promise.all([
+        Group.find({}),
+        Student.find({}, { _id: 1, normalized_name: 1, raw_name: 1, full_name: 1 }).lean(),
+      ]);
+
+      const diffResult = computeRosterDiff(docs, existingGroups, existingStudents);
+
+      // Parse admin decisions from multipart form
+      let clientRemovals = [];
+      let clientRenames  = [];
+      if (req.body.decisions) {
+        try {
+          const parsed = typeof req.body.decisions === 'string'
+            ? JSON.parse(req.body.decisions)
+            : req.body.decisions;
+          if (Array.isArray(parsed.removals)) clientRemovals = parsed.removals;
+          if (Array.isArray(parsed.renames))  clientRenames  = parsed.renames;
+        } catch (e) {
+          console.warn('Failed to parse import decisions JSON:', e);
+        }
+      }
+
+      // ── 1. Validate and apply approved renames ────────────────
+      const renamedGroupMap = new Map(); // csvGroupName -> Group doc
+      let renamedCount = 0;
+      let invalidRenamesCount = 0;
+
+      for (const ren of clientRenames) {
+        const { groupId, newName } = ren;
+        if (!groupId || !newName || !mongoose.Types.ObjectId.isValid(groupId)) {
+          invalidRenamesCount++;
+          continue;
+        }
+
+        // Check against freshly recomputed authoritative renames
+        const expectedDbId = diffResult.authoritativeRenames.get(newName);
+        if (expectedDbId && expectedDbId === String(groupId)) {
+          const grp = await Group.findById(groupId);
+          if (grp) {
+            grp.group_name = newName;
+            const csvDoc = docs.find(d => d.group_name === newName);
+            if (csvDoc && csvDoc.level) grp.level = csvDoc.level;
+            if (csvDoc && csvDoc.type)  grp.type  = csvDoc.type;
+            await grp.save();
+            renamedGroupMap.set(newName, grp);
+            renamedCount++;
+          }
+        } else {
+          invalidRenamesCount++;
+        }
+      }
+
+      // ── 2. Validate client removals against recomputed diff ──
+      const confirmedRemovalsByGroup = new Map();
+      let invalidRemovalsCount = 0;
+
+      for (const rem of clientRemovals) {
+        const { groupId, studentId, studentKey } = rem;
+        if (!groupId || !mongoose.Types.ObjectId.isValid(groupId)) {
+          invalidRemovalsCount++;
+          continue;
+        }
+
+        const allowedMap = diffResult.allowedRemovalsByGroup.get(String(groupId));
+        if (!allowedMap) {
+          invalidRemovalsCount++;
+          continue;
+        }
+
+        let matchRem = null;
+        if (studentKey && allowedMap.has(studentKey)) {
+          matchRem = allowedMap.get(studentKey);
+        } else if (studentId && allowedMap.has(`id:${studentId}`)) {
+          matchRem = allowedMap.get(`id:${studentId}`);
+        } else {
+          for (const item of allowedMap.values()) {
+            if (studentId && item.studentId === String(studentId)) {
+              matchRem = item;
+              break;
+            }
+          }
+        }
+
+        if (matchRem) {
+          if (!confirmedRemovalsByGroup.has(String(groupId))) {
+            confirmedRemovalsByGroup.set(String(groupId), new Set());
+          }
+          confirmedRemovalsByGroup.get(String(groupId)).add(matchRem.key);
+          if (matchRem.studentId) {
+            confirmedRemovalsByGroup.get(String(groupId)).add(`id:${matchRem.studentId}`);
+          }
+          if (matchRem.normKey) {
+            confirmedRemovalsByGroup.get(String(groupId)).add(`norm:${matchRem.normKey}`);
+          }
+        } else {
+          invalidRemovalsCount++;
+        }
+      }
+
+      // ── 3. Apply group updates, additions & confirmed removals ─
+      let newStudentsAdded     = 0;
+      let existingStudentsKept = 0;
+      let groupsCreated        = 0;
+      let groupsUpdated        = 0;
+      let removedFromGroups    = 0;
+      let movedCount           = 0;
 
       for (const doc of docs) {
-        // ── 1. Resolve Student identity for each student name ────
-        const studentIds  = [];
+        const studentIds   = [];
         const studentNames = [];
 
         for (const rawName of doc.students) {
@@ -237,32 +295,80 @@ exports.importExecute = (req, res) => {
           if (created) newStudentsAdded++;
           else         existingStudentsKept++;
           studentIds.push(student._id);
-          studentNames.push(rawName); // keep original string for backward compat
+          studentNames.push(rawName);
         }
 
-        // ── 2. Upsert the Group (match by group_name) ────────────
-        const existingGroup = await Group.findOne({ group_name: doc.group_name });
+        // Check if matched DB group exists (either renamed or matched by name)
+        let targetGroup = renamedGroupMap.get(doc.group_name);
+        if (!targetGroup) {
+          targetGroup = await Group.findOne({ group_name: doc.group_name });
+        }
 
-        if (existingGroup) {
-          // Merge students (add any not already present)
-          const currentStrings = new Set(existingGroup.students.map(s => normalizeName(s)));
+        if (targetGroup) {
+          // Merge additions
+          const currentStrings = new Set(targetGroup.students.map(s => normalizeName(s)));
           const newStrings = studentNames.filter(n => !currentStrings.has(normalizeName(n)));
-          const currentIds = new Set(existingGroup.student_ids.map(id => String(id)));
+          const currentIds = new Set(targetGroup.student_ids.map(id => String(id)));
           const newIds     = studentIds.filter(id => !currentIds.has(String(id)));
 
-          const levelChanged = Boolean(doc.level && doc.level !== existingGroup.level);
-          const typeChanged  = Boolean(doc.type && doc.type !== existingGroup.type);
+          let modified = false;
+          if (newStrings.length || newIds.length) {
+            targetGroup.students    = [...targetGroup.students, ...newStrings];
+            targetGroup.student_ids = [...targetGroup.student_ids, ...newIds];
+            modified = true;
+          }
 
-          if (newStrings.length || newIds.length || levelChanged || typeChanged) {
-            existingGroup.students   = [...existingGroup.students, ...newStrings];
-            existingGroup.student_ids = [...existingGroup.student_ids, ...newIds];
-            if (doc.level) existingGroup.level = doc.level;
-            if (doc.type)  existingGroup.type  = doc.type;
-            await existingGroup.save();
+          // Apply confirmed removals for this group
+          const targetIdStr = String(targetGroup._id);
+          if (confirmedRemovalsByGroup.has(targetIdStr)) {
+            const removalsForGroup = confirmedRemovalsByGroup.get(targetIdStr);
+            const filteredStrings = [];
+            const filteredIds     = [];
+            let groupRemovedCount = 0;
+
+            for (let i = 0; i < targetGroup.students.length; i++) {
+              const str = targetGroup.students[i];
+              const sId = targetGroup.student_ids[i] ? String(targetGroup.student_ids[i]) : null;
+              const norm = normalizeName(str);
+
+              const shouldRemove = (sId && removalsForGroup.has(`id:${sId}`)) ||
+                                   (norm && removalsForGroup.has(`norm:${norm}`));
+
+              if (shouldRemove) {
+                groupRemovedCount++;
+                const remMeta = diffResult.allowedRemovalsByGroup.get(targetIdStr)?.get(sId ? `id:${sId}` : `norm:${norm}`);
+                if (remMeta && remMeta.status === 'MOVED_OUT') {
+                  movedCount++;
+                }
+              } else {
+                filteredStrings.push(str);
+                if (targetGroup.student_ids[i]) filteredIds.push(targetGroup.student_ids[i]);
+              }
+            }
+
+            if (groupRemovedCount > 0) {
+              targetGroup.students    = filteredStrings;
+              targetGroup.student_ids = filteredIds;
+              removedFromGroups      += groupRemovedCount;
+              modified = true;
+            }
+          }
+
+          if (doc.level && doc.level !== targetGroup.level) {
+            targetGroup.level = doc.level;
+            modified = true;
+          }
+          if (doc.type && doc.type !== targetGroup.type) {
+            targetGroup.type = doc.type;
+            modified = true;
+          }
+
+          if (modified || renamedGroupMap.has(doc.group_name)) {
+            await targetGroup.save();
             groupsUpdated++;
           }
         } else {
-          // Create brand-new group
+          // Brand-new group
           await Group.create({
             group_name:  doc.group_name,
             type:        doc.type,
@@ -275,9 +381,12 @@ exports.importExecute = (req, res) => {
       }
 
       summary.newStudentsAdded     = newStudentsAdded;
-      summary.existingStudentsKept  = existingStudentsKept;
+      summary.existingStudentsKept = existingStudentsKept;
       summary.groupsCreated        = groupsCreated;
       summary.groupsUpdated        = groupsUpdated;
+      summary.removedFromGroups    = removedFromGroups;
+      summary.moved                = movedCount;
+      summary.renamed              = renamedCount;
 
       // Audit log
       await logAudit(req, 'import_groups', {
@@ -285,6 +394,11 @@ exports.importExecute = (req, res) => {
         existingStudentsKept,
         groupsCreated,
         groupsUpdated,
+        removedFromGroups,
+        moved: movedCount,
+        renamed: renamedCount,
+        invalidRemovals: invalidRemovalsCount,
+        invalidRenames: invalidRenamesCount,
       });
 
       return res.json({ ok: true, dryRun: false, summary });
