@@ -280,17 +280,21 @@ function initScheduler() {
 }
 
 /**
- * Calculates the next backup run time (next Sunday at 00:00).
+ * Calculates the next backup run time (Saturday 17:00 UTC = Sunday 00:00 WIB).
+ * Computed in UTC so it behaves consistently across any server timezone.
+ * @param {Date} [now=new Date()]
  * @returns {Date}
  */
-function getNextBackupDate() {
-  const now = new Date();
-  const nextSunday = new Date(now);
-  let daysUntilSunday = (7 - now.getDay()) % 7;
-  if (daysUntilSunday === 0) daysUntilSunday = 7;
-  nextSunday.setDate(now.getDate() + daysUntilSunday);
-  nextSunday.setHours(0, 0, 0, 0);
-  return nextSunday;
+function getNextBackupDate(now = new Date()) {
+  const target = new Date(now.getTime());
+  target.setUTCHours(17, 0, 0, 0);
+  const currentUTCDay = now.getUTCDay();
+  let daysUntilSaturday = (6 - currentUTCDay + 7) % 7;
+  if (daysUntilSaturday === 0 && now.getTime() >= target.getTime()) {
+    daysUntilSaturday = 7;
+  }
+  target.setUTCDate(target.getUTCDate() + daysUntilSaturday);
+  return target;
 }
 
 module.exports = {
@@ -300,4 +304,6 @@ module.exports = {
   FORMAT_META,
   initScheduler,
   getNextBackupDate,
+  pruneOldAutomatedBackups,
+  sanitizeErrorMessage,
 };

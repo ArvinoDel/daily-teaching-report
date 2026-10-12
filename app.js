@@ -18,6 +18,7 @@ const adminRoutes    = require('./routes/admin');
 const feedbackRoutes = require('./routes/feedback');
 const notificationRoutes = require('./routes/notifications');
 const publicCardRoutes   = require('./routes/publicCard');
+const cronRoutes         = require('./routes/cron');
 const Notification   = require('./models/Notification');
 const Feedback = require('./models/Feedback');
 const { requireAuth } = require('./middleware/auth');
@@ -45,9 +46,11 @@ mongoose.connect(MONGO_URI, {
 })
   .then(() => {
     console.log('✅ MongoDB connected');
-    // Initialize weekly backup scheduler
-    const backupService = require('./services/backupService');
-    backupService.initScheduler();
+    // Initialize weekly backup scheduler (only in persistent environments, not Vercel serverless)
+    if (!process.env.VERCEL) {
+      const backupService = require('./services/backupService');
+      backupService.initScheduler();
+    }
   })
   .catch(err => console.error('❌ MongoDB error:', err));
 
@@ -116,6 +119,7 @@ const generalLimiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.originalUrl.startsWith('/api/cron'),
 });
 
 app.set('view engine', 'ejs');
@@ -139,6 +143,9 @@ app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: process.env.NODE_ENV === 'production' ? '7d' : 0, // ⚡ 7d cache in prod, instant reload in dev
   etag:   true,
 }));
+
+// Cron endpoints (triggered by Vercel Cron, authenticated via Bearer token)
+app.use('/api/cron', cronRoutes);
 
 app.use(session({
   secret: SESSION_SECRET,

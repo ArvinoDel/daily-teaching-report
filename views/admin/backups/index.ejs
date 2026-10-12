@@ -199,7 +199,7 @@
       <p class="text-sm font-bold text-slate-950">Weekly Backup Active</p>
     </div>
     <p class="text-xs text-slate-400 mt-1.5 font-medium" title="<%= nextBackupDate.toISOString() %>">
-      Next: <%= nextBackupDate.toLocaleDateString('en-US', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) %>
+      Next: <%= nextBackupDate.toLocaleDateString('en-US', { timeZone: 'Asia/Jakarta', weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) %>
     </p>
   </div>
 </div>
