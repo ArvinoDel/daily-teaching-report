@@ -4,6 +4,8 @@ const Salary   = require('../models/Salary');
 const AuditLog = require('../models/AuditLog'); // 🟢 Audit log
 const Group    = require('../models/Group');
 const Material = require('../models/Material'); // 🟢 Added for material autocomplete
+const { normalizeMaterialName, formatMaterialDisplayName } = require('../models/Material');
+const { recordMaterial, resolveGroupLevel } = require('./reportsController');
 
 const TEACHING_TYPES = [
   'Prime Teacher (Full)',
@@ -29,9 +31,10 @@ function parseStudentList(raw) {
 }
 
 // 🟠 Orange: consistent English messages + stricter integer check (rejects "60.5", "60.0")
-function validateReportInput({ date, class_name, duration, teaching_type, notes, ac_students, absent_students, ac_reduced_students, session_mode, session_type, teacher, partner_teacher, partner_teacher_name, teacherUser }) {
+function validateReportInput({ date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, ac_reduced_students, session_mode, session_type, teacher, partner_teacher, partner_teacher_name, teacherUser }) {
   const errors = [];
   if (!date || isNaN(new Date(date).getTime())) errors.push('Invalid date.');
+  if (subject && subject.trim().length > 100) errors.push('Subject max 100 characters.');
   if (!teacher) {
     errors.push('Teacher is required.');
   } else if (!/^[0-9a-fA-F]{24}$/.test(teacher)) {
@@ -556,7 +559,7 @@ exports.reportUpdate = async (req, res) => {
 
     const teacherUser = teacher ? await User.findById(teacher).select('displayName username').lean() : null;
     const validationErrors = validateReportInput({
-      date, class_name, duration, teaching_type, notes, ac_students, absent_students, ac_reduced_students, session_mode, session_type,
+      date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, ac_reduced_students, session_mode, session_type,
       teacher, partner_teacher: partner_teacher_id, partner_teacher_name, teacherUser
     });
     if (validationErrors.length > 0) {
@@ -569,6 +572,11 @@ exports.reportUpdate = async (req, res) => {
       ]);
       return res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors, groupsJson, teachersJson, teachers, materialsJson });
     }
+
+    // Load old report values BEFORE update to detect material/level changes
+    const oldReport = await Report.findById(req.params.id)
+      .select('subject class_name session_type')
+      .lean();
 
     const sharedUpdate = {
       teacher,
@@ -616,6 +624,26 @@ exports.reportUpdate = async (req, res) => {
         competition_groups,
         ...linkedTypeUpdate,
       });
+    }
+
+    // 🟢 Record material only when subject or resolved level has changed, or doesn't exist yet in suggestions
+    if (oldReport) {
+      const newSubjectTrimmed = subject ? subject.trim() : '';
+      const oldSubjectTrimmed = oldReport.subject || '';
+      const newNorm = normalizeMaterialName(newSubjectTrimmed);
+      const oldNorm = normalizeMaterialName(oldSubjectTrimmed);
+      const newLevel = await resolveGroupLevel(class_name ? class_name.trim() : '', session_type || 'group');
+      const oldLevel = await resolveGroupLevel(oldReport.class_name || '', oldReport.session_type || 'group');
+      const isMaterialChanged = (newNorm !== oldNorm || newLevel !== oldLevel);
+      const materialExists = isMaterialChanged ? true : await Material.exists({ nameNormalized: newNorm, level: newLevel });
+      if (newNorm && (isMaterialChanged || !materialExists)) {
+        await recordMaterial({
+          subject:     newSubjectTrimmed,
+          className:   class_name ? class_name.trim() : '',
+          sessionType: session_type || 'group',
+          teacherId:   teacher || req.session.user._id,
+        });
+      }
     }
 
     await logAudit(req, 'update', 'report', report._id, `${report.class_name} — ${report.date.toISOString().substring(0, 10)}`);

@@ -257,6 +257,9 @@ async function recordMaterial(opts) {
   }
 }
 
+exports.recordMaterial = recordMaterial;
+exports.resolveGroupLevel = resolveGroupLevel;
+
 // GET / — Dashboard
 
 exports.index = async (req, res) => {
@@ -830,8 +833,10 @@ exports.update = async (req, res) => {
       // Resolve levels for both old and new class names
       var newLevel = await resolveGroupLevel(class_name ? class_name.trim() : '', session_type || 'group');
       var oldLevel = await resolveGroupLevel(oldReport.class_name || '', oldReport.session_type || 'group');
-      // Only record if normalized text or level changed (and new value is non-empty)
-      if (newNorm && (newNorm !== oldNorm || newLevel !== oldLevel)) {
+      // Record if normalized text or level changed, or if material does not exist yet in suggestions
+      var isMaterialChanged = (newNorm !== oldNorm || newLevel !== oldLevel);
+      var materialExists = isMaterialChanged ? true : await Material.exists({ nameNormalized: newNorm, level: newLevel });
+      if (newNorm && (isMaterialChanged || !materialExists)) {
         await recordMaterial({
           subject:     newSubjectTrimmed,
           className:   class_name ? class_name.trim() : '',
