@@ -160,9 +160,6 @@ exports.salaryIndex = async (req, res) => {
     const firstDraftId   = draftSlips.length   > 0 ? draftSlips[0]._id.toString()  : null;
     const firstRowId     = salaries.length      > 0 ? salaries[0]._id.toString()    : null;
 
-    // Optional: "Review changes" link from bulk-edit success redirect
-    const reviewIds = req.query.reviewIds || '';
-
     const flash = req.session.flash || null;
     delete req.session.flash;
 
@@ -177,7 +174,6 @@ exports.salaryIndex = async (req, res) => {
       flash,
       firstDraftId,
       firstRowId,
-      reviewIds,
     });
   } catch (err) {
     console.error('[salary] index error:', err);
@@ -456,28 +452,37 @@ exports.salaryBulkUpdate = async (req, res) => {
 
     // ── 3. Pre-validate all slips before touching anything ─────
     const errors = [];
+    const conflictIds = [];
     for (const item of items) {
       const salary = salaryMap.get(item.id);
       if (!salary) {
         errors.push(`Salary slip not found: ${item.id}`);
+        conflictIds.push(item.id);
         continue;
       }
+      let hasConflict = false;
       if (salary.month !== month || salary.year !== year) {
         errors.push(`Slip for ${salary.teacher?.displayName || item.id} does not belong to ${month}/${year}.`);
+        hasConflict = true;
       }
       if (salary.status !== 'draft') {
         errors.push(`Slip for ${salary.teacher?.displayName || item.id} is no longer in draft status (status: ${salary.status}). Please refresh and check.`);
+        hasConflict = true;
       }
       // Optimistic concurrency: compare updatedAt timestamps
       const dbUpdatedAt  = salary.updatedAt instanceof Date ? salary.updatedAt.toISOString() : new Date(salary.updatedAt).toISOString();
       const sentUpdatedAt = item.updatedAt;
       if (dbUpdatedAt !== sentUpdatedAt) {
         errors.push(`Slip for ${salary.teacher?.displayName || item.id} has been modified by another admin. Please refresh and review.`);
+        hasConflict = true;
+      }
+      if (hasConflict) {
+        conflictIds.push(item.id);
       }
     }
 
     if (errors.length > 0) {
-      return res.status(409).json({ ok: false, message: errors.join(' | ') });
+      return res.status(409).json({ ok: false, message: errors.join(' | '), conflictIds });
     }
 
     // ── 4. Apply fields to all salary docs (in memory) ────────

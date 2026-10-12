@@ -1,4 +1,4 @@
-﻿/**
+/**
  * salary-bulk-edit.js
  * Client-side logic for the bulk-edit walkthrough on the salary edit page.
  * Loaded only when ?flow=bulk is present (via a <script defer> in edit.ejs).
@@ -43,9 +43,9 @@ function saveStorage(data) { sessionStorage.setItem(storageKey(), JSON.stringify
 
 function pendingCount() {
   const store = loadStorage();
-  let count = Object.keys(store).length;
-  if (!store[CFG.salaryId] && isCurrentFormDirty()) count += 1;
-  return count;
+  const otherCount = Object.keys(store).filter(id => id !== CFG.salaryId).length;
+  const currentDirty = isCurrentFormDirty() ? 1 : 0;
+  return otherCount + currentDirty;
 }
 function isCurrentFormDirty() {
   return !fieldsEqual(INITIAL_SNAPSHOT, captureFormFields());
@@ -207,14 +207,22 @@ async function saveAll() {
     const data = await res.json();
     if (!data.ok) {
       if (btn) { btn.disabled = false; updateSaveBtnLabel(); }
+      if (Array.isArray(data.conflictIds) && data.conflictIds.length > 0) {
+        const currentStore = loadStorage();
+        data.conflictIds.forEach(id => { delete currentStore[id]; });
+        saveStorage(currentStore);
+        const count = data.conflictIds.length;
+        alert(`Conflict detected: ${count} salary slip${count !== 1 ? 's were' : ' was'} modified or no longer draft. Pending edits for conflicted slips have been discarded:\n\n${data.message || ''}\n\nThe page will now reload with fresh data.`);
+        _isNavigatingFlow = true;
+        window.location.reload();
+        return;
+      }
       alert('Save failed: ' + (data.message || 'Unknown error'));
       return;
     }
     _isNavigatingFlow = true;
     sessionStorage.removeItem(storageKey());
-    const savedIds = data.savedIds || [];
-    const idsParam = savedIds.length > 0 ? `&reviewIds=${encodeURIComponent(savedIds.join(','))}` : '';
-    window.location.href = `/admin/salaries?month=${encodeURIComponent(data.monthStr || CFG.monthStr)}${idsParam}`;
+    window.location.href = `/admin/salaries?month=${encodeURIComponent(data.monthStr || CFG.monthStr)}`;
   } catch (err) {
     if (btn) { btn.disabled = false; updateSaveBtnLabel(); }
     alert('Network error: ' + err.message);
@@ -238,7 +246,9 @@ function updateJumpBarDots() {
   (CFG.bulkList || []).forEach(item => {
     const dotEl = document.getElementById(`jump-dot-${item.id}`);
     if (!dotEl) return;
-    const hasPending = !!store[item.id] || (item.id === CFG.salaryId && isCurrentFormDirty());
+    const hasPending = (item.id === CFG.salaryId)
+      ? isCurrentFormDirty()
+      : !!store[item.id];
     dotEl.style.display = hasPending ? 'inline-block' : 'none';
   });
 }

@@ -9,6 +9,14 @@
     if (n === undefined || n === null || n === '') return '0';
     return Number(n).toLocaleString('en-US');
   }
+  function safeJson(obj) {
+    return JSON.stringify(obj)
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/&/g, '\\u0026')
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029');
+  }
   const sp = salary;
   const t  = teacher || { displayName: 'Teacher', username: '—' };
 %>
@@ -348,7 +356,7 @@
 <% if (isBulkFlow) { %>
 <!-- ─── Bulk-edit config (read by salary-bulk-edit.js via JSON.parse) ─── -->
 <script id="bulk-edit-config" type="application/json">
-<%- JSON.stringify({
+<%- safeJson({
   salaryId:     sp._id.toString(),
   updatedAt:    sp.updatedAt instanceof Date ? sp.updatedAt.toISOString() : new Date(sp.updatedAt).toISOString(),
   monthStr:     monthStr,
