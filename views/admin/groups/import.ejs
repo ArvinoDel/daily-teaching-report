@@ -224,7 +224,7 @@
         return showError(res.error, res.validationErrors);
       }
 
-      showPreview(res.summary, res.sample, res.preview);
+      showPreview(res.summary, res.sample, res.preview, res.totalChanged);
       importBtn.disabled = false;
     });
   });
@@ -271,7 +271,7 @@
     resultsPanel.classList.remove('hidden');
   }
 
-  function showPreview(summary, sample, preview) {
+  function showPreview(summary, sample, preview, totalChanged) {
     var html = '<div class="result-card space-y-5">'
       + '<div class="bg-indigo-50 border border-indigo-200 rounded-2xl p-6">'
       + '<h3 class="font-bold text-indigo-900 text-lg mb-4 flex items-center gap-2">'
@@ -294,34 +294,73 @@
       html += '</div>';
     }
 
-    // Sample table
+    var totalChangedCount = typeof totalChanged !== 'undefined' ? totalChanged : (summary.totalChanged || (sample ? sample.length : 0));
+
+    // Changed Groups Table
     if (sample && sample.length) {
-      html += '<div class="overflow-x-auto">'
+      html += '<div class="bg-white/80 backdrop-blur rounded-xl border border-indigo-100 p-4 shadow-sm mb-4">'
+        + '<div class="flex items-center justify-between mb-3">'
+        + '<h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">'
+        + '<span>New &amp; Updated Groups to Import</span>'
+        + '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-700">' + totalChangedCount + '</span>'
+        + '</h4>'
+        + '</div>'
+        + '<div class="overflow-x-auto">'
         + '<table class="w-full text-sm text-left">'
-        + '<thead><tr class="text-xs text-indigo-500 uppercase tracking-wider">'
-        + '<th class="py-2 pr-3">Name</th><th class="py-2 pr-3">Type</th><th class="py-2 pr-3">Level</th><th class="py-2">Students</th>'
+        + '<thead><tr class="text-xs text-indigo-600 uppercase tracking-wider border-b border-indigo-100">'
+        + '<th class="py-2.5 pr-3">Status</th>'
+        + '<th class="py-2.5 pr-3">Name</th>'
+        + '<th class="py-2.5 pr-3">Type</th>'
+        + '<th class="py-2.5 pr-3">Level</th>'
+        + '<th class="py-2.5 pr-3">Students</th>'
+        + '<th class="py-2.5">Changes / Details</th>'
         + '</tr></thead><tbody>';
+
       sample.forEach(function (s) {
+        var statusBadge = s.status === 'NEW'
+          ? '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">NEW</span>'
+          : '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800">UPDATED</span>';
+
         var typeBadge = s.type === 'GROUP'
-          ? '<span class="inline-block bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-0.5 rounded-full">GROUP</span>'
-          : '<span class="inline-block bg-purple-100 text-purple-700 text-xs font-bold px-2 py-0.5 rounded-full">PRIVATE</span>';
-        html += '<tr class="border-t border-indigo-100">'
-          + '<td class="py-2 pr-3 font-medium text-slate-800">' + escHtml(s.name) + '</td>'
-          + '<td class="py-2 pr-3">' + typeBadge + '</td>'
-          + '<td class="py-2 pr-3"><span class="bg-slate-100 text-slate-600 text-xs font-semibold px-2 py-0.5 rounded-full">' + escHtml(s.level || '—') + '</span></td>'
-          + '<td class="py-2 text-slate-600">' + s.studentCount + '</td>'
+          ? '<span class="inline-block bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold px-2 py-0.5 rounded-full">GROUP</span>'
+          : '<span class="inline-block bg-purple-50 text-purple-700 border border-purple-200 text-xs font-semibold px-2 py-0.5 rounded-full">PRIVATE</span>';
+
+        html += '<tr class="border-t border-slate-100 hover:bg-slate-50/60 transition-colors">'
+          + '<td class="py-2.5 pr-3">' + statusBadge + '</td>'
+          + '<td class="py-2.5 pr-3 font-semibold text-slate-800">' + escHtml(s.name) + '</td>'
+          + '<td class="py-2.5 pr-3">' + typeBadge + '</td>'
+          + '<td class="py-2.5 pr-3"><span class="bg-slate-100 text-slate-600 text-xs font-semibold px-2 py-0.5 rounded-full">' + escHtml(s.level || '—') + '</span></td>'
+          + '<td class="py-2.5 pr-3 text-slate-700 font-medium">' + s.studentCount + '</td>'
+          + '<td class="py-2.5 text-xs text-slate-500">' + escHtml(s.details || '—') + '</td>'
           + '</tr>';
       });
-      if (summary.totalParsed > sample.length) {
-        html += '<tr class="border-t border-indigo-100"><td colspan="4" class="py-2 text-xs text-indigo-400 italic">… and '
-          + (summary.totalParsed - sample.length) + ' more groups</td></tr>';
+
+      if (totalChangedCount > sample.length) {
+        html += '<tr class="border-t border-indigo-100 bg-indigo-50/40">'
+          + '<td colspan="6" class="py-2.5 text-xs text-indigo-600 font-medium italic text-center">'
+          + '… and ' + (totalChangedCount - sample.length) + ' more new / updated groups'
+          + '</td></tr>';
       }
-      html += '</tbody></table></div>';
+
+      html += '</tbody></table></div></div>';
+    } else {
+      html += '<div class="p-4 rounded-xl bg-white/80 border border-indigo-100 text-slate-600 text-sm flex items-center gap-3 mb-4">'
+        + '<svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-emerald-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">'
+        + '<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />'
+        + '</svg>'
+        + '<span><strong>No new or updated groups found.</strong> All parsed groups and rosters match the current database records.</span>'
+        + '</div>';
     }
 
-    html += '</div>'
-      + '<p class="text-sm text-indigo-600 font-medium">✓ Preview looks good — click <strong>Import Now</strong> to proceed.</p>'
-      + '</div>';
+    html += '</div>';
+
+    if (totalChangedCount > 0 || (preview && preview.wouldCreate > 0)) {
+      html += '<p class="text-sm text-indigo-600 font-medium">✓ Preview looks good — click <strong>Import Now</strong> to proceed.</p>';
+    } else {
+      html += '<p class="text-sm text-slate-500 font-medium">All group and student data is already up to date.</p>';
+    }
+
+    html += '</div>';
 
     resultsPanel.innerHTML = html;
     resultsPanel.classList.remove('hidden');

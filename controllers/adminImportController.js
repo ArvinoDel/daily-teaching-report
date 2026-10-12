@@ -131,30 +131,89 @@ exports.importExecute = (req, res) => {
       };
 
       if (dryRun) {
-        // Count how many students would be NEW vs existing
+        // Count how many students would be NEW vs existing (bulk query)
         let wouldCreate  = 0;
         let wouldRetain  = 0;
         const seen = new Set();
+        const allStudentKeys = [];
         for (const doc of docs) {
           for (const rawName of doc.students) {
             const key = normalizeName(rawName);
             if (!key || seen.has(key)) continue;
             seen.add(key);
-            const exists = await Student.findOne({ normalized_name: key });
-            if (exists) wouldRetain++;
-            else        wouldCreate++;
+            allStudentKeys.push(key);
           }
         }
-        const sample = docs.slice(0, 10).map(d => ({
-          name:         d.group_name,
-          type:         d.type,
-          level:        d.level,
-          studentCount: d.students.length,
-        }));
+
+        const existingStudents = await Student.find(
+          { normalized_name: { $in: allStudentKeys } },
+          { normalized_name: 1 }
+        ).lean();
+        const existingStudentKeys = new Set(existingStudents.map(s => s.normalized_name));
+
+        for (const key of allStudentKeys) {
+          if (existingStudentKeys.has(key)) wouldRetain++;
+          else                              wouldCreate++;
+        }
+
+        // Compare against existing groups in DB
+        const groupNames = docs.map(d => d.group_name);
+        const existingGroups = await Group.find({ group_name: { $in: groupNames } }).lean();
+        const existingGroupMap = new Map(existingGroups.map(g => [g.group_name, g]));
+
+        const changedGroups = [];
+        for (const doc of docs) {
+          const existingGroup = existingGroupMap.get(doc.group_name);
+          if (!existingGroup) {
+            changedGroups.push({
+              name:         doc.group_name,
+              type:         doc.type,
+              level:        doc.level || '—',
+              studentCount: doc.students.length,
+              status:       'NEW',
+              details:      'New group',
+            });
+          } else {
+            const currentStrings = new Set((existingGroup.students || []).map(s => normalizeName(s)));
+            const addedStudents = (doc.students || []).filter(n => !currentStrings.has(normalizeName(n)));
+            const levelChanged = Boolean(doc.level && doc.level !== existingGroup.level);
+            const typeChanged  = Boolean(doc.type && doc.type !== existingGroup.type);
+
+            if (addedStudents.length > 0 || levelChanged || typeChanged) {
+              const detailsList = [];
+              if (addedStudents.length > 0) {
+                detailsList.push(`+${addedStudents.length} new student${addedStudents.length > 1 ? 's' : ''}`);
+              }
+              if (levelChanged) {
+                detailsList.push(`Level: ${existingGroup.level || 'None'} → ${doc.level}`);
+              }
+              if (typeChanged) {
+                detailsList.push(`Type: ${existingGroup.type} → ${doc.type}`);
+              }
+
+              changedGroups.push({
+                name:         doc.group_name,
+                type:         doc.type,
+                level:        doc.level || existingGroup.level || '—',
+                studentCount: (existingGroup.students || []).length + addedStudents.length,
+                status:       'UPDATED',
+                details:      detailsList.join(', '),
+              });
+            }
+          }
+        }
+
+        const PREVIEW_CAP = 50;
+        const sample = changedGroups.slice(0, PREVIEW_CAP);
+        summary.totalChanged = changedGroups.length;
+
         return res.json({
-          ok: true, dryRun: true, summary,
+          ok: true,
+          dryRun: true,
+          summary,
           preview: { wouldCreate, wouldRetain },
           sample,
+          totalChanged: changedGroups.length,
         });
       }
 
@@ -191,14 +250,17 @@ exports.importExecute = (req, res) => {
           const currentIds = new Set(existingGroup.student_ids.map(id => String(id)));
           const newIds     = studentIds.filter(id => !currentIds.has(String(id)));
 
-          if (newStrings.length || newIds.length) {
+          const levelChanged = Boolean(doc.level && doc.level !== existingGroup.level);
+          const typeChanged  = Boolean(doc.type && doc.type !== existingGroup.type);
+
+          if (newStrings.length || newIds.length || levelChanged || typeChanged) {
             existingGroup.students   = [...existingGroup.students, ...newStrings];
             existingGroup.student_ids = [...existingGroup.student_ids, ...newIds];
-            // Also sync level if it changed
             if (doc.level) existingGroup.level = doc.level;
+            if (doc.type)  existingGroup.type  = doc.type;
             await existingGroup.save();
+            groupsUpdated++;
           }
-          groupsUpdated++;
         } else {
           // Create brand-new group
           await Group.create({
