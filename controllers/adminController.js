@@ -767,7 +767,7 @@ exports.auditLogIndex = async (req, res) => {
     const skip  = (page - 1) * limit;
 
     const filter = {};
-    const allowedActions = ['update', 'delete', 'salary_generate', 'salary_publish', 'salary_update'];
+    const allowedActions = ['update', 'delete', 'salary_generate', 'salary_publish', 'salary_update', 'salary_bulk_update'];
     const allowedTargets = ['report', 'user', 'group', 'salary'];
     if (req.query.action     && allowedActions.includes(req.query.action))     filter.action     = req.query.action;
     if (req.query.targetType && allowedTargets.includes(req.query.targetType)) filter.targetType = req.query.targetType;

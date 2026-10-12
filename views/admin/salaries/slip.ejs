@@ -1,6 +1,10 @@
 <%- include('../../partials/header', { title: 'Payslip — ' + teacher.displayName }) %>
 
 <%
+  const isReviewFlow = (typeof flow !== 'undefined' && flow === 'review');
+%>
+
+<%
   function fmtIDR(n) {
     if (!n || n === 0) return 'Rp\u00a00';
     return 'Rp\u00a0' + Number(n).toLocaleString('en-US');
@@ -190,6 +194,51 @@
     </p>
   </div>
 </div>
+
+<% if (isReviewFlow) { %>
+<%
+  const prevReview    = currentIndex > 0 ? reviewList[currentIndex - 1] : null;
+  const nextReview    = currentIndex < totalCount - 1 ? reviewList[currentIndex + 1] : null;
+  const isLastReview  = currentIndex === totalCount - 1;
+  const prevUrl  = prevReview ? `/admin/salaries/${prevReview.id}/slip?flow=review&month=${monthStr}${idsQuery ? '&ids=' + encodeURIComponent(idsQuery) : ''}` : null;
+  const nextUrl  = nextReview ? `/admin/salaries/${nextReview.id}/slip?flow=review&month=${monthStr}${idsQuery ? '&ids=' + encodeURIComponent(idsQuery) : ''}` : null;
+  const finishUrl = `/admin/salaries?month=${monthStr}`;
+%>
+<!-- ─── Bulk-review sticky footer (hidden when printing) ─── -->
+<div class="no-print fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 shadow-lg px-4 py-3 sm:px-6">
+  <div class="flex items-center justify-between gap-3">
+    <!-- Left: Back + progress -->
+    <div class="flex items-center gap-2">
+      <% if (prevUrl) { %>
+        <a href="<%= prevUrl %>"
+          class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5"/></svg>
+          Back
+        </a>
+      <% } %>
+      <span class="text-sm font-semibold text-slate-500 whitespace-nowrap"><%= currentIndex + 1 %> of <%= totalCount %></span>
+    </div>
+    <!-- Right: Next or Finish -->
+    <div>
+      <% if (!isLastReview && nextUrl) { %>
+        <a href="<%= nextUrl %>"
+          class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold shadow-sm transition">
+          Next
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+        </a>
+      <% } else { %>
+        <a href="<%= finishUrl %>"
+          class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition">
+          Finish
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+        </a>
+      <% } %>
+    </div>
+  </div>
+</div>
+<!-- Spacer so content isn't hidden behind the sticky footer -->
+<div class="no-print h-20"></div>
+<% } %>
 
 <style>
   @media print {

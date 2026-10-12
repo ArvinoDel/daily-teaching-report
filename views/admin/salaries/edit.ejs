@@ -45,6 +45,10 @@
   </div>
 <% } %>
 
+<%
+  const isBulkFlow = (typeof flow !== 'undefined' && flow === 'bulk');
+%>
+
 <form id="salary-form" method="POST" action="/admin/salaries/<%= sp._id %>">
   <input type="hidden" name="_csrf" value="<%= csrfToken %>">
 
@@ -324,7 +328,8 @@
         </div>
       </div>
 
-      <!-- Save -->
+      <!-- Save (normal single-edit mode only) -->
+      <% if (!isBulkFlow) { %>
       <div class="flex justify-end gap-3">
         <a href="/admin/salaries?month=<%= sp.year %>-<%= String(sp.month).padStart(2,'0') %>"
           class="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition">
@@ -335,9 +340,35 @@
           Save Salary
         </button>
       </div>
+      <% } %>
     </div>
   </div>
 </form>
+
+<% if (isBulkFlow) { %>
+<!-- ─── Bulk-edit config (read by salary-bulk-edit.js via JSON.parse) ─── -->
+<script id="bulk-edit-config" type="application/json">
+<%- JSON.stringify({
+  salaryId:     sp._id.toString(),
+  updatedAt:    sp.updatedAt instanceof Date ? sp.updatedAt.toISOString() : new Date(sp.updatedAt).toISOString(),
+  monthStr:     monthStr,
+  month:        sp.month,
+  year:         sp.year,
+  bulkList:     bulkList,
+  currentIndex: currentIndex,
+  totalDrafts:  totalDrafts,
+  csrfToken:    csrfToken,
+}) %>
+</script>
+
+<!-- ─── Bulk-edit sticky footer ─────────────────────────────────────────── -->
+<div id="bulk-footer"
+  class="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 shadow-lg px-4 py-3 sm:px-6">
+  <!-- Populated by salary-bulk-edit.js -->
+</div>
+<!-- Spacer so content isn't hidden behind the sticky footer -->
+<div class="h-20"></div>
+<% } %>
 
 <style>
   .input-std {
@@ -564,5 +595,9 @@
   // Run initial calculation
   recalculate();
 </script>
+
+<% if (isBulkFlow) { %>
+<script src="/js/salary-bulk-edit.js" defer></script>
+<% } %>
 
 <%- include('../../partials/footer') %>

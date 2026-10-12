@@ -29,6 +29,74 @@ function formatIDR(n) {
   return 'Rp\u00a0' + Number(n).toLocaleString('en-US');
 }
 
+/**
+ * applySalaryFields(salary, body)
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Shared field-parsing helper used by both salaryUpdate (single edit) and
+ * salaryBulkUpdate. Applies and clamps all numeric fields exactly the same way.
+ * Does NOT call salary.save() — callers must do that.
+ */
+function applySalaryFields(salary, body) {
+  const n = (v) => Math.max(0, parseFloat(String(v ?? '').replace(/,/g, '')) || 0);
+
+  // Period meta
+  if (body.periodLabel !== undefined)  salary.periodLabel  = body.periodLabel.trim();
+  if (body.periodStart)                salary.periodStart  = new Date(body.periodStart);
+  if (body.periodEnd)                  salary.periodEnd    = new Date(body.periodEnd);
+  if (body.payDate)                    salary.payDate      = new Date(body.payDate);
+  else if (body.payDate === '')        salary.payDate      = null;
+  if (body.payDateLabel !== undefined) salary.payDateLabel = body.payDateLabel.trim();
+
+  // Earnings
+  salary.basicSalary          = n(body.basicSalary);
+  salary.mealFullDays         = n(body.mealFullDays);
+  salary.mealFullRate         = n(body.mealFullRate);
+  salary.mealHalfDays         = n(body.mealHalfDays);
+  salary.mealHalfRate         = n(body.mealHalfRate);
+  salary.transportDays        = n(body.transportDays);
+  salary.transportRate        = n(body.transportRate);
+  salary.monthlyIncentive     = n(body.monthlyIncentive);
+  salary.healthAllowance      = n(body.healthAllowance);
+  salary.positionAllowance    = n(body.positionAllowance);
+  salary.loyaltyAllowance     = n(body.loyaltyAllowance);
+  salary.wifeChildAllowance   = n(body.wifeChildAllowance);
+  salary.teachingReward       = n(body.teachingReward);
+  salary.gameReward           = n(body.gameReward);
+  salary.studentCommission    = n(body.studentCommission);
+  salary.internetCompensation = n(body.internetCompensation);
+  salary.overtime             = n(body.overtime);
+
+  // Deductions
+  salary.instalment             = n(body.instalment);
+  salary.miscellaneousDeduction = n(body.miscellaneousDeduction);
+  salary.bpjsKetenagakerjaan    = n(body.bpjsKetenagakerjaan);
+  salary.tax                    = n(body.tax);
+
+  // Other incomes (dynamic rows — supports qs array syntax or brackets)
+  const rawOiLabels  = body.otherIncomeLabel ?? body['otherIncomeLabel[]'] ?? [];
+  const rawOiAmounts = body.otherIncomeAmount ?? body['otherIncomeAmount[]'] ?? [];
+  const oiLabels  = [].concat(rawOiLabels);
+  const oiAmounts = [].concat(rawOiAmounts);
+  salary.otherIncomes = oiLabels
+    .map((label, i) => ({ label: (label || '').trim(), amount: n(oiAmounts[i]) }))
+    .filter(item => item.label || item.amount > 0);
+
+  // Other deductions (dynamic rows — supports qs array syntax or brackets)
+  const rawOdLabels  = body.otherDeductionLabel ?? body['otherDeductionLabel[]'] ?? [];
+  const rawOdAmounts = body.otherDeductionAmount ?? body['otherDeductionAmount[]'] ?? [];
+  const odLabels  = [].concat(rawOdLabels);
+  const odAmounts = [].concat(rawOdAmounts);
+  salary.otherDeductions = odLabels
+    .map((label, i) => ({ label: (label || '').trim(), amount: n(odAmounts[i]) }))
+    .filter(item => item.label || item.amount > 0);
+
+  if (body.notes !== undefined) {
+    salary.notes = (body.notes || '').trim().slice(0, 500);
+  }
+
+  // NOTE: caller is responsible for calling salary.recompute() before saving.
+}
+
 function getMonthMeta(query) {
   const now   = new Date();
   const raw   = query.month; // "YYYY-MM"
@@ -87,24 +155,36 @@ exports.salaryIndex = async (req, res) => {
       };
     });
 
+    // Entry-point IDs for the two new walkthrough buttons
+    const draftSlips     = salaries.filter(s => s.status === 'draft');
+    const firstDraftId   = draftSlips.length   > 0 ? draftSlips[0]._id.toString()  : null;
+    const firstRowId     = salaries.length      > 0 ? salaries[0]._id.toString()    : null;
+
+    // Optional: "Review changes" link from bulk-edit success redirect
+    const reviewIds = req.query.reviewIds || '';
+
     const flash = req.session.flash || null;
     delete req.session.flash;
 
     res.render('admin/salaries/index', {
       rows, year, month,
       monthLabel, prevMonth, nextMonth, isCurrentMonth, selectedMonthStr,
-      totalGross:           formatIDR(totalGross),
-      totalDeductions:      formatIDR(totalDeductions),
-      totalNet:             formatIDR(totalNet),
+      totalGross:      formatIDR(totalGross),
+      totalDeductions: formatIDR(totalDeductions),
+      totalNet:        formatIDR(totalNet),
       draftCount, publishedCount,
-      totalTeachers:        rows.length,
+      totalTeachers:   rows.length,
       flash,
+      firstDraftId,
+      firstRowId,
+      reviewIds,
     });
   } catch (err) {
     console.error('[salary] index error:', err);
     res.render('error', { message: 'Failed to load salary data.' });
   }
 };
+
 
 /* ══════════════════════════════════════════════════════════════
    GENERATE  POST /admin/salaries/generate
@@ -211,6 +291,7 @@ exports.salaryPublish = async (req, res) => {
 
 /* ══════════════════════════════════════════════════════════════
    EDIT FORM  GET /admin/salaries/:id/edit
+   Supports optional ?flow=bulk&month=YYYY-MM for bulk walkthrough.
 ══════════════════════════════════════════════════════════════ */
 exports.salaryEditForm = async (req, res) => {
   try {
@@ -221,14 +302,70 @@ exports.salaryEditForm = async (req, res) => {
     const salary = await Salary.findById(req.params.id).populate('teacher');
     if (!salary) return res.status(404).render('error', { message: 'Salary record not found.' });
 
+    const success = req.session.flash?.type === 'success' ? req.session.flash.msg : null;
+    delete req.session.flash;
+
+    // ── Bulk-edit flow ──────────────────────────────────────────
+    const isBulk = req.query.flow === 'bulk';
+    if (isBulk) {
+      const meta = getMonthMeta(req.query);
+      const { year, month, selectedMonthStr } = meta;
+
+      // Fetch ALL salaries for that month, sort by teacher name (same as index table)
+      const allSalaries = await Salary.find({ year, month })
+        .populate('teacher', 'displayName')
+        .lean();
+      allSalaries.sort((a, b) =>
+        (a.teacher?.displayName || '').localeCompare(b.teacher?.displayName || ''));
+
+      // Only draft slips are part of the bulk-edit flow
+      const draftSalaries = allSalaries.filter(s => s.status === 'draft');
+
+      if (draftSalaries.length === 0) {
+        req.session.flash = { type: 'error', msg: 'No draft salary slips found for this month.' };
+        return res.redirect(`/admin/salaries?month=${selectedMonthStr}`);
+      }
+
+      // Ordered list of draft IDs passed to the client for navigation + sessionStorage keying
+      const bulkList = draftSalaries.map(s => ({
+        id:          s._id.toString(),
+        teacherName: s.teacher?.displayName || 'Unknown',
+        updatedAt:   s.updatedAt instanceof Date ? s.updatedAt.toISOString() : new Date(s.updatedAt).toISOString(),
+      }));
+
+      const currentIndex = bulkList.findIndex(item => item.id === salary._id.toString());
+
+      // If this salary is not a draft, redirect to the first draft in the list
+      if (currentIndex === -1) {
+        return res.redirect(
+          `/admin/salaries/${bulkList[0].id}/edit?flow=bulk&month=${selectedMonthStr}`
+        );
+      }
+
+      return res.render('admin/salaries/edit', {
+        salary,
+        teacher:      salary.teacher,
+        csrfToken:    req.session.csrfToken || '',
+        errors:       [],
+        success,
+        // Bulk-flow extras
+        flow:         'bulk',
+        bulkList,
+        currentIndex,
+        totalDrafts:  bulkList.length,
+        monthStr:     selectedMonthStr,
+      });
+    }
+    // ── Normal single-edit flow ──────────────────────────────────
     res.render('admin/salaries/edit', {
       salary,
-      teacher: salary.teacher,
+      teacher:   salary.teacher,
       csrfToken: req.session.csrfToken || '',
-      errors: [],
-      success: req.session.flash?.type === 'success' ? req.session.flash.msg : null,
+      errors:    [],
+      success,
+      flow:      null,
+      bulkList:  null,
     });
-    delete req.session.flash;
   } catch (err) {
     console.error('[salary] editForm error:', err);
     res.render('error', { message: 'Failed to load salary editor.' });
@@ -251,61 +388,8 @@ exports.salaryUpdate = async (req, res) => {
       return res.redirect('/admin/salaries');
     }
 
-    const n = (v) => Math.max(0, parseFloat(String(v ?? '').replace(/,/g, '')) || 0);
-
-    /* ── Map body fields → salary doc ── */
-    // Period meta
-    if (req.body.periodLabel !== undefined)  salary.periodLabel  = req.body.periodLabel.trim();
-    if (req.body.periodStart)                salary.periodStart  = new Date(req.body.periodStart);
-    if (req.body.periodEnd)                  salary.periodEnd    = new Date(req.body.periodEnd);
-    if (req.body.payDate)                    salary.payDate      = new Date(req.body.payDate);
-    else if (req.body.payDate === '')        salary.payDate      = null;
-    if (req.body.payDateLabel !== undefined) salary.payDateLabel = req.body.payDateLabel.trim();
-
-    // Earnings
-    salary.basicSalary          = n(req.body.basicSalary);
-    salary.mealFullDays         = n(req.body.mealFullDays);
-    salary.mealFullRate         = n(req.body.mealFullRate);
-    salary.mealHalfDays         = n(req.body.mealHalfDays);
-    salary.mealHalfRate         = n(req.body.mealHalfRate);
-    salary.transportDays        = n(req.body.transportDays);
-    salary.transportRate        = n(req.body.transportRate);
-    salary.monthlyIncentive     = n(req.body.monthlyIncentive);
-    salary.healthAllowance      = n(req.body.healthAllowance);
-    salary.positionAllowance    = n(req.body.positionAllowance);
-    salary.loyaltyAllowance     = n(req.body.loyaltyAllowance);
-    salary.wifeChildAllowance   = n(req.body.wifeChildAllowance);
-    salary.teachingReward       = n(req.body.teachingReward);
-    salary.gameReward           = n(req.body.gameReward);
-    salary.studentCommission    = n(req.body.studentCommission);
-    salary.internetCompensation = n(req.body.internetCompensation);
-    salary.overtime             = n(req.body.overtime);
-
-    // Deductions
-    salary.instalment             = n(req.body.instalment);
-    salary.miscellaneousDeduction = n(req.body.miscellaneousDeduction);
-    salary.bpjsKetenagakerjaan    = n(req.body.bpjsKetenagakerjaan);
-    salary.tax                    = n(req.body.tax);
-
-    // Other incomes (dynamic rows — supports qs array syntax or brackets)
-    const rawOiLabels  = req.body.otherIncomeLabel ?? req.body['otherIncomeLabel[]'] ?? [];
-    const rawOiAmounts = req.body.otherIncomeAmount ?? req.body['otherIncomeAmount[]'] ?? [];
-    const oiLabels  = [].concat(rawOiLabels);
-    const oiAmounts = [].concat(rawOiAmounts);
-    salary.otherIncomes = oiLabels
-      .map((label, i) => ({ label: (label || '').trim(), amount: n(oiAmounts[i]) }))
-      .filter(item => item.label || item.amount > 0);
-
-    // Other deductions (dynamic rows — supports qs array syntax or brackets)
-    const rawOdLabels  = req.body.otherDeductionLabel ?? req.body['otherDeductionLabel[]'] ?? [];
-    const rawOdAmounts = req.body.otherDeductionAmount ?? req.body['otherDeductionAmount[]'] ?? [];
-    const odLabels  = [].concat(rawOdLabels);
-    const odAmounts = [].concat(rawOdAmounts);
-    salary.otherDeductions = odLabels
-      .map((label, i) => ({ label: (label || '').trim(), amount: n(odAmounts[i]) }))
-      .filter(item => item.label || item.amount > 0);
-
-    salary.notes = (req.body.notes || '').trim().slice(0, 500);
+    // Use the shared helper (identical parsing/clamping as before — behavior unchanged)
+    applySalaryFields(salary, req.body);
 
     // Recompute totals
     salary.recompute();
@@ -327,6 +411,147 @@ exports.salaryUpdate = async (req, res) => {
     console.error('[salary] update error:', err);
     req.session.flash = { type: 'error', msg: 'Failed to save salary: ' + err.message };
     res.redirect(`/admin/salaries/${req.params.id}/edit`);
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════
+   BULK UPDATE  POST /admin/salaries/bulk-update
+   Atomically saves multiple draft salary slips from the bulk-edit
+   walkthrough flow. Body: { month, year, items: [{id, updatedAt, fields}] }
+
+   Atomicity strategy:
+     1. Attempt a Mongoose session transaction (requires replica set).
+     2. If the deployment is a standalone MongoDB instance, catch the
+        unsupported-transaction error and fall back to sequential saves
+        after full pre-validation (validation is always done first so
+        no partial writes occur due to a validation failure).
+══════════════════════════════════════════════════════════════ */
+exports.salaryBulkUpdate = async (req, res) => {
+  try {
+    const { month: rawMonth, year: rawYear, items } = req.body;
+
+    // ── 1. Basic input validation ──────────────────────────────
+    const month = parseInt(rawMonth, 10);
+    const year  = parseInt(rawYear,  10);
+    if (isNaN(month) || month < 1 || month > 12 || isNaN(year) || year < 2000 || year > 2100) {
+      return res.status(400).json({ ok: false, message: 'Invalid month or year.' });
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ ok: false, message: 'No items provided.' });
+    }
+
+    // Validate every id is a proper ObjectId
+    const invalidIds = items.filter(item => !mongoose.Types.ObjectId.isValid(item?.id));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({ ok: false, message: `Invalid salary ID(s) in request.` });
+    }
+
+    // ── 2. Load all requested salaries in one query ────────────
+    const requestedIds = items.map(item => item.id);
+    const salaries = await Salary.find({ _id: { $in: requestedIds } }).populate('teacher', 'displayName');
+
+    // Build a map for fast lookup
+    const salaryMap = new Map(salaries.map(s => [s._id.toString(), s]));
+
+    // ── 3. Pre-validate all slips before touching anything ─────
+    const errors = [];
+    for (const item of items) {
+      const salary = salaryMap.get(item.id);
+      if (!salary) {
+        errors.push(`Salary slip not found: ${item.id}`);
+        continue;
+      }
+      if (salary.month !== month || salary.year !== year) {
+        errors.push(`Slip for ${salary.teacher?.displayName || item.id} does not belong to ${month}/${year}.`);
+      }
+      if (salary.status !== 'draft') {
+        errors.push(`Slip for ${salary.teacher?.displayName || item.id} is no longer in draft status (status: ${salary.status}). Please refresh and check.`);
+      }
+      // Optimistic concurrency: compare updatedAt timestamps
+      const dbUpdatedAt  = salary.updatedAt instanceof Date ? salary.updatedAt.toISOString() : new Date(salary.updatedAt).toISOString();
+      const sentUpdatedAt = item.updatedAt;
+      if (dbUpdatedAt !== sentUpdatedAt) {
+        errors.push(`Slip for ${salary.teacher?.displayName || item.id} has been modified by another admin. Please refresh and review.`);
+      }
+    }
+
+    if (errors.length > 0) {
+      return res.status(409).json({ ok: false, message: errors.join(' | ') });
+    }
+
+    // ── 4. Apply fields to all salary docs (in memory) ────────
+    for (const item of items) {
+      const salary = salaryMap.get(item.id);
+      applySalaryFields(salary, item.fields || {});
+      salary.recompute();
+    }
+
+    // ── 5. Save — attempt transaction, fall back to sequential ─
+    const savedIds = requestedIds;
+    let usedTransaction = false;
+
+    try {
+      const session = await mongoose.startSession();
+      try {
+        session.startTransaction();
+        for (const item of items) {
+          await salaryMap.get(item.id).save({ session });
+        }
+        await session.commitTransaction();
+        usedTransaction = true;
+      } catch (txErr) {
+        await session.abortTransaction();
+        throw txErr;
+      } finally {
+        session.endSession();
+      }
+    } catch (txErr) {
+      // Check if the error is due to lack of replica set / transaction support
+      const isTxUnsupported = /Transaction numbers are only allowed/.test(txErr.message) ||
+                              /transactions are not supported/.test(txErr.message) ||
+                              txErr.codeName === 'OperationNotSupportedInTransaction' ||
+                              txErr.code === 20;
+      if (isTxUnsupported) {
+        // Fallback: sequential saves after full pre-validation (already done above)
+        for (const item of items) {
+          await salaryMap.get(item.id).save();
+        }
+        usedTransaction = false;
+      } else {
+        throw txErr; // Re-throw unexpected errors
+      }
+    }
+
+    // ── 6. Single audit log entry ──────────────────────────────
+    await AuditLog.create({
+      admin:      req.session.user?._id,
+      adminName:  req.session.user?.displayName || req.session.user?.username,
+      action:     'salary_bulk_update',
+      targetType: 'salary',
+      targetLabel: `${month}/${year}`,
+      meta: {
+        month,
+        year,
+        count:     items.length,
+        salaryIds: savedIds,
+        atomic:    usedTransaction ? 'transaction' : 'sequential-after-validation',
+      },
+    });
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const monthStr = `${year}-${pad(month)}`;
+    req.session.flash = {
+      type: 'success',
+      msg:  `Saved ${items.length} salary slip${items.length !== 1 ? 's' : ''}.`,
+      savedIds,
+      monthStr,
+    };
+
+    return res.json({ ok: true, saved: items.length, savedIds, monthStr });
+  } catch (err) {
+    console.error('[salary] bulkUpdate error:', err);
+    return res.status(500).json({ ok: false, message: 'Failed to save salaries: ' + err.message });
   }
 };
 
@@ -400,9 +625,63 @@ exports.salarySlip = async (req, res) => {
     // Pre-format all IDR values for the template
     const fmt = (v) => formatIDR(v);
 
+    // ── Bulk-review flow ────────────────────────────────────────
+    const isReview = req.query.flow === 'review';
+    if (isReview) {
+      const meta = getMonthMeta(req.query);
+      const { year, month, selectedMonthStr } = meta;
+
+      // All slips for the month, sorted by teacher name (table order)
+      const allSalaries = await Salary.find({ year, month })
+        .populate('teacher', 'displayName')
+        .lean();
+      allSalaries.sort((a, b) =>
+        (a.teacher?.displayName || '').localeCompare(b.teacher?.displayName || ''));
+
+      // Optional ?ids=a,b,c filter to limit review to specific slips
+      let reviewList = allSalaries;
+      const idsQuery = req.query.ids || '';
+      if (idsQuery) {
+        const allowedIds = idsQuery.split(',').map(s => s.trim()).filter(Boolean);
+        reviewList = allSalaries.filter(s => allowedIds.includes(s._id.toString()));
+      }
+
+      const currentIndex = reviewList.findIndex(s => s._id.toString() === salary._id.toString());
+      if (currentIndex === -1) {
+        // Slip not in review scope — redirect to first in list or index
+        const first = reviewList[0];
+        if (first) {
+          return res.redirect(
+            `/admin/salaries/${first._id}/slip?flow=review&month=${selectedMonthStr}` +
+            (idsQuery ? `&ids=${encodeURIComponent(idsQuery)}` : '')
+          );
+        }
+        return res.redirect(`/admin/salaries?month=${selectedMonthStr}`);
+      }
+
+      return res.render('admin/salaries/slip', {
+        salary,
+        teacher:      salary.teacher,
+        fmt,
+        printMode:    req.query.print === '1',
+        // Review-flow extras
+        flow:         'review',
+        reviewList:   reviewList.map(s => ({
+          id:          s._id.toString(),
+          teacherName: s.teacher?.displayName || 'Unknown',
+        })),
+        currentIndex,
+        totalCount:   reviewList.length,
+        monthStr:     selectedMonthStr,
+        idsQuery,
+      });
+    }
+
+    // ── Normal single-slip view ─────────────────────────────────
     res.render('admin/salaries/slip', {
       salary, teacher: salary.teacher, fmt,
       printMode: req.query.print === '1',
+      flow:      null,
     });
   } catch (err) {
     console.error('[salary] slip error:', err);

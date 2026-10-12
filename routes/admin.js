@@ -61,6 +61,7 @@ router.get('/salaries',              requireSuperAdmin, salaryCtrl.salaryIndex);
 router.post('/salaries/generate',    requireSuperAdmin, salaryCtrl.salaryGenerate);
 router.post('/salaries/publish',     requireSuperAdmin, salaryCtrl.salaryPublish);
 router.get('/salaries/export',       requireSuperAdmin, salaryCtrl.salaryExport);
+router.post('/salaries/bulk-update', requireSuperAdmin, salaryCtrl.salaryBulkUpdate); // ← must be before /:id
 router.get('/salaries/:id/slip',     requireSuperAdmin, salaryCtrl.salarySlip);
 router.get('/salaries/:id/edit',     requireSuperAdmin, salaryCtrl.salaryEditForm);
 router.post('/salaries/:id/retract', requireSuperAdmin, salaryCtrl.salaryRetract);
