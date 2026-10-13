@@ -535,3 +535,77 @@ test('10. student_ids containing a real DB student ID but missing from group.stu
   assert.equal(card, undefined, 'No changes should be reported since CSV matches group.students');
 });
 
+test('11. Group with only level change returns no card in changedGroups, counted in summaryChips.levelOnlyChanges and listed in levelOnlyGroups; group with level change + student diff has card with oldLevel/newLevel', () => {
+  const alice = makeStudent('Alice Smith');
+  const bob = makeStudent('Bob Jones');
+
+  const levelOnlyGroup = {
+    _id: makeObjectId(),
+    group_name: 'Level Only Group',
+    type: 'GROUP',
+    level: 'Primary 1',
+    students: ['Alice Smith'],
+    student_ids: [alice._id],
+  };
+
+  const mixedGroup = {
+    _id: makeObjectId(),
+    group_name: 'Mixed Change Group',
+    type: 'GROUP',
+    level: 'Primary 1',
+    students: ['Bob Jones'],
+    student_ids: [bob._id],
+  };
+
+  const existingGroups = [levelOnlyGroup, mixedGroup];
+  const existingStudents = [alice, bob];
+
+  const csvDocs = [
+    {
+      group_name: 'Level Only Group',
+      type: 'GROUP',
+      level: 'Primary 2', // only level changed
+      students: ['Alice Smith'],
+    },
+    {
+      group_name: 'Mixed Change Group',
+      type: 'GROUP',
+      level: 'Primary 2', // level changed AND new student Charlie added
+      students: ['Bob Jones', 'Charlie Brown'],
+    },
+  ];
+
+  const diffResult = computeRosterDiff(csvDocs, existingGroups, existingStudents);
+
+  // 1. Level only group returns no card in changedGroups
+  const levelOnlyCard = diffResult.changedGroups.find(g => g.name === 'Level Only Group');
+  assert.equal(levelOnlyCard, undefined, 'Level-only group must not appear as a card in changedGroups');
+
+  // 2. Counted in summaryChips.levelOnlyChanges
+  assert.equal(diffResult.summaryChips.levelOnlyChanges, 1);
+
+  // 3. Listed in levelOnlyGroups array: [{ name, type, oldLevel, newLevel }]
+  assert.equal(diffResult.levelOnlyGroups.length, 1);
+  assert.deepEqual(diffResult.levelOnlyGroups[0], {
+    name: 'Level Only Group',
+    type: 'GROUP',
+    oldLevel: 'Primary 1',
+    newLevel: 'Primary 2',
+  });
+
+  // 4. Mixed group appears as a card in changedGroups with oldLevel/newLevel
+  const mixedCard = diffResult.changedGroups.find(g => g.name === 'Mixed Change Group');
+  assert.ok(mixedCard, 'Mixed change group must appear as a card');
+  assert.equal(mixedCard.levelChanged, true);
+  assert.equal(mixedCard.oldLevel, 'Primary 1');
+  assert.equal(mixedCard.newLevel, 'Primary 2');
+  assert.equal(mixedCard.additions.length, 1);
+  assert.equal(mixedCard.additions[0].rawName, 'Charlie Brown');
+
+  // 5. allowedRemovalsByGroup and authoritativeRenames are unaffected
+  assert.ok(diffResult.allowedRemovalsByGroup instanceof Map);
+  assert.ok(diffResult.authoritativeRenames instanceof Map);
+  assert.equal(diffResult.authoritativeRenames.size, 0);
+});
+
+

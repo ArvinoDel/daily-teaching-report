@@ -170,6 +170,7 @@ exports.importExecute = (req, res) => {
           preview: { wouldCreate, wouldRetain },
           changedGroups: diffResult.changedGroups,
           summaryChips: diffResult.summaryChips,
+          levelOnlyGroups: diffResult.levelOnlyGroups,
         });
       }
 

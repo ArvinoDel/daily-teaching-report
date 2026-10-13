@@ -437,6 +437,7 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
 
   // 5. Build group diff cards and collect metrics
   const changedGroups = [];
+  const levelOnlyGroups = [];
   const authoritativeRenames = new Map(); // csvGroupName -> dbGroupId
   const allowedRemovalsByGroup = new Map(); // dbGroupId -> Map<key, student>
 
@@ -458,7 +459,7 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
       const typeChanged  = Boolean(cItem.doc.type && cItem.doc.type !== exactMatch.group.type);
 
       const hasStudentDiff = diff.additions.length > 0 || diff.removals.length > 0;
-      if (hasStudentDiff || levelChanged || typeChanged) {
+      if (hasStudentDiff) {
         const dbId = String(exactMatch.group._id);
 
         // Record allowed removals for this group
@@ -490,8 +491,16 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
           removals: diff.removals,
           levelChanged,
           oldLevel: exactMatch.group.level || '',
+          newLevel: cItem.doc.level || '',
           typeChanged,
           oldType: exactMatch.group.type || '',
+        });
+      } else if (levelChanged || typeChanged) {
+        levelOnlyGroups.push({
+          name: csvName,
+          type: cItem.doc.type,
+          oldLevel: exactMatch.group.level || '',
+          newLevel: cItem.doc.level || '',
         });
       }
     } else if (renameCand) {
@@ -562,13 +571,12 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
     return !exactMatchDbIds.has(id) && !claimedDbIds.has(id);
   }).length;
 
-  // Collect CSV group names that appear in changedGroups (saved by this import)
-  const changedGroupNames = new Set(changedGroups.map(g => g.name));
-
   return {
     changedGroups,
+    levelOnlyGroups,
     summaryChips: {
       groupsWithChanges: changedGroups.length,
+      levelOnlyChanges: levelOnlyGroups.length,
       newStudents: newStudentsCount,
       movedStudents: movedStudentsCount,
       notInCsvStudents: notInCsvStudentsCount,
