@@ -568,4 +568,410 @@ test('Group Roster Service - DB Wrapper & Atomicity Tests', async (t) => {
     const formattedFallback = formatGroupCreatedAt(groupWithoutDate);
     assert.equal(formattedFallback, '13 Oct 2026');
   });
+
+  await t.test('15. pairsToRoster never outputs null in student_ids when pairs have null ids', () => {
+    const pairs = [
+      { name: 'Alice', norm: 'alice', id: makeObjectId() },
+      { name: 'Unlinked Bob', norm: 'unlinked bob', id: null },
+      { name: 'Charlie', norm: 'charlie', id: makeObjectId() },
+      { name: 'Unlinked David', norm: 'unlinked david', id: undefined },
+    ];
+    const roster = pairsToRoster(pairs);
+    assert.deepEqual(roster.students, ['Alice', 'Unlinked Bob', 'Charlie', 'Unlinked David']);
+    assert.equal(roster.student_ids.length, 2);
+    assert.equal(roster.student_ids.includes(null), false);
+    assert.equal(roster.student_ids.includes(undefined), false);
+  });
+
+  await t.test('16. add/remove/move refuse to run on a group with unlinked names, returning needsRepair and writing nothing', async () => {
+    const aliceId = makeObjectId();
+    let saved = false;
+    const groupWithUnlinked = {
+      _id: makeObjectId(),
+      group_name: 'Unlinked Group',
+      students: ['Alice Smith', 'Unlinked Student'],
+      student_ids: [aliceId],
+      save: async function () { saved = true; return this; },
+    };
+
+    const targetGroup = {
+      _id: makeObjectId(),
+      group_name: 'Target Group',
+      students: ['Existing Student'],
+      student_ids: [makeObjectId()],
+      save: async function () { saved = true; return this; },
+    };
+
+    const origFind = Student.find;
+    const origFindById = Student.findById;
+
+    // Student.find resolves Alice only, Unlinked Student has no doc
+    Student.find = () => ({
+      lean: async () => [{
+        _id: aliceId,
+        full_name: 'Alice Smith',
+        normalized_name: normalizeName('Alice Smith'),
+      }],
+    });
+    Student.findById = async (id) => ({
+      _id: aliceId,
+      full_name: 'Alice Smith',
+      normalized_name: normalizeName('Alice Smith'),
+    });
+
+    try {
+      const { addStudentsToGroup, removeStudentFromGroup } = require('../services/groupRosterService');
+
+      // 1. addStudentsToGroup
+      saved = false;
+      await assert.rejects(async () => {
+        await addStudentsToGroup(groupWithUnlinked, ['New Person']);
+      }, (err) => {
+        assert.equal(err.needsRepair, true);
+        assert.equal(err.groupId, String(groupWithUnlinked._id));
+        assert.equal(err.groupName, 'Unlinked Group');
+        assert.match(err.message, /Repair this group's roster first/);
+        return true;
+      });
+      assert.equal(saved, false);
+
+      // 2. removeStudentFromGroup
+      saved = false;
+      await assert.rejects(async () => {
+        await removeStudentFromGroup(groupWithUnlinked, aliceId);
+      }, (err) => {
+        assert.equal(err.needsRepair, true);
+        assert.equal(err.groupId, String(groupWithUnlinked._id));
+        return true;
+      });
+      assert.equal(saved, false);
+
+      // 3. moveStudent where source has unlinked student
+      saved = false;
+      await assert.rejects(async () => {
+        await moveStudent(groupWithUnlinked, targetGroup, aliceId);
+      }, (err) => {
+        assert.equal(err.needsRepair, true);
+        assert.equal(err.groupId, String(groupWithUnlinked._id));
+        return true;
+      });
+      assert.equal(saved, false);
+
+      // 4. moveStudent where target has unlinked student
+      const cleanSourceGroup = {
+        _id: makeObjectId(),
+        group_name: 'Clean Source Group',
+        students: ['Alice Smith'],
+        student_ids: [aliceId],
+        save: async function () { saved = true; return this; },
+      };
+      await assert.rejects(async () => {
+        await moveStudent(cleanSourceGroup, groupWithUnlinked, aliceId);
+      }, (err) => {
+        assert.equal(err.needsRepair, true);
+        assert.equal(err.groupId, String(groupWithUnlinked._id));
+        assert.match(err.message, /Repair target group "Unlinked Group"'s roster first/);
+        return true;
+      });
+      assert.equal(saved, false);
+    } finally {
+      Student.find = origFind;
+      Student.findById = origFindById;
+    }
+  });
+
+  await t.test('17. after repair, add/remove/move succeed and no null ever appears in student_ids', async () => {
+    const studentAlice = {
+      _id: makeObjectId(),
+      raw_name: 'Alice Smith',
+      full_name: 'Alice Smith',
+      normalized_name: normalizeName('Alice Smith'),
+      status: 'active',
+      student_code: 'SC-1',
+      barcode: 'BC-1',
+    };
+    const studentBob = {
+      _id: makeObjectId(),
+      raw_name: 'Bob Jones',
+      full_name: 'Bob Jones',
+      normalized_name: normalizeName('Bob Jones'),
+      status: 'active',
+      student_code: 'SC-2',
+      barcode: 'BC-2',
+    };
+    const studentCharlie = {
+      _id: makeObjectId(),
+      raw_name: 'Charlie Brown',
+      full_name: 'Charlie Brown',
+      normalized_name: normalizeName('Charlie Brown'),
+      status: 'active',
+      student_code: 'SC-3',
+      barcode: 'BC-3',
+    };
+
+    let allStudents = [studentAlice, studentBob, studentCharlie];
+
+    const group = {
+      _id: makeObjectId(),
+      group_name: 'Repaired Group',
+      students: ['Alice Smith', 'Bob Jones', 'Charlie Brown'],
+      student_ids: [studentAlice._id, studentBob._id, studentCharlie._id],
+      save: async function () { return this; },
+    };
+
+    const targetGroup = {
+      _id: makeObjectId(),
+      group_name: 'Repaired Target Group',
+      students: [],
+      student_ids: [],
+      save: async function () { return this; },
+    };
+
+    const origFind = Student.find;
+    const origFindById = Student.findById;
+    const origFindOne = Student.findOne;
+    const origStartSession = mongoose.startSession;
+
+    Student.find = (query) => ({
+      lean: async () => allStudents,
+    });
+    Student.findById = async (id) => allStudents.find(s => String(s._id) === String(id)) || null;
+    Student.findOne = async (query) => allStudents.find(s => s.normalized_name === query.normalized_name) || null;
+
+    mongoose.startSession = async () => ({
+      startTransaction: () => {},
+      commitTransaction: async () => {},
+      abortTransaction: async () => {},
+      endSession: () => {},
+    });
+
+    try {
+      const { addStudentsToGroup, removeStudentFromGroup } = require('../services/groupRosterService');
+
+      // 1. Add students
+      const studentDavid = {
+        _id: makeObjectId(),
+        raw_name: 'David Lee',
+        full_name: 'David Lee',
+        normalized_name: normalizeName('David Lee'),
+        status: 'active',
+        student_code: 'SC-4',
+        barcode: 'BC-4',
+      };
+      allStudents.push(studentDavid);
+
+      await addStudentsToGroup(group, ['David Lee']);
+      assert.equal(group.students.includes('David Lee'), true);
+      assert.equal(group.student_ids.includes(null), false);
+      assert.equal(group.students.length, group.student_ids.length);
+
+      // 2. Remove student
+      await removeStudentFromGroup(group, studentDavid._id);
+      assert.equal(group.students.includes('David Lee'), false);
+      assert.equal(group.student_ids.includes(null), false);
+      assert.equal(group.students.length, group.student_ids.length);
+
+      // 3. Move student
+      await moveStudent(group, targetGroup, studentAlice._id);
+      assert.equal(group.students.includes('Alice Smith'), false);
+      assert.equal(targetGroup.students.includes('Alice Smith'), true);
+      assert.equal(group.student_ids.includes(null), false);
+      assert.equal(targetGroup.student_ids.includes(null), false);
+    } finally {
+      Student.find = origFind;
+      Student.findById = origFindById;
+      Student.findOne = origFindOne;
+      mongoose.startSession = origStartSession;
+    }
+  });
+
+  await t.test('18. groupRepairRoster rejects with 422 needsManualFix when a name is >100 characters, saving nothing', async () => {
+    let saved = false;
+    const longName = 'A'.repeat(120);
+    const group = {
+      _id: makeObjectId(),
+      group_name: 'Long Name Group',
+      students: [longName, 'Valid Student'],
+      student_ids: [],
+      save: async function () { saved = true; return this; },
+    };
+
+    const origGroupFindById = Group.findById;
+    Group.findById = async () => group;
+
+    let statusCalled = null;
+    let jsonCalled = null;
+    const req = {
+      params: { id: String(group._id) },
+      user: { _id: makeObjectId(), username: 'admin' },
+      session: { user: { _id: makeObjectId(), username: 'admin' } },
+    };
+    const res = {
+      status: function (code) {
+        statusCalled = code;
+        return this;
+      },
+      json: function (payload) {
+        jsonCalled = payload;
+        return this;
+      },
+    };
+
+    try {
+      const { groupRepairRoster } = require('../controllers/adminGroupController');
+      await groupRepairRoster(req, res);
+
+      assert.equal(saved, false);
+      assert.equal(statusCalled, 422);
+      assert.equal(jsonCalled.ok, false);
+      assert.equal(jsonCalled.needsManualFix, true);
+      assert.equal(jsonCalled.skipped.length, 1);
+      assert.equal(jsonCalled.skipped[0].name, longName);
+    } finally {
+      Group.findById = origGroupFindById;
+    }
+  });
+
+  await t.test('19. groupRepairRoster merges exact duplicates by normalized name and lists them in success response', async () => {
+    const AuditLog = require('../models/AuditLog');
+    const origAuditCreate = AuditLog.create;
+    AuditLog.create = async () => {};
+
+    let saved = false;
+    const studentAlice = {
+      _id: makeObjectId(),
+      raw_name: 'Alice Smith',
+      full_name: 'Alice Smith',
+      normalized_name: normalizeName('Alice Smith'),
+      status: 'active',
+      student_code: 'SC-1',
+      barcode: 'BC-1',
+    };
+
+    const group = {
+      _id: makeObjectId(),
+      group_name: 'Duplicate Group',
+      students: ['Alice Smith', 'Alice Smith 11 SPB'], // Same normalized name: alice smith
+      student_ids: [studentAlice._id],
+      save: async function () { saved = true; return this; },
+    };
+
+    const origGroupFindById = Group.findById;
+    const origGroupFind = Group.find;
+    const origStudentFind = Student.find;
+    const origStudentFindOne = Student.findOne;
+
+    Group.findById = async () => group;
+    Group.find = () => ({
+      select: () => ({
+        sort: () => ({
+          lean: async () => [],
+        }),
+        lean: async () => [],
+      }),
+    });
+    Student.find = () => ({
+      lean: async () => [studentAlice],
+    });
+    Student.findOne = async () => studentAlice;
+
+    let statusCalled = null;
+    let jsonCalled = null;
+    const req = {
+      params: { id: String(group._id) },
+      user: { _id: makeObjectId(), username: 'admin' },
+      session: { user: { _id: makeObjectId(), username: 'admin' } },
+    };
+    const res = {
+      status: function (code) {
+        statusCalled = code;
+        return this;
+      },
+      json: function (payload) {
+        jsonCalled = payload;
+        return this;
+      },
+    };
+
+    try {
+      const { groupRepairRoster } = require('../controllers/adminGroupController');
+      await groupRepairRoster(req, res);
+
+      assert.equal(saved, true);
+      assert.equal(jsonCalled.ok, true);
+      assert.equal(jsonCalled.mergedDuplicates.length, 1);
+      assert.match(jsonCalled.message, /merged duplicate/);
+      assert.deepEqual(group.students, ['Alice Smith']);
+    } finally {
+      Group.findById = origGroupFindById;
+      Group.find = origGroupFind;
+      Student.find = origStudentFind;
+      Student.findOne = origStudentFindOne;
+      AuditLog.create = origAuditCreate;
+    }
+  });
+
+  await t.test('20. getGroupEditData computes isOnlyGroup by names across other groups', async () => {
+    const studentAlice = {
+      _id: makeObjectId(),
+      raw_name: 'Alice Smith',
+      full_name: 'Alice Smith',
+      normalized_name: normalizeName('Alice Smith'),
+      status: 'active',
+      student_code: 'SC-1',
+      barcode: 'BC-1',
+    };
+    const studentBob = {
+      _id: makeObjectId(),
+      raw_name: 'Bob Jones',
+      full_name: 'Bob Jones',
+      normalized_name: normalizeName('Bob Jones'),
+      status: 'active',
+      student_code: 'SC-2',
+      barcode: 'BC-2',
+    };
+
+    const currentGroup = {
+      _id: makeObjectId(),
+      group_name: 'Class A',
+      students: ['Alice Smith', 'Bob Jones'],
+      student_ids: [studentAlice._id, studentBob._id],
+    };
+
+    const otherGroup = {
+      _id: makeObjectId(),
+      group_name: 'Class B',
+      students: ['Alice Smith 11 SPB'], // Also contains Alice by normalized name
+      type: 'GROUP',
+      level: 'PA',
+    };
+
+    const origStudentFind = Student.find;
+    const origGroupFind = Group.find;
+
+    Student.find = () => ({
+      lean: async () => [studentAlice, studentBob],
+    });
+    Group.find = () => ({
+      select: () => ({
+        sort: () => ({
+          lean: async () => [otherGroup],
+        }),
+      }),
+    });
+
+    try {
+      const data = await getGroupEditData(currentGroup);
+      const aliceEntry = data.roster.find(r => r.name === 'Alice Smith');
+      const bobEntry = data.roster.find(r => r.name === 'Bob Jones');
+
+      // Alice is in Class B by name, so isOnlyGroup is false
+      assert.equal(aliceEntry.isOnlyGroup, false);
+      // Bob is in no other group, so isOnlyGroup is true
+      assert.equal(bobEntry.isOnlyGroup, true);
+    } finally {
+      Student.find = origStudentFind;
+      Group.find = origGroupFind;
+    }
+  });
 });

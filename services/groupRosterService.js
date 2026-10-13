@@ -29,7 +29,7 @@ function pairsToRoster(pairs) {
   const safePairs = Array.isArray(pairs) ? pairs : [];
   return {
     students: safePairs.map(p => p.name),
-    student_ids: safePairs.map(p => (p.id ? p.id : null)),
+    student_ids: safePairs.filter(p => p && p.id).map(p => p.id),
   };
 }
 
@@ -199,6 +199,7 @@ async function resolveGroupPairs(group) {
  * Add an array of raw student names to a group document.
  * Resolves current group names to pairs, calls pure helper applyRosterAdd,
  * and writes back both arrays using pairsToRoster.
+ * Refuses to run if group has unlinked names.
  *
  * @param {Object} group - Loaded Mongoose Group doc
  * @param {string[]} rawNames - List of raw student names
@@ -207,6 +208,15 @@ async function resolveGroupPairs(group) {
 async function addStudentsToGroup(group, rawNames) {
   const names = Array.isArray(rawNames) ? rawNames : [rawNames];
   const currentPairs = await resolveGroupPairs(group);
+
+  const unlinked = currentPairs.find(p => !p.id);
+  if (unlinked) {
+    const err = new Error("Repair this group's roster first.");
+    err.needsRepair = true;
+    err.groupId = group._id ? String(group._id) : '';
+    err.groupName = group.group_name || '';
+    throw err;
+  }
 
   const incomingPairs = [];
   const added = [];
@@ -288,6 +298,7 @@ async function addStudentsToGroup(group, rawNames) {
  * Resolves current group names to pairs, identifies the target by studentId
  * resolved to normalized_name, calls pure helper applyRosterRemove,
  * and writes back both arrays using pairsToRoster.
+ * Refuses to run if group has unlinked names.
  *
  * Checks "no other group" by checking group.students names (resolved via normalized_name)
  * across all groups, not only student_ids, so ghost ids cannot block or trigger it.
@@ -298,10 +309,20 @@ async function addStudentsToGroup(group, rawNames) {
  * @returns {Promise<{ ok: true, removedName: string, studentId: string, markedInactive: boolean }>}
  */
 async function removeStudentFromGroup(group, studentId, { markInactive = false } = {}) {
+  const currentPairs = await resolveGroupPairs(group);
+
+  const unlinked = currentPairs.find(p => !p.id);
+  if (unlinked) {
+    const err = new Error("Repair this group's roster first.");
+    err.needsRepair = true;
+    err.groupId = group._id ? String(group._id) : '';
+    err.groupName = group.group_name || '';
+    throw err;
+  }
+
   const sDoc = await Student.findById(studentId);
   const targetNorm = sDoc ? sDoc.normalized_name : null;
 
-  const currentPairs = await resolveGroupPairs(group);
   const result = applyRosterRemove(currentPairs, {
     studentId: String(studentId),
     normKey: targetNorm,
@@ -350,6 +371,7 @@ async function removeStudentFromGroup(group, studentId, { markInactive = false }
  * Move a student from fromGroup to toGroup.
  * Resolves both groups to pairs, precomputes new rosters for BOTH groups purely,
  * then persists: attempts transaction, falls back to sequential without re-applying mutations.
+ * Refuses to run if either group has unlinked names.
  *
  * @param {Object} fromGroup - Loaded Mongoose Group doc
  * @param {Object} toGroup - Loaded Mongoose Group doc
@@ -367,7 +389,24 @@ async function moveStudent(fromGroup, toGroup, studentId) {
   }
 
   const fromPairs = await resolveGroupPairs(fromGroup);
+  const fromUnlinked = fromPairs.find(p => !p.id);
+  if (fromUnlinked) {
+    const err = new Error("Repair this group's roster first.");
+    err.needsRepair = true;
+    err.groupId = fromGroup._id ? String(fromGroup._id) : '';
+    err.groupName = fromGroup.group_name || '';
+    throw err;
+  }
+
   const toPairs   = await resolveGroupPairs(toGroup);
+  const toUnlinked = toPairs.find(p => !p.id);
+  if (toUnlinked) {
+    const err = new Error(`Repair target group "${toGroup.group_name}"'s roster first.`);
+    err.needsRepair = true;
+    err.groupId = toGroup._id ? String(toGroup._id) : '';
+    err.groupName = toGroup.group_name || '';
+    throw err;
+  }
 
   // Precompute new rosters purely for BOTH groups
   const moveResult = applyRosterMove(fromPairs, toPairs, {
@@ -443,6 +482,7 @@ async function syncRosterFromNames(group, rawNames) {
   const uniqueItems = [];
   const seenNorms = new Set();
   const skipped = [];
+  const mergedDuplicates = [];
 
   for (const raw of names) {
     const trimmed = (raw || '').trim();
@@ -457,6 +497,7 @@ async function syncRosterFromNames(group, rawNames) {
     if (!norm) continue;
 
     if (seenNorms.has(norm)) {
+      mergedDuplicates.push({ name: trimmed, reason: 'Duplicate student name in list.' });
       skipped.push({ name: trimmed, reason: 'Duplicate student name in list.' });
       continue;
     }
@@ -492,10 +533,10 @@ async function syncRosterFromNames(group, rawNames) {
   }
 
   group.students = resolved.map(r => r.name);
-  group.student_ids = resolved.map(r => r.id);
+  group.student_ids = resolved.filter(r => r && r.id).map(r => r.id);
 
   await group.save();
-  return { group, skipped };
+  return { group, skipped, mergedDuplicates };
 }
 
 module.exports = {

@@ -435,10 +435,17 @@
       });
 
       if (res.status === 409) {
+        const data = await res.json().catch(() => ({}));
+        if (data.needsRepair) {
+          const banner = document.getElementById('roster-inconsistent-banner');
+          if (banner) banner.classList.remove('hidden');
+          Toast.fire({ icon: 'warning', title: data.message || "Repair this group's roster first." });
+          return;
+        }
         Swal.fire({
           icon: 'error',
           title: 'Conflict Detected',
-          text: 'Group was changed by another user. Please refresh the page to see the latest version.',
+          text: data.message || 'Group was changed by another user. Please refresh the page to see the latest version.',
           confirmButtonColor: '#4f46e5',
         });
         return;
@@ -581,7 +588,17 @@
           });
 
           if (res.status === 409) {
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
+            if (data.needsRepair) {
+              const banner = document.getElementById('roster-inconsistent-banner');
+              if (banner) banner.classList.remove('hidden');
+              Toast.fire({ icon: 'warning', title: data.message || "Repair this group's roster first." });
+              confirmBtn.disabled = false;
+              confirmBtn.textContent = 'Confirm Move';
+              modal.classList.add('hidden');
+              return;
+            }
+
             if (data.requiresTypeConfirmation) {
               // Show type mismatch alert
               const warningBox = document.getElementById('move-type-warning');
@@ -762,10 +779,21 @@
           });
 
           if (res.status === 409) {
+            const data = await res.json().catch(() => ({}));
+            if (data.needsRepair) {
+              const banner = document.getElementById('roster-inconsistent-banner');
+              if (banner) banner.classList.remove('hidden');
+              Toast.fire({ icon: 'warning', title: data.message || "Repair this group's roster first." });
+              confirmBtn.disabled = false;
+              confirmBtn.textContent = 'Remove Student';
+              modal.classList.add('hidden');
+              return;
+            }
+
             Swal.fire({
               icon: 'error',
               title: 'Conflict Detected',
-              text: 'Group was changed by another user. Please refresh.',
+              text: data.message || 'Group was changed by another user. Please refresh.',
               confirmButtonColor: '#4f46e5',
             });
             confirmBtn.disabled = false;
@@ -936,7 +964,22 @@
           },
         });
 
-        const data = await resp.json();
+        const data = await resp.json().catch(() => ({}));
+
+        if (resp.status === 422 || data.needsManualFix) {
+          const errContainer = document.getElementById('roster-repair-error-container');
+          const errList = document.getElementById('roster-repair-error-list');
+          if (errContainer && errList) {
+            errList.innerHTML = (data.skipped || []).map(s => `<li><strong>${escHtml(s.name)}</strong> — ${escHtml(s.reason)}</li>`).join('');
+            errContainer.classList.remove('hidden');
+          }
+          const banner = document.getElementById('roster-inconsistent-banner');
+          if (banner) banner.classList.remove('hidden');
+          Toast.fire({ icon: 'warning', title: 'Manual fix required before repair.' });
+          btnRepair.disabled = false;
+          btnRepair.innerHTML = originalHtml;
+          return;
+        }
 
         if (resp.status === 409) {
           Toast.fire({ icon: 'warning', title: data.message || 'Group changed, refresh the page' });
@@ -955,6 +998,11 @@
         const banner = document.getElementById('roster-inconsistent-banner');
         if (banner) {
           banner.classList.add('hidden');
+        }
+
+        const errContainer = document.getElementById('roster-repair-error-container');
+        if (errContainer) {
+          errContainer.classList.add('hidden');
         }
 
         let toastMsg = data.message || 'Roster repaired successfully!';
