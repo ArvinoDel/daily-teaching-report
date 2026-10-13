@@ -15,6 +15,26 @@ function safeJson(data) {
     .replace(/&/g, '\\u0026');
 }
 
+/**
+ * Format group creation date in Asia/Jakarta as e.g. "13 Oct 2026".
+ * Falls back to ObjectId timestamp if createdAt is missing.
+ */
+function formatGroupCreatedAt(group) {
+  let date = group ? group.createdAt : null;
+  if (!date && group && group._id && typeof group._id.getTimestamp === 'function') {
+    try {
+      date = group._id.getTimestamp();
+    } catch (_) {}
+  }
+  if (!date) return '—';
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'Asia/Jakarta',
+  }).format(new Date(date));
+}
+
 // One student per line → trimmed array
 function parseStudentList(raw) {
   if (!raw || typeof raw !== 'string' || raw.trim() === '') return [];
@@ -54,17 +74,27 @@ async function logAudit(req, action, targetId, targetLabel, meta = {}) {
   }
 }
 
+/**
+ * Read-only helper: builds roster descriptors and detects inconsistencies
+ * WITHOUT modifying or saving anything in the database.
+ */
 async function getGroupEditData(group) {
-  // Sync legacy/misaligned roster if needed
-  if (group.students.length > 0 && (!group.student_ids || group.student_ids.length !== group.students.length)) {
-    await groupRosterService.syncRosterFromNames(group, group.students);
-  }
+  const names = Array.isArray(group.students) ? group.students : [];
+  const ids = Array.isArray(group.student_ids) ? group.student_ids : [];
 
-  const studentDocs = await Student.find({ _id: { $in: group.student_ids } }).lean();
-  const sDocMap = new Map(studentDocs.map(s => [String(s._id), s]));
+  const norms = names.map(s => normalizeName(s)).filter(Boolean);
+  const studentDocs = norms.length > 0
+    ? await Student.find({ normalized_name: { $in: norms } }).lean()
+    : [];
+
   const sNormMap = new Map(studentDocs.map(s => [s.normalized_name, s]));
+  const matchedStudentIds = studentDocs.map(s => s._id);
 
-  const allGroupMemberships = await Group.find({ student_ids: { $in: group.student_ids } }).select('_id student_ids').lean();
+  // Read group memberships to determine isOnlyGroup
+  const allGroupMemberships = matchedStudentIds.length > 0
+    ? await Group.find({ student_ids: { $in: matchedStudentIds } }).select('_id student_ids').lean()
+    : [];
+
   const studentGroupCounts = new Map();
   for (const g of allGroupMemberships) {
     for (const sid of (g.student_ids || [])) {
@@ -73,11 +103,21 @@ async function getGroupEditData(group) {
     }
   }
 
-  const roster = (group.students || []).map((name, i) => {
-    const sId = group.student_ids && group.student_ids[i] ? String(group.student_ids[i]) : null;
-    const sDoc = (sId && sDocMap.get(sId)) || sNormMap.get(normalizeName(name));
-    const finalId = sDoc ? String(sDoc._id) : (sId || '');
+  let hasNamesWithoutStudent = false;
+  const representedStudentIds = new Set();
+
+  const roster = names.map(name => {
+    const norm = normalizeName(name);
+    const sDoc = norm ? sNormMap.get(norm) : null;
+    if (!sDoc) {
+      hasNamesWithoutStudent = true;
+    } else {
+      representedStudentIds.add(String(sDoc._id));
+    }
+
+    const finalId = sDoc ? String(sDoc._id) : '';
     const totalGroups = finalId ? (studentGroupCounts.get(finalId) || 1) : 1;
+
     return {
       studentId: finalId,
       name,
@@ -85,11 +125,16 @@ async function getGroupEditData(group) {
       barcode: sDoc ? (sDoc.barcode || '') : '',
       status: sDoc ? (sDoc.status || 'active') : 'active',
       isOnlyGroup: totalGroups <= 1,
+      hasStudentDoc: !!sDoc,
     };
   });
 
+  const hasGhostIds = ids.some(id => !representedStudentIds.has(String(id)));
+  const hasLengthMismatch = names.length !== ids.length;
+  const isInconsistent = hasLengthMismatch || hasGhostIds || hasNamesWithoutStudent;
+
   const otherGroups = await Group.find({ _id: { $ne: group._id } })
-    .select('group_name type level students')
+    .select('group_name type level students createdAt')
     .sort({ type: 1, group_name: 1 })
     .lean();
 
@@ -101,7 +146,14 @@ async function getGroupEditData(group) {
     student_count: (g.students || []).length,
   }));
 
-  return { roster, targetGroups };
+  return {
+    roster,
+    targetGroups,
+    isInconsistent,
+    hasLengthMismatch,
+    hasGhostIds,
+    hasNamesWithoutStudent,
+  };
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -109,7 +161,7 @@ async function getGroupEditData(group) {
 ════════════════════════════════════════════════════════════════ */
 exports.groupsList = async (req, res) => {
   try {
-    const { type, level, q } = req.query;
+    const { type, level, q, sort } = req.query;
 
     const filter = {};
     if (type  && ['GROUP', 'PRIVATE'].includes(type)) filter.type  = type;
@@ -122,11 +174,20 @@ exports.groupsList = async (req, res) => {
       ];
     }
 
+    let sortOption = { type: 1, group_name: 1 };
+    if (sort === 'newest') sortOption = { createdAt: -1, _id: -1 };
+    else if (sort === 'oldest') sortOption = { createdAt: 1, _id: 1 };
+
     const [groups, totalGroup, totalPrivate] = await Promise.all([
-      Group.find(filter).sort({ type: 1, group_name: 1 }),
+      Group.find(filter).sort(sortOption),
       Group.countDocuments({ type: 'GROUP' }),
       Group.countDocuments({ type: 'PRIVATE' }),
     ]);
+
+    // Format created dates
+    groups.forEach(g => {
+      g.createdAtFormatted = formatGroupCreatedAt(g);
+    });
 
     // Build available levels list in canonical order, custom ones appended
     const usedLevels      = await Group.distinct('level');
@@ -137,11 +198,12 @@ exports.groupsList = async (req, res) => {
 
     // Embed groups as safe JSON for the student-detail modal
     const groupsJson = safeJson(groups.map(g => ({
-      _id:        String(g._id),
-      group_name: g.group_name,
-      type:       g.type,
-      level:      g.level || '',
-      students:   g.students,
+      _id:                String(g._id),
+      group_name:         g.group_name,
+      type:               g.type,
+      level:              g.level || '',
+      students:           g.students,
+      createdAtFormatted: g.createdAtFormatted,
     })));
 
     const flashMessage = req.session.flash || null;
@@ -158,6 +220,7 @@ exports.groupsList = async (req, res) => {
       groupsJson,
       selectedType:  type  || '',
       selectedLevel: level || '',
+      selectedSort:  sort  || '',
       searchQuery:   q     || '',
       flashMessage,
     });
@@ -169,7 +232,7 @@ exports.groupsList = async (req, res) => {
 
 /* ═══════════════════════════════════════════════════════════════
    New form   GET /admin/groups/new
-════════════════════════════════════════════════════════════════ */
+═══════════════════════════════════════════════════════════════ */
 exports.groupNewForm = (req, res) => {
   res.render('admin/groups/new', {
     errors: [], formData: {}, LEVELS, LEVEL_LABELS,
@@ -178,7 +241,7 @@ exports.groupNewForm = (req, res) => {
 
 /* ═══════════════════════════════════════════════════════════════
    Create   POST /admin/groups
-════════════════════════════════════════════════════════════════ */
+═══════════════════════════════════════════════════════════════ */
 exports.groupCreate = async (req, res) => {
   try {
     const { group_name, type, level } = req.body;
@@ -199,26 +262,30 @@ exports.groupCreate = async (req, res) => {
       student_ids: [],
     });
 
+    let skipMsg = '';
     if (students.length > 0) {
-      await groupRosterService.syncRosterFromNames(group, students);
+      const { skipped } = await groupRosterService.syncRosterFromNames(group, students);
+      if (skipped && skipped.length > 0) {
+        skipMsg = ` (${skipped.length} student(s) skipped)`;
+      }
     } else {
       await group.save();
     }
 
     await logAudit(req, 'update', group._id, group.group_name, { note: 'created' });
-    req.session.flash = `Group "${group.group_name}" created successfully!`;
+    req.session.flash = `Group "${group.group_name}" created successfully!${skipMsg}`;
     res.redirect('/admin/groups');
   } catch (err) {
-    console.error(err);
+    console.error('groupCreate error:', err);
     res.render('admin/groups/new', {
-      errors: ['Something went wrong: ' + err.message], formData: req.body, LEVELS, LEVEL_LABELS,
+      errors: ['Something went wrong. Please try again.'], formData: req.body, LEVELS, LEVEL_LABELS,
     });
   }
 };
 
 /* ═══════════════════════════════════════════════════════════════
    Edit form   GET /admin/groups/:id/edit
-════════════════════════════════════════════════════════════════ */
+═══════════════════════════════════════════════════════════════ */
 exports.groupEditForm = async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
@@ -227,13 +294,15 @@ exports.groupEditForm = async (req, res) => {
     const group = await Group.findById(req.params.id);
     if (!group) return res.render('error', { message: 'Group not found.' });
 
-    const { roster, targetGroups } = await getGroupEditData(group);
+    const formattedCreatedAt = formatGroupCreatedAt(group);
+    const { roster, targetGroups, isInconsistent } = await getGroupEditData(group);
     const groupDataJson = safeJson({
       groupId: String(group._id),
       groupName: group.group_name,
       groupType: group.type,
       roster,
       targetGroups,
+      isInconsistent,
     });
 
     res.render('admin/groups/edit', {
@@ -241,6 +310,8 @@ exports.groupEditForm = async (req, res) => {
       roster,
       targetGroups,
       groupDataJson,
+      isInconsistent,
+      formattedCreatedAt,
       errors: [],
       success: null,
       LEVELS,
@@ -263,6 +334,7 @@ exports.groupUpdate = async (req, res) => {
     const group = await Group.findById(req.params.id);
     if (!group) return res.render('error', { message: 'Group not found.' });
 
+    const formattedCreatedAt = formatGroupCreatedAt(group);
     const { group_name, type, level } = req.body;
     let students = undefined;
     if (req.body.students !== undefined) {
@@ -271,16 +343,17 @@ exports.groupUpdate = async (req, res) => {
 
     const errors = validateGroupInput({ group_name, type, level, students });
     if (errors.length > 0) {
-      const { roster, targetGroups } = await getGroupEditData(group);
+      const { roster, targetGroups, isInconsistent } = await getGroupEditData(group);
       const groupDataJson = safeJson({
         groupId: String(group._id),
         groupName: group.group_name,
         groupType: group.type,
         roster,
         targetGroups,
+        isInconsistent,
       });
       return res.render('admin/groups/edit', {
-        group, roster, targetGroups, groupDataJson, errors, success: null, LEVELS, LEVEL_LABELS,
+        group, roster, targetGroups, groupDataJson, isInconsistent, formattedCreatedAt, errors, success: null, LEVELS, LEVEL_LABELS,
       });
     }
 
@@ -289,23 +362,28 @@ exports.groupUpdate = async (req, res) => {
     group.type       = type;
     group.level      = level ? level.trim() : '';
 
+    let skipMsg = '';
     if (students !== undefined) {
-      await groupRosterService.syncRosterFromNames(group, students);
+      const { skipped } = await groupRosterService.syncRosterFromNames(group, students);
+      if (skipped && skipped.length > 0) {
+        skipMsg = ` (${skipped.length} student(s) skipped)`;
+      }
     } else {
       await group.save();
     }
 
     await logAudit(req, 'update', group._id, oldLabel);
-    const { roster, targetGroups } = await getGroupEditData(group);
+    const { roster, targetGroups, isInconsistent } = await getGroupEditData(group);
     const groupDataJson = safeJson({
       groupId: String(group._id),
       groupName: group.group_name,
       groupType: group.type,
       roster,
       targetGroups,
+      isInconsistent,
     });
     return res.render('admin/groups/edit', {
-      group, roster, targetGroups, groupDataJson, errors: [], success: 'Group updated successfully!', LEVELS, LEVEL_LABELS,
+      group, roster, targetGroups, groupDataJson, isInconsistent, formattedCreatedAt, errors: [], success: `Group updated successfully!${skipMsg}`, LEVELS, LEVEL_LABELS,
     });
   } catch (err) {
     console.error('groupUpdate error:', err);
@@ -313,17 +391,57 @@ exports.groupUpdate = async (req, res) => {
       return res.status(409).render('error', { message: 'Group changed, refresh the page' });
     }
     const group = await Group.findById(req.params.id).catch(() => null);
-    const { roster, targetGroups } = group ? await getGroupEditData(group).catch(() => ({ roster: [], targetGroups: [] })) : { roster: [], targetGroups: [] };
+    const formattedCreatedAt = formatGroupCreatedAt(group);
+    const { roster, targetGroups, isInconsistent } = group
+      ? await getGroupEditData(group).catch(() => ({ roster: [], targetGroups: [], isInconsistent: false }))
+      : { roster: [], targetGroups: [], isInconsistent: false };
     const groupDataJson = safeJson({
       groupId: group ? String(group._id) : '',
       groupName: group ? group.group_name : '',
       groupType: group ? group.type : 'GROUP',
       roster,
       targetGroups,
+      isInconsistent,
     });
     res.render('admin/groups/edit', {
-      group, roster, targetGroups, groupDataJson, errors: ['Something went wrong.'], success: null, LEVELS, LEVEL_LABELS,
+      group, roster, targetGroups, groupDataJson, isInconsistent, formattedCreatedAt, errors: ['Something went wrong.'], success: null, LEVELS, LEVEL_LABELS,
     });
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   Repair Roster   POST /admin/groups/:id/repair
+═══════════════════════════════════════════════════════════════ */
+exports.groupRepairRoster = async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ ok: false, message: 'Invalid group ID.' });
+    }
+    const group = await Group.findById(req.params.id);
+    if (!group) {
+      return res.status(404).json({ ok: false, message: 'Group not found.' });
+    }
+
+    const { skipped } = await groupRosterService.syncRosterFromNames(group, group.students);
+
+    await logAudit(req, 'group_roster_repair', group._id, group.group_name, {
+      note: 'roster_repair',
+      studentsCount: group.students.length,
+      skippedCount: skipped.length,
+    });
+
+    const { roster, isInconsistent } = await getGroupEditData(group);
+
+    return res.json({
+      ok: true,
+      roster,
+      isInconsistent,
+      skipped,
+      message: 'Roster repaired successfully. Student barcodes generated and IDs aligned.',
+    });
+  } catch (err) {
+    console.error('groupRepairRoster error:', err);
+    return res.status(500).json({ ok: false, message: err.message || 'Failed to repair roster.' });
   }
 };
 
@@ -430,7 +548,7 @@ exports.studentsSearch = async (req, res) => {
 
 /* ═══════════════════════════════════════════════════════════════
    Add Students   POST /admin/groups/:id/students
-════════════════════════════════════════════════════════════════ */
+═══════════════════════════════════════════════════════════════ */
 exports.groupAddStudents = async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
@@ -473,7 +591,7 @@ exports.groupAddStudents = async (req, res) => {
 
 /* ═══════════════════════════════════════════════════════════════
    Remove Student   POST /admin/groups/:id/students/:studentId/remove
-════════════════════════════════════════════════════════════════ */
+═══════════════════════════════════════════════════════════════ */
 exports.groupRemoveStudent = async (req, res) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(req.params.id) || !mongoose.Types.ObjectId.isValid(req.params.studentId)) {
@@ -507,7 +625,7 @@ exports.groupRemoveStudent = async (req, res) => {
 
 /* ═══════════════════════════════════════════════════════════════
    Move Student   POST /admin/groups/:id/students/:studentId/move
-════════════════════════════════════════════════════════════════ */
+═══════════════════════════════════════════════════════════════ */
 exports.groupMoveStudent = async (req, res) => {
   try {
     const { id, studentId } = req.params;
@@ -564,3 +682,46 @@ exports.groupMoveStudent = async (req, res) => {
     return res.status(500).json({ ok: false, message: err.message || 'Failed to move student.' });
   }
 };
+
+/* ═══════════════════════════════════════════════════════════════
+   Repair Roster   POST /admin/groups/:id/repair
+═══════════════════════════════════════════════════════════════ */
+exports.groupRepairRoster = async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ ok: false, message: 'Invalid group ID.' });
+    }
+
+    const group = await Group.findById(req.params.id);
+    if (!group) {
+      return res.status(404).json({ ok: false, message: 'Group not found.' });
+    }
+
+    const { skipped } = await groupRosterService.syncRosterFromNames(group, group.students);
+
+    await logAudit(req, 'group_roster_repair', group._id, group.group_name, {
+      groupId: group._id,
+      studentCount: (group.students || []).length,
+      skippedCount: (skipped || []).length,
+    });
+
+    const refreshedData = await getGroupEditData(group);
+
+    return res.json({
+      ok: true,
+      message: 'Roster repaired successfully.',
+      roster: refreshedData.roster,
+      isInconsistent: refreshedData.isInconsistent,
+      skipped: skipped || [],
+    });
+  } catch (err) {
+    console.error('groupRepairRoster error:', err);
+    if (err.name === 'VersionError') {
+      return res.status(409).json({ ok: false, message: 'Group changed, refresh the page' });
+    }
+    return res.status(500).json({ ok: false, message: err.message || 'Failed to repair roster.' });
+  }
+};
+
+module.exports.formatGroupCreatedAt = formatGroupCreatedAt;
+module.exports.getGroupEditData = getGroupEditData;

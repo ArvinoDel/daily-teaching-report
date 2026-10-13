@@ -82,6 +82,7 @@
     initRemoveModal();
     initDeleteGroupButton();
     initTypeAndLevelForm();
+    initRepairRoster();
   });
 
   function initTypeAndLevelForm() {
@@ -159,37 +160,50 @@
             </div>
           </td>
           <td class="py-3 px-3">
-            ${code !== '—' ? `
+            ${code && code !== '—' ? `
               <span class="inline-flex items-center gap-1 font-mono text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200">
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 9.375v-4.5Z" />
                 </svg>
                 ${escHtml(code)}
               </span>
-            ` : '<span class="text-xs text-slate-400">—</span>'}
+            ` : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">No QR yet</span>'}
           </td>
           <td class="py-3 px-3 text-right">
             <div class="inline-flex items-center gap-1.5">
-              <button type="button"
-                class="btn-move-student inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition shadow-sm"
-                data-student-id="${escHtml(studentId)}"
-                data-student-name="${escHtml(name)}"
-                data-student-code="${escHtml(code)}">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
-                </svg>
-                Move
-              </button>
-              <button type="button"
-                class="btn-remove-student inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-red-600 hover:bg-red-50 hover:border-red-200 transition shadow-sm"
-                data-student-id="${escHtml(studentId)}"
-                data-student-name="${escHtml(name)}"
-                data-is-only-group="${student.isOnlyGroup ? 'true' : 'false'}">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                </svg>
-                Remove
-              </button>
+              ${studentId ? `
+                <button type="button"
+                  class="btn-move-student inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition shadow-sm"
+                  data-student-id="${escHtml(studentId)}"
+                  data-student-name="${escHtml(name)}"
+                  data-student-code="${escHtml(code)}">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+                  </svg>
+                  Move
+                </button>
+                <button type="button"
+                  class="btn-remove-student inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-red-600 hover:bg-red-50 hover:border-red-200 transition shadow-sm"
+                  data-student-id="${escHtml(studentId)}"
+                  data-student-name="${escHtml(name)}"
+                  data-is-only-group="${student.isOnlyGroup ? 'true' : 'false'}">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                  </svg>
+                  Remove
+                </button>
+              ` : `
+                <button type="button" disabled
+                  title="Repair roster first to link this student"
+                  class="opacity-50 cursor-not-allowed inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-50 border border-slate-200 text-slate-400">
+                  Move
+                </button>
+                <button type="button" disabled
+                  title="Repair roster first to link this student"
+                  class="opacity-50 cursor-not-allowed inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-50 border border-slate-200 text-slate-400">
+                  Remove
+                </button>
+              `}
             </div>
           </td>
         </tr>
@@ -891,6 +905,76 @@
           });
         });
       });
+    });
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     REPAIR ROSTER
+  ═══════════════════════════════════════════════════════════════ */
+  function initRepairRoster() {
+    const btnRepair = document.getElementById('btn-repair-roster');
+    if (!btnRepair) return;
+
+    btnRepair.addEventListener('click', async () => {
+      const originalHtml = btnRepair.innerHTML;
+      btnRepair.disabled = true;
+      btnRepair.innerHTML = `
+        <svg class="animate-spin -ml-1 mr-2 h-3.5 w-3.5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        Repairing…
+      `;
+
+      try {
+        const resp = await fetch(`/admin/groups/${GROUP_ID}/repair`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-csrf-token': CSRF_TOKEN,
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+        });
+
+        const data = await resp.json();
+
+        if (resp.status === 409) {
+          Toast.fire({ icon: 'warning', title: data.message || 'Group changed, refresh the page' });
+          btnRepair.disabled = false;
+          btnRepair.innerHTML = originalHtml;
+          return;
+        }
+
+        if (!resp.ok || !data.ok) {
+          throw new Error(data.message || 'Failed to repair roster.');
+        }
+
+        ROSTER = Array.isArray(data.roster) ? data.roster : [];
+        renderRoster();
+
+        const banner = document.getElementById('roster-inconsistent-banner');
+        if (banner) {
+          banner.classList.add('hidden');
+        }
+
+        let toastMsg = data.message || 'Roster repaired successfully!';
+        if (data.skipped && data.skipped.length > 0) {
+          toastMsg += ` (${data.skipped.length} student(s) skipped)`;
+        }
+
+        Toast.fire({
+          icon: 'success',
+          title: toastMsg,
+        });
+      } catch (err) {
+        console.error('Repair roster error:', err);
+        Toast.fire({
+          icon: 'error',
+          title: err.message || 'Failed to repair roster.',
+        });
+        btnRepair.disabled = false;
+        btnRepair.innerHTML = originalHtml;
+      }
     });
   }
 

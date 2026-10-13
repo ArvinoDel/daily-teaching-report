@@ -177,7 +177,7 @@
               <div class="flex items-center gap-2">
                 <span class="text-xs font-bold text-slate-300 uppercase tracking-wider">Level</span>
                 <select
-                  onchange="window.location='/admin/groups?q=<%= encodeURIComponent(searchQuery) %>&type=<%= encodeURIComponent(selectedType) %>&level='+encodeURIComponent(this.value)"
+                  onchange="window.location='/admin/groups?q=<%= encodeURIComponent(searchQuery) %>&type=<%= encodeURIComponent(selectedType) %>&level='+encodeURIComponent(this.value)+'&sort=<%= encodeURIComponent(selectedSort) %>'"
                   class="text-xs font-semibold rounded-lg border border-slate-200 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-300 bg-white text-slate-700">
                   <option value="">All Levels</option>
                   <% availableLevels.forEach(function(l) { %>
@@ -190,6 +190,18 @@
                 </select>
               </div>
               <% } %>
+
+            <span class="self-stretch w-px bg-slate-100 hidden sm:block"></span>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-slate-300 uppercase tracking-wider">Sort</span>
+              <select
+                onchange="window.location='/admin/groups?q=<%= encodeURIComponent(searchQuery) %>&type=<%= encodeURIComponent(selectedType) %>&level=<%= encodeURIComponent(selectedLevel) %>&sort='+encodeURIComponent(this.value)"
+                class="text-xs font-semibold rounded-lg border border-slate-200 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-300 bg-white text-slate-700">
+                <option value="" <%= !selectedSort ? 'selected' : '' %>>Default (Type & Name)</option>
+                <option value="newest" <%= selectedSort === 'newest' ? 'selected' : '' %>>Newest first</option>
+                <option value="oldest" <%= selectedSort === 'oldest' ? 'selected' : '' %>>Oldest first</option>
+              </select>
+            </div>
 
         </div>
       </div>
@@ -220,6 +232,7 @@
               <th class="px-4 py-3 text-left">Group Name</th>
               <th class="px-4 py-3 text-left">Type</th>
               <th class="px-4 py-3 text-left hidden sm:table-cell">Level</th>
+              <th class="px-4 py-3 text-left hidden md:table-cell">Created</th>
               <th class="px-4 py-3 text-center hidden md:table-cell">Students</th>
               <th class="px-4 py-3 text-left">Actions</th>
             </tr>
@@ -231,6 +244,7 @@
                 <td class="px-4 py-3.5"><span class="sk h-4 w-32"></span></td>
                 <td class="px-4 py-3.5"><span class="sk h-5 w-16 rounded-full"></span></td>
                 <td class="px-4 py-3.5 hidden sm:table-cell"><span class="sk h-5 w-12 rounded-full"></span></td>
+                <td class="px-4 py-3.5 hidden md:table-cell"><span class="sk h-4 w-20"></span></td>
                 <td class="px-4 py-3.5 hidden md:table-cell text-center"><span
                     class="sk w-8 h-8 rounded-full inline-block"></span></td>
                 <td class="px-4 py-3.5"><span class="sk h-4 w-16"></span></td>
@@ -274,6 +288,7 @@
                       <th class="px-4 py-3 text-left">Group Name</th>
                       <th class="px-4 py-3 text-left">Type</th>
                       <th class="px-4 py-3 text-left hidden sm:table-cell">Level</th>
+                      <th class="px-4 py-3 text-left hidden md:table-cell">Created</th>
                       <th class="px-4 py-3 text-center hidden md:table-cell">Students</th>
                       <th class="px-4 py-3 text-left">Actions</th>
                     </tr>
@@ -319,6 +334,11 @@
                             <% } else { %>
                               <span class="text-slate-300 text-xs">—</span>
                               <% } %>
+                        </td>
+
+                        <!-- Created -->
+                        <td class="px-4 py-3.5 hidden md:table-cell text-xs text-slate-500 whitespace-nowrap">
+                          <%= g.createdAtFormatted %>
                         </td>
 
                         <!-- Student count -->
@@ -385,6 +405,7 @@
                   <td class="px-4 py-3.5"><span class="sk h-4 w-32"></span></td>
                   <td class="px-4 py-3.5"><span class="sk h-5 w-16 rounded-full"></span></td>
                   <td class="px-4 py-3.5 hidden sm:table-cell"><span class="sk h-5 w-12 rounded-full"></span></td>
+                  <td class="px-4 py-3.5 hidden md:table-cell"><span class="sk h-4 w-20"></span></td>
                   <td class="px-4 py-3.5 hidden md:table-cell text-center"><span
                       class="sk w-8 h-8 rounded-full inline-block"></span></td>
                   <td class="px-4 py-3.5"><span class="sk h-4 w-16"></span></td>
@@ -455,7 +476,10 @@
           var levelBadge = g.level
             ? '<span class="bg-slate-100 text-slate-700 text-xs font-bold px-2.5 py-1 rounded-full">' + escHtml(g.level) + '</span>'
             : '';
-          document.getElementById('modal-meta').innerHTML = typeBadge + levelBadge;
+          var createdBadge = g.createdAtFormatted
+            ? '<span class="text-xs text-slate-400 font-medium">Created: ' + escHtml(g.createdAtFormatted) + '</span>'
+            : '';
+          document.getElementById('modal-meta').innerHTML = typeBadge + levelBadge + createdBadge;
           document.getElementById('modal-count').textContent = g.students.length;
           var ul = document.getElementById('modal-students');
           if (g.students.length === 0) {

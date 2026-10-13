@@ -202,3 +202,370 @@ test('Group Roster Service - Pure Helper Tests', async (t) => {
     assert.equal(result.students.length, result.student_ids.length);
   });
 });
+
+test('Group Roster Service - DB Wrapper & Atomicity Tests', async (t) => {
+  const mongoose = require('mongoose');
+  const Student = require('../models/Student');
+  const Group = require('../models/Group');
+  const {
+    removeStudentFromGroup,
+    moveStudent,
+  } = require('../services/groupRosterService');
+  const {
+    getGroupEditData,
+    formatGroupCreatedAt,
+  } = require('../controllers/adminGroupController');
+
+  function makeObjectId() {
+    return new mongoose.Types.ObjectId();
+  }
+
+  await t.test('10. removeStudentFromGroup with misaligned, shuffled, and longer student_ids (12 IDs, 6 names)', async () => {
+    const studentsData = [
+      { name: 'Alice Smith', id: makeObjectId() },
+      { name: 'Bob Jones', id: makeObjectId() },
+      { name: 'Charlie Brown', id: makeObjectId() },
+      { name: 'David Lee', id: makeObjectId() },
+      { name: 'Eva Green', id: makeObjectId() },
+      { name: 'Frank White', id: makeObjectId() },
+    ];
+
+    const ghostIds = Array.from({ length: 6 }, () => makeObjectId());
+
+    // 12 IDs, deliberately shuffled and longer than 6 names
+    const misalignedIds = [
+      ghostIds[0],
+      studentsData[1].id, // Bob
+      ghostIds[1],
+      studentsData[0].id, // Alice
+      ghostIds[2],
+      studentsData[3].id, // David
+      ghostIds[3],
+      studentsData[2].id, // Charlie
+      ghostIds[4],
+      studentsData[4].id, // Eva
+      ghostIds[5],
+      studentsData[5].id, // Frank
+    ];
+
+    let saved = false;
+    const group = {
+      _id: makeObjectId(),
+      group_name: 'Misaligned Class',
+      students: studentsData.map(s => s.name), // 6 names
+      student_ids: misalignedIds,               // 12 IDs
+      save: async function () { saved = true; return this; },
+    };
+
+    const targetStudent = studentsData[2]; // Charlie
+
+    // Mock Student.findById and Student.find
+    const origFindById = Student.findById;
+    const origFind = Student.find;
+
+    Student.findById = async (id) => {
+      const match = studentsData.find(s => String(s.id) === String(id));
+      if (!match) return null;
+      return {
+        _id: match.id,
+        full_name: match.name,
+        normalized_name: normalizeName(match.name),
+      };
+    };
+
+    Student.find = (query) => ({
+      lean: async () => studentsData.map(s => ({
+        _id: s.id,
+        full_name: s.name,
+        normalized_name: normalizeName(s.name),
+      })),
+    });
+
+    try {
+      const res = await removeStudentFromGroup(group, targetStudent.id);
+      assert.equal(res.ok, true);
+      assert.equal(res.removedName, 'Charlie Brown');
+      assert.equal(saved, true);
+
+      // Verify group state: exactly 5 students and 5 IDs, aligned, Charlie removed
+      assert.equal(group.students.length, 5);
+      assert.equal(group.student_ids.length, 5);
+      assert.deepEqual(group.students, [
+        'Alice Smith',
+        'Bob Jones',
+        'David Lee',
+        'Eva Green',
+        'Frank White',
+      ]);
+      assert.deepEqual(
+        group.student_ids.map(id => String(id)),
+        [
+          String(studentsData[0].id),
+          String(studentsData[1].id),
+          String(studentsData[3].id),
+          String(studentsData[4].id),
+          String(studentsData[5].id),
+        ]
+      );
+    } finally {
+      Student.findById = origFindById;
+      Student.find = origFind;
+    }
+  });
+
+  await t.test('11. moveStudent with 12 IDs / 6 names leaves student in exactly one group', async () => {
+    const fromStudents = [
+      { name: 'Alice Smith', id: makeObjectId() },
+      { name: 'Bob Jones', id: makeObjectId() },
+      { name: 'Charlie Brown', id: makeObjectId() },
+      { name: 'David Lee', id: makeObjectId() },
+      { name: 'Eva Green', id: makeObjectId() },
+      { name: 'Frank White', id: makeObjectId() },
+    ];
+    const ghostIds = Array.from({ length: 6 }, () => makeObjectId());
+    const misalignedFromIds = [
+      ghostIds[0], fromStudents[1].id, ghostIds[1], fromStudents[0].id,
+      ghostIds[2], fromStudents[3].id, ghostIds[3], fromStudents[2].id,
+      ghostIds[4], fromStudents[4].id, ghostIds[5], fromStudents[5].id,
+    ];
+
+    const toStudents = [
+      { name: 'Grace Hopper', id: makeObjectId() },
+      { name: 'Heidi Klum', id: makeObjectId() },
+    ];
+
+    const fromGroup = {
+      _id: makeObjectId(),
+      group_name: 'From Class',
+      students: fromStudents.map(s => s.name),
+      student_ids: misalignedFromIds,
+      save: async function () { return this; },
+    };
+
+    const toGroup = {
+      _id: makeObjectId(),
+      group_name: 'To Class',
+      students: toStudents.map(s => s.name),
+      student_ids: toStudents.map(s => s.id),
+      save: async function () { return this; },
+    };
+
+    const allStudents = [...fromStudents, ...toStudents];
+    const targetStudent = fromStudents[2]; // Charlie
+
+    const origFindById = Student.findById;
+    const origFind = Student.find;
+    const origStartSession = mongoose.startSession;
+
+    Student.findById = async (id) => {
+      const match = allStudents.find(s => String(s.id) === String(id));
+      if (!match) return null;
+      return {
+        _id: match.id,
+        full_name: match.name,
+        normalized_name: normalizeName(match.name),
+      };
+    };
+
+    Student.find = (query) => ({
+      lean: async () => allStudents.map(s => ({
+        _id: s.id,
+        full_name: s.name,
+        normalized_name: normalizeName(s.name),
+      })),
+    });
+
+    // Mock transaction session
+    mongoose.startSession = async () => ({
+      startTransaction: () => {},
+      commitTransaction: async () => {},
+      abortTransaction: async () => {},
+      endSession: () => {},
+    });
+
+    try {
+      const res = await moveStudent(fromGroup, toGroup, targetStudent.id);
+      assert.equal(res.ok, true);
+      assert.equal(res.atomic, 'transaction');
+
+      // Verify fromGroup: 5 students, 5 IDs, aligned, Charlie gone
+      assert.equal(fromGroup.students.length, 5);
+      assert.equal(fromGroup.student_ids.length, 5);
+      assert.equal(fromGroup.students.includes('Charlie Brown'), false);
+
+      // Verify toGroup: 3 students, 3 IDs, Charlie added
+      assert.equal(toGroup.students.length, 3);
+      assert.equal(toGroup.student_ids.length, 3);
+      assert.equal(toGroup.students.includes('Charlie Brown'), true);
+
+      // Student is in exactly one group
+      const inFrom = fromGroup.students.filter(n => n === 'Charlie Brown').length;
+      const inTo = toGroup.students.filter(n => n === 'Charlie Brown').length;
+      assert.equal(inFrom + inTo, 1);
+    } finally {
+      Student.findById = origFindById;
+      Student.find = origFind;
+      mongoose.startSession = origStartSession;
+    }
+  });
+
+  await t.test('12. moveStudent failed transaction (code: 20) falls back sequentially without duplicate additions', async () => {
+    const studentCharlie = { name: 'Charlie Brown', id: makeObjectId() };
+    const fromGroup = {
+      _id: makeObjectId(),
+      group_name: 'From Class',
+      students: ['Alice Smith', 'Charlie Brown'],
+      student_ids: [makeObjectId(), studentCharlie.id],
+      save: async function (opts) {
+        if (opts && opts.session) {
+          const err = new Error('Transaction numbers are only allowed on a replica set member or mongos');
+          err.code = 20;
+          throw err;
+        }
+        return this;
+      },
+    };
+
+    const toGroup = {
+      _id: makeObjectId(),
+      group_name: 'To Class',
+      students: ['David Lee'],
+      student_ids: [makeObjectId()],
+      save: async function (opts) {
+        if (opts && opts.session) {
+          const err = new Error('Transaction numbers are only allowed on a replica set member or mongos');
+          err.code = 20;
+          throw err;
+        }
+        return this;
+      },
+    };
+
+    const allStudents = [
+      { name: 'Alice Smith', id: fromGroup.student_ids[0] },
+      studentCharlie,
+      { name: 'David Lee', id: toGroup.student_ids[0] },
+    ];
+
+    const origFindById = Student.findById;
+    const origFind = Student.find;
+    const origStartSession = mongoose.startSession;
+
+    Student.findById = async (id) => ({
+      _id: studentCharlie.id,
+      full_name: studentCharlie.name,
+      normalized_name: normalizeName(studentCharlie.name),
+    });
+
+    Student.find = (query) => ({
+      lean: async () => allStudents.map(s => ({
+        _id: s.id,
+        full_name: s.name,
+        normalized_name: normalizeName(s.name),
+      })),
+    });
+
+    mongoose.startSession = async () => ({
+      startTransaction: () => {},
+      commitTransaction: async () => {},
+      abortTransaction: async () => {},
+      endSession: () => {},
+    });
+
+    try {
+      const res = await moveStudent(fromGroup, toGroup, studentCharlie.id);
+      assert.equal(res.ok, true);
+      assert.equal(res.atomic, 'sequential-after-validation');
+
+      // Assert final state: exactly one Charlie in toGroup, zero in fromGroup
+      assert.deepEqual(fromGroup.students, ['Alice Smith']);
+      assert.equal(fromGroup.students.length, fromGroup.student_ids.length);
+
+      assert.deepEqual(toGroup.students, ['David Lee', 'Charlie Brown']);
+      assert.equal(toGroup.students.length, toGroup.student_ids.length);
+
+      // Verify no duplicates
+      const charlieOccurrences = toGroup.students.filter(n => n === 'Charlie Brown').length;
+      assert.equal(charlieOccurrences, 1);
+    } finally {
+      Student.findById = origFindById;
+      Student.find = origFind;
+      mongoose.startSession = origStartSession;
+    }
+  });
+
+  await t.test('13. getGroupEditData is strictly read-only and never writes to DB', async () => {
+    let saveCalled = false;
+    const group = {
+      _id: makeObjectId(),
+      group_name: 'Test Class',
+      students: ['Alice Smith', 'Ghost Student'],
+      student_ids: [makeObjectId(), makeObjectId(), makeObjectId()], // 3 ids vs 2 names (inconsistent)
+      save: async function () {
+        saveCalled = true;
+        throw new Error('getGroupEditData must never call save()!');
+      },
+    };
+
+    const origStudentFind = Student.find;
+    const origGroupFind = Group.find;
+
+    Student.find = () => ({
+      lean: async () => [
+        {
+          _id: group.student_ids[0],
+          normalized_name: normalizeName('Alice Smith'),
+          student_code: 'SC-1234',
+          barcode: 'BC-1234',
+          status: 'active',
+        },
+      ],
+      select: () => ({
+        lean: async () => [],
+      }),
+    });
+
+    Group.find = () => ({
+      select: () => ({
+        lean: async () => [],
+        sort: () => ({ lean: async () => [] }),
+      }),
+    });
+
+    try {
+      const data = await getGroupEditData(group);
+      assert.equal(saveCalled, false);
+      assert.equal(data.isInconsistent, true);
+      assert.equal(data.hasLengthMismatch, true);
+      assert.equal(data.hasNamesWithoutStudent, true);
+      assert.equal(data.roster.length, 2);
+      assert.equal(data.roster[0].name, 'Alice Smith');
+      assert.equal(data.roster[0].student_code, 'SC-1234');
+      assert.equal(data.roster[1].name, 'Ghost Student');
+      assert.equal(data.roster[1].student_code, '');
+    } finally {
+      Student.find = origStudentFind;
+      Group.find = origGroupFind;
+    }
+  });
+
+  await t.test('14. formatGroupCreatedAt formats date in Asia/Jakarta with ObjectId timestamp fallback', () => {
+    // 1. Group with createdAt
+    const date = new Date('2026-10-13T04:57:17Z'); // 11:57 Jakarta time (UTC+7)
+    const groupWithDate = {
+      _id: makeObjectId(),
+      createdAt: date,
+    };
+    const formattedWithDate = formatGroupCreatedAt(groupWithDate);
+    assert.equal(formattedWithDate, '13 Oct 2026');
+
+    // 2. Group without createdAt (fallback to _id.getTimestamp())
+    const objectId = mongoose.Types.ObjectId.createFromTime(Math.floor(date.getTime() / 1000));
+    const groupWithoutDate = {
+      _id: objectId,
+      createdAt: null,
+    };
+    const formattedFallback = formatGroupCreatedAt(groupWithoutDate);
+    assert.equal(formattedFallback, '13 Oct 2026');
+  });
+});

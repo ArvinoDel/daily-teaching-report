@@ -4,8 +4,9 @@
  * Roster operations service for manual group management:
  *  - Pure, DB-free helper functions for adding, removing, moving, and building rosters.
  *  - Thin DB wrappers for addStudentsToGroup, removeStudentFromGroup, moveStudent, and syncRosterFromNames.
- *  - Enforces normalized_name deduplication, max 200 students per group, name-first identity.
- *  - Concurrency & atomicity management (transaction with sequential fallback).
+ *  - Names are the single source of truth for membership; identity is Student.normalized_name.
+ *  - Zero index pairing: always resolves names to pairs, runs pure helpers, and writes back aligned arrays.
+ *  - Precomputed atomicity for moves (transaction with safe sequential fallback without mutation re-application).
  */
 
 const mongoose = require('mongoose');
@@ -16,17 +17,19 @@ const studentService = require('./studentService');
 
 /* ═══════════════════════════════════════════════════════════════
    1. PURE DB-FREE HELPERS
-   Pairs shape: [{ name: string, norm: string, id: string|ObjectId }]
+   Pairs shape: [{ name: string, norm: string, id: string|ObjectId|null }]
 ════════════════════════════════════════════════════════════════ */
 
 /**
  * Build students[] and student_ids[] arrays from pairs.
  * Always guarantees 1-to-1 parallel alignment and equal length.
+ * Null-safe for pairs where id is null/undefined.
  */
 function pairsToRoster(pairs) {
+  const safePairs = Array.isArray(pairs) ? pairs : [];
   return {
-    students: pairs.map(p => p.name),
-    student_ids: pairs.map(p => p.id),
+    students: safePairs.map(p => p.name),
+    student_ids: safePairs.map(p => (p.id ? p.id : null)),
   };
 }
 
@@ -36,14 +39,14 @@ function pairsToRoster(pairs) {
  * Respects maxStudents limit.
  */
 function applyRosterAdd(currentPairs, incomingPairs, { maxStudents = 200 } = {}) {
-  const pairs = [...currentPairs];
-  const seenNorms = new Set(currentPairs.map(p => p.norm));
+  const pairs = [...(currentPairs || [])];
+  const seenNorms = new Set(pairs.map(p => p.norm).filter(Boolean));
   const added = [];
   const skipped = [];
 
-  for (const item of incomingPairs) {
+  for (const item of (incomingPairs || [])) {
     if (!item || !item.name) continue;
-    const norm = item.norm;
+    const norm = item.norm || normalizeName(item.name);
     if (!norm) continue;
 
     if (seenNorms.has(norm)) {
@@ -57,8 +60,9 @@ function applyRosterAdd(currentPairs, incomingPairs, { maxStudents = 200 } = {})
     }
 
     seenNorms.add(norm);
-    pairs.push(item);
-    added.push(item);
+    const pair = { ...item, norm };
+    pairs.push(pair);
+    added.push(pair);
   }
 
   const roster = pairsToRoster(pairs);
@@ -75,25 +79,27 @@ function applyRosterAdd(currentPairs, incomingPairs, { maxStudents = 200 } = {})
  * Pure helper: remove pair by studentId or normKey.
  */
 function applyRosterRemove(currentPairs, { studentId, normKey }) {
+  const safePairs = [...(currentPairs || [])];
   const targetIdStr = studentId ? String(studentId) : null;
-  const idx = currentPairs.findIndex(p => {
+
+  const idx = safePairs.findIndex(p => {
     if (targetIdStr && p.id && String(p.id) === targetIdStr) return true;
     if (normKey && p.norm === normKey) return true;
     return false;
   });
 
   if (idx === -1) {
-    const roster = pairsToRoster(currentPairs);
+    const roster = pairsToRoster(safePairs);
     return {
-      pairs: [...currentPairs],
+      pairs: safePairs,
       removed: null,
       students: roster.students,
       student_ids: roster.student_ids,
     };
   }
 
-  const removed = currentPairs[idx];
-  const pairs = currentPairs.filter((_, i) => i !== idx);
+  const removed = safePairs[idx];
+  const pairs = safePairs.filter((_, i) => i !== idx);
   const roster = pairsToRoster(pairs);
 
   return {
@@ -108,8 +114,11 @@ function applyRosterRemove(currentPairs, { studentId, normKey }) {
  * Pure helper: move a pair from fromPairs to toPairs.
  */
 function applyRosterMove(fromPairs, toPairs, { studentId, normKey, maxStudents = 200 }) {
+  const safeFrom = [...(fromPairs || [])];
+  const safeTo = [...(toPairs || [])];
   const targetIdStr = studentId ? String(studentId) : null;
-  const fromIdx = fromPairs.findIndex(p => {
+
+  const fromIdx = safeFrom.findIndex(p => {
     if (targetIdStr && p.id && String(p.id) === targetIdStr) return true;
     if (normKey && p.norm === normKey) return true;
     return false;
@@ -119,18 +128,18 @@ function applyRosterMove(fromPairs, toPairs, { studentId, normKey, maxStudents =
     throw new Error('Student not found in source group.');
   }
 
-  const item = fromPairs[fromIdx];
-  const toSeenNorms = new Set(toPairs.map(p => p.norm));
-  if (toSeenNorms.has(item.norm) || (targetIdStr && toPairs.some(p => p.id && String(p.id) === targetIdStr))) {
+  const item = safeFrom[fromIdx];
+  const toSeenNorms = new Set(safeTo.map(p => p.norm).filter(Boolean));
+  if (toSeenNorms.has(item.norm) || (targetIdStr && safeTo.some(p => p.id && String(p.id) === targetIdStr))) {
     throw new Error('Student is already in target group.');
   }
 
-  if (toPairs.length >= maxStudents) {
+  if (safeTo.length >= maxStudents) {
     throw new Error(`Target group has reached maximum ${maxStudents} students.`);
   }
 
-  const newFromPairs = fromPairs.filter((_, i) => i !== fromIdx);
-  const newToPairs = [...toPairs, item];
+  const newFromPairs = safeFrom.filter((_, i) => i !== fromIdx);
+  const newToPairs = [...safeTo, item];
 
   return {
     fromPairs: newFromPairs,
@@ -142,14 +151,54 @@ function applyRosterMove(fromPairs, toPairs, { studentId, normKey, maxStudents =
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   2. THIN DB WRAPPERS
+   2. ROSTER RESOLUTION HELPER (Name-First, DB-Backed)
+════════════════════════════════════════════════════════════════ */
+
+/**
+ * Resolves a group's students into pairs [{ name, norm, id }]
+ * by resolving each name through Student.normalized_name.
+ * Names in group.students are the single source of truth.
+ * IDs are found ONLY through matching names.
+ * Names with no matching Student keep a null-safe pair (id: null) and are never dropped.
+ *
+ * @param {Object} group - Mongoose Group doc or plain object { students, ... }
+ * @returns {Promise<Array<{ name: string, norm: string, id: ObjectId|null }>>}
+ */
+async function resolveGroupPairs(group) {
+  const rawList = Array.isArray(group.students) ? group.students : [];
+  const norms = rawList.map(s => normalizeName(s)).filter(Boolean);
+
+  let studentDocs = [];
+  if (norms.length > 0) {
+    studentDocs = await Student.find({ normalized_name: { $in: norms } }).lean();
+  }
+
+  const studentByNorm = new Map(studentDocs.map(s => [s.normalized_name, s]));
+
+  const pairs = [];
+  for (const raw of rawList) {
+    const trimmed = (raw || '').trim();
+    if (!trimmed) continue;
+    const norm = normalizeName(trimmed);
+    const sDoc = norm ? studentByNorm.get(norm) : null;
+    pairs.push({
+      name: trimmed,
+      norm,
+      id: sDoc ? sDoc._id : null,
+    });
+  }
+
+  return pairs;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   3. THIN DB WRAPPERS
 ════════════════════════════════════════════════════════════════ */
 
 /**
  * Add an array of raw student names to a group document.
- * Creates Student record with QR/barcode if new; links existing if matched by normalized name.
- * Stored name preserves existing raw_name to avoid spelling divergence.
- * Reactivates student if inactive.
+ * Resolves current group names to pairs, calls pure helper applyRosterAdd,
+ * and writes back both arrays using pairsToRoster.
  *
  * @param {Object} group - Loaded Mongoose Group doc
  * @param {string[]} rawNames - List of raw student names
@@ -157,13 +206,11 @@ function applyRosterMove(fromPairs, toPairs, { studentId, normKey, maxStudents =
  */
 async function addStudentsToGroup(group, rawNames) {
   const names = Array.isArray(rawNames) ? rawNames : [rawNames];
+  const currentPairs = await resolveGroupPairs(group);
+
+  const incomingPairs = [];
   const added = [];
   const skipped = [];
-
-  // Track existing normalized names in group
-  const existingNorms = new Set(
-    (group.students || []).map(s => normalizeName(s)).filter(Boolean)
-  );
 
   for (const raw of names) {
     const trimmed = (raw || '').trim();
@@ -177,17 +224,7 @@ async function addStudentsToGroup(group, rawNames) {
     const norm = normalizeName(trimmed);
     if (!norm) continue;
 
-    if (existingNorms.has(norm)) {
-      skipped.push({ name: trimmed, reason: 'Already in this group' });
-      continue;
-    }
-
-    if (group.students.length >= 200) {
-      skipped.push({ name: trimmed, reason: 'Group has reached maximum 200 students.' });
-      continue;
-    }
-
-    // Look for existing Student doc by normalized name
+    // Check if already in DB by normalized name
     let studentDoc = await Student.findOne({ normalized_name: norm });
     let created = false;
     let reactivated = false;
@@ -204,23 +241,43 @@ async function addStudentsToGroup(group, rawNames) {
       created = matchResult.created;
     }
 
-    // Preserved spelling: Student's existing raw_name or full_name, fallback to typed input
+    // Preserve existing raw_name/full_name spelling
     const storedName = studentDoc.raw_name || studentDoc.full_name || trimmed;
 
-    group.students.push(storedName);
-    group.student_ids.push(studentDoc._id);
-    existingNorms.add(norm);
-
-    added.push({
-      studentId: String(studentDoc._id),
+    incomingPairs.push({
       name: storedName,
-      student_code: studentDoc.student_code,
-      barcode: studentDoc.barcode,
-      created,
-      reactivated,
+      norm,
+      id: studentDoc._id,
+      _meta: {
+        studentId: String(studentDoc._id),
+        student_code: studentDoc.student_code,
+        barcode: studentDoc.barcode,
+        created,
+        reactivated,
+      },
     });
   }
 
+  // Pure add
+  const addResult = applyRosterAdd(currentPairs, incomingPairs, { maxStudents: 200 });
+
+  for (const s of addResult.skipped) {
+    skipped.push(s);
+  }
+
+  for (const a of addResult.added) {
+    added.push({
+      studentId: a._meta ? a._meta.studentId : String(a.id),
+      name: a.name,
+      student_code: a._meta ? a._meta.student_code : '',
+      barcode: a._meta ? a._meta.barcode : '',
+      created: a._meta ? a._meta.created : false,
+      reactivated: a._meta ? a._meta.reactivated : false,
+    });
+  }
+
+  group.students = addResult.students;
+  group.student_ids = addResult.student_ids;
   await group.save();
 
   return { added, skipped, group };
@@ -228,7 +285,12 @@ async function addStudentsToGroup(group, rawNames) {
 
 /**
  * Remove a student from a group.
- * If markInactive is true AND the student belongs to no other group, sets Student.status = 'inactive'.
+ * Resolves current group names to pairs, identifies the target by studentId
+ * resolved to normalized_name, calls pure helper applyRosterRemove,
+ * and writes back both arrays using pairsToRoster.
+ *
+ * Checks "no other group" by checking group.students names (resolved via normalized_name)
+ * across all groups, not only student_ids, so ghost ids cannot block or trigger it.
  *
  * @param {Object} group - Loaded Mongoose Group doc
  * @param {string|ObjectId} studentId - Student ObjectId
@@ -236,38 +298,41 @@ async function addStudentsToGroup(group, rawNames) {
  * @returns {Promise<{ ok: true, removedName: string, studentId: string, markedInactive: boolean }>}
  */
 async function removeStudentFromGroup(group, studentId, { markInactive = false } = {}) {
-  const targetIdStr = String(studentId);
+  const sDoc = await Student.findById(studentId);
+  const targetNorm = sDoc ? sDoc.normalized_name : null;
 
-  // Match index by student_ids
-  let idx = (group.student_ids || []).findIndex(id => String(id) === targetIdStr);
+  const currentPairs = await resolveGroupPairs(group);
+  const result = applyRosterRemove(currentPairs, {
+    studentId: String(studentId),
+    normKey: targetNorm,
+  });
 
-  // Fallback: match by normalized name if student_ids was not populated
-  if (idx === -1) {
-    const sDoc = await Student.findById(studentId);
-    if (sDoc && sDoc.normalized_name) {
-      idx = (group.students || []).findIndex(name => normalizeName(name) === sDoc.normalized_name);
-    }
-  }
-
-  if (idx === -1) {
+  if (!result.removed) {
     throw new Error('Student not found in this group.');
   }
 
-  const removedName = group.students[idx];
-  group.students.splice(idx, 1);
-  if (group.student_ids && group.student_ids.length > idx) {
-    group.student_ids.splice(idx, 1);
-  }
-
+  const roster = pairsToRoster(result.pairs);
+  group.students = roster.students;
+  group.student_ids = roster.student_ids;
   await group.save();
 
+  // A4: markInactive check across group.students names across all groups
   let markedInactive = false;
-  if (markInactive) {
-    const remainingGroupCount = await Group.countDocuments({
-      _id: { $ne: group._id },
-      student_ids: studentId,
-    });
-    if (remainingGroupCount === 0) {
+  if (markInactive && targetNorm) {
+    const otherGroups = await Group.find({ _id: { $ne: group._id } }).select('students').lean();
+    let foundInOtherGroup = false;
+
+    for (const og of otherGroups) {
+      for (const stName of (og.students || [])) {
+        if (normalizeName(stName) === targetNorm) {
+          foundInOtherGroup = true;
+          break;
+        }
+      }
+      if (foundInOtherGroup) break;
+    }
+
+    if (!foundInOtherGroup) {
       await Student.updateOne({ _id: studentId }, { $set: { status: 'inactive' } });
       markedInactive = true;
     }
@@ -275,15 +340,16 @@ async function removeStudentFromGroup(group, studentId, { markInactive = false }
 
   return {
     ok: true,
-    removedName,
-    studentId: targetIdStr,
+    removedName: result.removed.name,
+    studentId: String(studentId),
     markedInactive,
   };
 }
 
 /**
  * Move a student from fromGroup to toGroup.
- * Uses atomic transaction if supported, fallback to sequential save (add target first, then remove source).
+ * Resolves both groups to pairs, precomputes new rosters for BOTH groups purely,
+ * then persists: attempts transaction, falls back to sequential without re-applying mutations.
  *
  * @param {Object} fromGroup - Loaded Mongoose Group doc
  * @param {Object} toGroup - Loaded Mongoose Group doc
@@ -295,32 +361,23 @@ async function moveStudent(fromGroup, toGroup, studentId) {
     throw new Error('Target group must be different from source group.');
   }
 
-  const targetIdStr = String(studentId);
   const sDoc = await Student.findById(studentId);
   if (!sDoc) {
     throw new Error('Student not found.');
   }
 
-  // Find index in fromGroup
-  let fromIdx = (fromGroup.student_ids || []).findIndex(id => String(id) === targetIdStr);
-  if (fromIdx === -1 && sDoc.normalized_name) {
-    fromIdx = (fromGroup.students || []).findIndex(n => normalizeName(n) === sDoc.normalized_name);
-  }
-  if (fromIdx === -1) {
-    throw new Error('Student not found in source group.');
-  }
+  const fromPairs = await resolveGroupPairs(fromGroup);
+  const toPairs   = await resolveGroupPairs(toGroup);
 
-  const studentName = fromGroup.students[fromIdx] || sDoc.raw_name || sDoc.full_name;
+  // Precompute new rosters purely for BOTH groups
+  const moveResult = applyRosterMove(fromPairs, toPairs, {
+    studentId: String(studentId),
+    normKey: sDoc.normalized_name,
+    maxStudents: 200,
+  });
 
-  // Check if student already in toGroup
-  const toNorms = new Set((toGroup.students || []).map(s => normalizeName(s)));
-  if (toNorms.has(sDoc.normalized_name) || (toGroup.student_ids || []).some(id => String(id) === targetIdStr)) {
-    throw new Error('Student is already in target group.');
-  }
-
-  if ((toGroup.students || []).length >= 200) {
-    throw new Error('Target group has reached maximum 200 students.');
-  }
+  const fromRoster = moveResult.fromRoster;
+  const toRoster   = moveResult.toRoster;
 
   let usedTransaction = false;
 
@@ -328,12 +385,11 @@ async function moveStudent(fromGroup, toGroup, studentId) {
     const session = await mongoose.startSession();
     try {
       session.startTransaction();
-      toGroup.students.push(studentName);
-      toGroup.student_ids.push(sDoc._id);
-      fromGroup.students.splice(fromIdx, 1);
-      if (fromGroup.student_ids && fromGroup.student_ids.length > fromIdx) {
-        fromGroup.student_ids.splice(fromIdx, 1);
-      }
+      toGroup.students = toRoster.students;
+      toGroup.student_ids = toRoster.student_ids;
+      fromGroup.students = fromRoster.students;
+      fromGroup.student_ids = fromRoster.student_ids;
+
       await toGroup.save({ session });
       await fromGroup.save({ session });
       await session.commitTransaction();
@@ -350,15 +406,13 @@ async function moveStudent(fromGroup, toGroup, studentId) {
                             txErr.codeName === 'OperationNotSupportedInTransaction' ||
                             txErr.code === 20;
     if (isTxUnsupported) {
-      // Safe fallback: add to target first, then remove from source
-      toGroup.students.push(studentName);
-      toGroup.student_ids.push(sDoc._id);
+      // Sequential fallback: assign the precomputed arrays directly without re-applying mutations
+      toGroup.students = toRoster.students;
+      toGroup.student_ids = toRoster.student_ids;
       await toGroup.save();
 
-      fromGroup.students.splice(fromIdx, 1);
-      if (fromGroup.student_ids && fromGroup.student_ids.length > fromIdx) {
-        fromGroup.student_ids.splice(fromIdx, 1);
-      }
+      fromGroup.students = fromRoster.students;
+      fromGroup.student_ids = fromRoster.student_ids;
       await fromGroup.save();
       usedTransaction = false;
     } else {
@@ -369,36 +423,51 @@ async function moveStudent(fromGroup, toGroup, studentId) {
   return {
     ok: true,
     student: sDoc,
-    name: studentName,
-    studentId: targetIdStr,
+    name: moveResult.moved.name,
+    studentId: String(sDoc._id),
     atomic: usedTransaction ? 'transaction' : 'sequential-after-validation',
   };
 }
 
 /**
  * Sync entire roster from a list of names.
- * Used by groupCreate and groupUpdate so even bulk text input creates Students and sets student_ids.
+ * Used by groupCreate, groupUpdate, and the repair endpoint.
+ * Returns { group, skipped: [{ name, reason }] }.
  *
  * @param {Object} group - Mongoose Group doc
  * @param {string[]} rawNames - List of names
- * @returns {Promise<Object>} Updated group doc
+ * @returns {Promise<{ group: Object, skipped: Array }>}
  */
 async function syncRosterFromNames(group, rawNames) {
   const names = Array.isArray(rawNames) ? rawNames : [];
   const uniqueItems = [];
   const seenNorms = new Set();
+  const skipped = [];
 
   for (const raw of names) {
     const trimmed = (raw || '').trim();
     if (!trimmed) continue;
-    if (trimmed.length > 100) continue;
+
+    if (trimmed.length > 100) {
+      skipped.push({ name: trimmed, reason: 'Student name max 100 characters.' });
+      continue;
+    }
 
     const norm = normalizeName(trimmed);
-    if (!norm || seenNorms.has(norm)) continue;
+    if (!norm) continue;
+
+    if (seenNorms.has(norm)) {
+      skipped.push({ name: trimmed, reason: 'Duplicate student name in list.' });
+      continue;
+    }
+
+    if (uniqueItems.length >= 200) {
+      skipped.push({ name: trimmed, reason: 'Max 200 students per group.' });
+      continue;
+    }
 
     seenNorms.add(norm);
     uniqueItems.push({ raw: trimmed, norm });
-    if (uniqueItems.length >= 200) break;
   }
 
   const resolved = [];
@@ -426,7 +495,7 @@ async function syncRosterFromNames(group, rawNames) {
   group.student_ids = resolved.map(r => r.id);
 
   await group.save();
-  return group;
+  return { group, skipped };
 }
 
 module.exports = {
@@ -435,6 +504,9 @@ module.exports = {
   applyRosterAdd,
   applyRosterRemove,
   applyRosterMove,
+
+  // Name-first resolution helper
+  resolveGroupPairs,
 
   // DB wrappers
   addStudentsToGroup,
