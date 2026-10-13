@@ -35,16 +35,22 @@ router.get('/reports/:id/edit',   ctrl.reportEditForm);
 router.put('/reports/:id',        ctrl.reportUpdate);
 router.delete('/reports/:id',     ctrl.reportDelete);
 
+// Students — autocomplete search
+router.get('/students/search',        groupCtrl.studentsSearch);
+
 // Groups — bulk + named routes BEFORE /:id
-router.delete('/groups/bulk',     groupCtrl.groupsBulkDelete);
-router.get('/groups',             groupCtrl.groupsList);
-router.get('/groups/new',         groupCtrl.groupNewForm);
-router.get('/groups/import',      requireSuperAdmin, importCtrl.importPage);
-router.post('/groups/import',     requireSuperAdmin, importCtrl.importExecute);
-router.post('/groups',            groupCtrl.groupCreate);
-router.get('/groups/:id/edit',    groupCtrl.groupEditForm);
-router.post('/groups/:id',        groupCtrl.groupUpdate);
-router.delete('/groups/:id',      groupCtrl.groupDelete);
+router.delete('/groups/bulk',         groupCtrl.groupsBulkDelete);
+router.get('/groups',                 groupCtrl.groupsList);
+router.get('/groups/new',             groupCtrl.groupNewForm);
+router.get('/groups/import',          requireSuperAdmin, importCtrl.importPage);
+router.post('/groups/import',         requireSuperAdmin, importCtrl.importExecute);
+router.post('/groups',                groupCtrl.groupCreate);
+router.get('/groups/:id/edit',        groupCtrl.groupEditForm);
+router.post('/groups/:id/students/:studentId/remove', groupCtrl.groupRemoveStudent);
+router.post('/groups/:id/students/:studentId/move',   groupCtrl.groupMoveStudent);
+router.post('/groups/:id/students',   groupCtrl.groupAddStudents);
+router.post('/groups/:id',            groupCtrl.groupUpdate);
+router.delete('/groups/:id',          groupCtrl.groupDelete);
 
 // Materials — autocomplete suggestions management
 router.get('/materials',             materialCtrl.materialsList);

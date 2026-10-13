@@ -17,7 +17,7 @@
 <!-- Success banner -->
 <% if (success) { %>
   <div class="mb-5 bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-3.5 flex items-center gap-3">
-    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" text-emerald-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
       <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
     </svg>
     <p class="text-sm font-semibold text-emerald-700"><%= success %></p>
@@ -25,7 +25,7 @@
 <% } %>
 
 <!-- Errors -->
-<% if (errors.length > 0) { %>
+<% if (errors && errors.length > 0) { %>
   <div class="mb-5 bg-red-50 border border-red-200 rounded-xl px-5 py-4">
     <p class="text-sm font-semibold text-red-700 mb-1.5">Please fix the following:</p>
     <ul class="list-disc list-inside space-y-1">
@@ -34,64 +34,324 @@
   </div>
 <% } %>
 
-<form method="POST" action="/admin/groups/<%= group._id %>">
+<form id="group-edit-form" method="POST" action="/admin/groups/<%= group._id %>">
   <input type="hidden" name="_csrf" value="<%= csrfToken %>">
 
-  <%- include('../../partials/admin/group-form-fields', {
-    isEdit: true,
-    groupName: group.group_name,
-    students: group.students.join('\n'),
-    type: group.type,
-    level: group.level || '',
-    LEVELS: LEVELS
-  }) %>
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- Left col: Group Name & Student Roster -->
+    <div class="lg:col-span-2 space-y-5">
+
+      <!-- Group Name -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <label class="block text-sm font-semibold text-slate-700 mb-1.5" for="group_name">
+          Group Name <span class="text-red-500">*</span>
+        </label>
+        <input type="text" id="group_name" name="group_name"
+          value="<%= group.group_name %>" maxlength="100" required
+          placeholder="e.g. Annisa's Group"
+          class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-300 transition">
+        <p class="text-xs text-slate-400 mt-1.5">Max 100 characters.</p>
+      </div>
+
+      <!-- Student Roster Management Card -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-2">
+            <h2 class="text-base font-bold text-slate-900">Class Roster</h2>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-200">
+              <span id="roster-count"><%= roster.length %></span> students
+            </span>
+          </div>
+
+          <button type="button" id="toggle-bulk-add"
+            class="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 px-3 py-1.5 rounded-xl transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+            </svg>
+            Bulk Add
+          </button>
+        </div>
+
+        <!-- Add Student Input with Autocomplete -->
+        <div class="relative mb-5">
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5" for="student-search-input">
+            Add Student
+          </label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+              </svg>
+            </div>
+            <input type="text" id="student-search-input" autocomplete="off"
+              placeholder="Search existing student or type a new name to create…"
+              class="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-300 transition">
+          </div>
+
+          <!-- Autocomplete Dropdown -->
+          <div id="student-suggestions"
+            class="hidden absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl max-h-72 overflow-y-auto z-30 divide-y divide-slate-100">
+          </div>
+        </div>
+
+        <!-- Collapsible Bulk Add Section -->
+        <div id="bulk-add-section" class="hidden mb-5 p-4 bg-slate-50 rounded-xl border border-slate-200">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Bulk Add (one name per line)</span>
+            <span class="text-xs text-slate-400">Adds to roster · max 200</span>
+          </div>
+          <textarea id="bulk-add-textarea" rows="4"
+            placeholder="Annisa 11 N2&#10;Rafael B 11 CS&#10;Vivian 11 SM"
+            class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-300 transition font-mono"></textarea>
+          <div class="mt-3 flex items-center justify-end gap-2">
+            <button type="button" id="btn-cancel-bulk-add"
+              class="px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-600 hover:bg-slate-200 transition">
+              Cancel
+            </button>
+            <button type="button" id="btn-submit-bulk-add"
+              class="px-4 py-1.5 text-xs font-semibold rounded-lg bg-brand-600 hover:bg-brand-700 text-white transition shadow-sm">
+              Add to Roster
+            </button>
+          </div>
+        </div>
+
+        <!-- Roster Table / List -->
+        <div id="roster-list-container" class="rounded-xl border border-slate-100 overflow-hidden">
+          <!-- Populated by public/js/group-roster.js -->
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Right col: Type, Level, Info, Actions -->
+    <div class="space-y-5">
+
+      <!-- Type -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <p class="text-sm font-semibold text-slate-700 mb-3">
+          Type <span class="text-red-500">*</span>
+        </p>
+        <div class="space-y-2.5">
+          <label class="flex items-center gap-3 cursor-pointer p-3 rounded-xl border-2 transition
+            <%= (group.type === 'GROUP') ? 'border-emerald-400 bg-emerald-50' : 'border-slate-100 hover:border-slate-200' %>">
+            <input type="radio" name="type" value="GROUP"
+              <%= (group.type === 'GROUP') ? 'checked' : '' %>
+              class="w-4 h-4 text-emerald-500 focus:ring-emerald-400">
+            <div>
+              <p class="text-sm font-semibold text-slate-800">Group</p>
+              <p class="text-xs text-slate-400">Multiple students in one class</p>
+            </div>
+          </label>
+          <label class="flex items-center gap-3 cursor-pointer p-3 rounded-xl border-2 transition
+            <%= (group.type === 'PRIVATE') ? 'border-purple-400 bg-purple-50' : 'border-slate-100 hover:border-slate-200' %>">
+            <input type="radio" name="type" value="PRIVATE"
+              <%= (group.type === 'PRIVATE') ? 'checked' : '' %>
+              class="w-4 h-4 text-purple-500 focus:ring-purple-400">
+            <div>
+              <p class="text-sm font-semibold text-slate-800">Private</p>
+              <p class="text-xs text-slate-400">One-on-one or exclusive class</p>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Level -->
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+        <label class="block text-sm font-semibold text-slate-700 mb-1.5" for="level">Level</label>
+        <input type="text" id="level" name="level" list="levels-list"
+          value="<%= group.level || '' %>" maxlength="50"
+          placeholder="e.g. PA, I1, B2…"
+          class="w-full px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-300 transition">
+        <datalist id="levels-list">
+          <% LEVELS.forEach(function(l) { %><option value="<%= l %>"><% }) %>
+        </datalist>
+        <div class="mt-2 flex flex-wrap gap-1">
+          <% LEVELS.forEach(function(l) { %>
+            <button type="button" data-level="<%= l %>"
+              class="level-chip text-[11px] font-mono bg-slate-100 hover:bg-brand-100 hover:text-brand-700 text-slate-500 px-1.5 py-0.5 rounded transition
+                <%= (group.level === l) ? 'ring-1 ring-brand-400 bg-brand-50 text-brand-700' : '' %>">
+              <%= l %>
+            </button>
+          <% }) %>
+        </div>
+        <% if (LEVEL_LABELS && LEVEL_LABELS[group.level]) { %>
+          <p class="text-xs text-slate-400 mt-2">
+            Category: <span class="font-semibold text-slate-600"><%= LEVEL_LABELS[group.level] %></span>
+          </p>
+        <% } %>
+        <p class="text-xs text-slate-400 mt-2">Click a chip or type any value.</p>
+      </div>
+
+      <!-- Info Box -->
+      <div class="bg-slate-50 rounded-2xl border border-slate-100 p-5 space-y-2">
+        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Info</p>
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-slate-500">Created</span>
+          <span class="font-mono text-slate-600">
+            <%= group.createdAt ? group.createdAt.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }) : '—' %>
+          </span>
+        </div>
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-slate-500">Last updated</span>
+          <span class="font-mono text-slate-600">
+            <%= group.updatedAt ? group.updatedAt.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }) : '—' %>
+          </span>
+        </div>
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-slate-500">Group ID</span>
+          <span class="font-mono text-slate-400 text-[10px] truncate max-w-[120px]"><%= group._id %></span>
+        </div>
+      </div>
+
+      <!-- Submit / Cancel / Delete Actions -->
+      <div class="flex flex-col gap-2">
+        <button type="submit"
+          class="w-full inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-5 py-3 rounded-xl shadow transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+          </svg>
+          Save Changes
+        </button>
+        <a href="/admin/groups"
+          class="w-full text-center text-sm font-semibold text-slate-500 hover:text-slate-700 transition py-2.5 rounded-xl hover:bg-slate-100">
+          Cancel
+        </a>
+        <div class="border-t border-slate-100 pt-2 mt-1">
+          <button type="button" id="btn-delete-group"
+            data-delete-id="<%= group._id %>"
+            data-name="<%= group.group_name %>"
+            class="w-full inline-flex items-center justify-center gap-2 text-red-500 hover:text-red-700 hover:bg-red-50 text-sm font-semibold px-5 py-2.5 rounded-xl transition border border-transparent hover:border-red-100">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+            </svg>
+            Delete This Group
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
 </form>
 
-<script>
-  /* Delete group from edit page */
-  function deleteGroup(btn) {
-    var id   = btn.dataset.deleteId;
-    var name = btn.dataset.name;
+<!-- ═══════════════════════════════════════════════════════════════
+     MOVE STUDENT MODAL
+════════════════════════════════════════════════════════════════ -->
+<div id="modal-move-student" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 p-6 transition-all">
+    <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+      <div>
+        <h3 class="text-base font-bold text-slate-900">Move Student</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Transfer student to another class group</p>
+      </div>
+      <div class="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+        ⇄
+      </div>
+    </div>
 
-    Swal.fire({
-      title: 'Delete "' + name + '"?',
-      text:  'This action cannot be undone.',
-      icon:  'warning',
-      showCancelButton:   true,
-      confirmButtonColor: '#ef4444',
-      cancelButtonColor:  '#64748b',
-      confirmButtonText:  'Yes, delete it!',
-      cancelButtonText:   'Cancel',
-      reverseButtons:     true,
-      focusCancel:        true,
-      customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl', cancelButton: 'rounded-xl' },
-    }).then(function (result) {
-      if (!result.isConfirmed) return;
-      Swal.fire({ title: 'Deleting…', allowOutsideClick: false, showConfirmButton: false,
-        didOpen: function () { Swal.showLoading(); } });
+    <div class="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
+      <div class="text-xs text-slate-400 uppercase font-semibold">Student</div>
+      <div class="text-sm font-bold text-slate-800 mt-0.5 flex items-center gap-2">
+        <span id="move-student-name"></span>
+        <span id="move-student-code" class="text-xs font-mono font-normal text-slate-500"></span>
+      </div>
+    </div>
 
-      var meta = document.querySelector('meta[name="csrf-token"]');
-      var token = meta ? meta.getAttribute('content') : '';
+    <!-- Search/Filter Groups -->
+    <div class="space-y-3 mb-4">
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1" for="move-group-filter">
+          Filter Target Groups
+        </label>
+        <input type="text" id="move-group-filter" placeholder="Type to filter groups…"
+          class="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-300 transition">
+      </div>
 
-      fetch('/admin/groups/' + id, {
-        method:  'DELETE',
-        headers: { 'X-Requested-With': 'XMLHttpRequest', 'x-csrf-token': token },
-      }).then(function (res) {
-        if (res.ok) {
-          Swal.fire({ title: 'Deleted!', icon: 'success', timer: 1400, showConfirmButton: false,
-            customClass: { popup: 'rounded-2xl' } }).then(function () {
-            window.location.href = '/admin/groups';
-          });
-        } else {
-          Swal.fire({ title: 'Error', text: 'Failed to delete. Please try again.', icon: 'error',
-            confirmButtonColor: '#ef4444', customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' } });
-        }
-      }).catch(function () {
-        Swal.fire({ title: 'Network Error', text: 'Could not reach the server.', icon: 'error',
-          confirmButtonColor: '#ef4444', customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' } });
-      });
-    });
-  }
-</script>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1" for="move-group-select">
+          Select Target Group <span class="text-red-500">*</span>
+        </label>
+        <select id="move-group-select"
+          class="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-300 transition">
+          <option value="">— Select Target Group —</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Type Mismatch Warning -->
+    <div id="move-type-warning" class="hidden mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 space-y-2">
+      <div class="flex items-start gap-2">
+        <span class="text-base leading-none">⚠️</span>
+        <div id="move-type-warning-msg" class="font-medium">
+          Target class type differs from current group type.
+        </div>
+      </div>
+      <label class="flex items-center gap-2 cursor-pointer font-semibold text-amber-900 pt-1 border-t border-amber-200/60">
+        <input type="checkbox" id="move-confirm-type-checkbox" class="w-4 h-4 rounded text-amber-600 focus:ring-amber-500">
+        <span>I confirm moving across different class types</span>
+      </label>
+    </div>
+
+    <!-- Modal Actions -->
+    <div class="flex items-center justify-end gap-2 pt-2">
+      <button type="button" id="btn-cancel-move"
+        class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition">
+        Cancel
+      </button>
+      <button type="button" id="btn-confirm-move"
+        class="px-5 py-2 text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow transition">
+        Confirm Move
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     REMOVE STUDENT MODAL
+════════════════════════════════════════════════════════════════ -->
+<div id="modal-remove-student" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 p-6 transition-all">
+    <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+      <div>
+        <h3 class="text-base font-bold text-slate-900">Remove Student</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Remove student from this group roster</p>
+      </div>
+      <div class="w-8 h-8 rounded-full bg-red-50 text-red-600 flex items-center justify-center font-bold">
+        ✕
+      </div>
+    </div>
+
+    <p class="text-sm text-slate-700 mb-4">
+      Are you sure you want to remove <strong id="remove-student-name" class="text-slate-900"></strong> from <strong><%= group.group_name %></strong>?
+    </p>
+
+    <div id="remove-inactive-container" class="hidden mb-5 p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+      <label class="flex items-start gap-2.5 cursor-pointer">
+        <input type="checkbox" id="remove-mark-inactive" class="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 mt-0.5">
+        <div>
+          <span class="text-xs font-semibold text-slate-800">Mark as inactive (left the course)</span>
+          <p class="text-[11px] text-slate-500 mt-0.5">This student has no other active classes. Check this if they are leaving the center.</p>
+        </div>
+      </label>
+    </div>
+
+    <div class="flex items-center justify-end gap-2 pt-2">
+      <button type="button" id="btn-cancel-remove"
+        class="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition">
+        Cancel
+      </button>
+      <button type="button" id="btn-confirm-remove"
+        class="px-5 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-xl shadow transition">
+        Remove Student
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Embedded Server State Data -->
+<script id="group-roster-data" type="application/json"><%- groupDataJson %></script>
+<script defer src="/js/group-roster.js"></script>
 
 <%- include('../../partials/footer') %>

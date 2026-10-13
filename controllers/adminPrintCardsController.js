@@ -6,14 +6,19 @@
  * (No AC totals or history — for distribution/printing only)
  */
 
+const mongoose = require('mongoose');
 const Student = require('../models/Student');
 const Group   = require('../models/Group');
 const { normalizeName } = require('../models/Student');
 
 exports.printCards = async (req, res) => {
   try {
-    // Load all Student docs that have a barcode
-    const studentDocs = await Student.find({ barcode: { $exists: true, $ne: '' } }).lean();
+    // Load Student docs that have a barcode (optionally filtered by student_id)
+    const filter = { barcode: { $exists: true, $ne: '' } };
+    if (req.query.student_id && mongoose.Types.ObjectId.isValid(req.query.student_id)) {
+      filter._id = req.query.student_id;
+    }
+    const studentDocs = await Student.find(filter).lean();
 
     if (!studentDocs.length) {
       return res.render('admin/student-achievements/print-cards', {
