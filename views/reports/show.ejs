@@ -16,7 +16,13 @@
       <div>
         <p class="text-xs font-mono text-slate-400 mb-1"><%= report.dateFormatted %></p>
         <h1 class="text-xl font-bold text-slate-900">
-          <%= report.subject ? report.subject : report.class_name %>
+          <% if (report.material && report.material.hasContent) { %>
+            <a href="/materials/<%= report.material._id %>" class="hover:text-brand-600 hover:underline">
+              <%= report.subject ? report.subject : report.class_name %>
+            </a>
+          <% } else { %>
+            <%= report.subject ? report.subject : report.class_name %>
+          <% } %>
         </h1>
         <% if (report.subject) { %>
           <p class="text-slate-500 text-sm mt-1"><%= report.class_name %></p>

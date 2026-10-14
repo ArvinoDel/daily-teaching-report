@@ -126,7 +126,7 @@ async function getTeachersJson() {
 async function getMaterialsJson() {
   try {
     const materials = await Material.find()
-      .select('name level usageCount')
+      .select('name level usageCount hasContent')
       .sort({ usageCount: -1, name: 1 })
       .lean();
     return safeJson(materials.map(function(m) { return {
@@ -134,6 +134,7 @@ async function getMaterialsJson() {
       name:       m.name,
       level:      m.level || '',
       usageCount: m.usageCount || 0,
+      hasContent: Boolean(m.hasContent),
     }; }));
   } catch (e) {
     console.error('getMaterialsJson (admin) error:', e);
@@ -552,7 +553,9 @@ exports.reportsList = async (req, res) => {
 exports.reportEditForm = async (req, res) => {
   try {
     const [report, groupsJson, teachersJson, teachers, materialsJson] = await Promise.all([
-      Report.findById(req.params.id).populate('teacher', 'displayName username'),
+      Report.findById(req.params.id)
+        .populate('teacher', 'displayName username')
+        .populate('material', 'hasContent'),
       getGroupsJson(),
       getTeachersJson(),
       User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),

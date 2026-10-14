@@ -1,8 +1,11 @@
-const mongoose      = require('mongoose');
-const Material      = require('../models/Material');
-const MaterialAlias = require('../models/MaterialAlias');
-const Report        = require('../models/Report');
-const AuditLog      = require('../models/AuditLog');
+const cloudinary      = require('cloudinary').v2;
+const mongoose        = require('mongoose');
+const Material        = require('../models/Material');
+const MaterialAlias   = require('../models/MaterialAlias');
+const MaterialContent = require('../models/MaterialContent');
+const MaterialContentRevision = require('../models/MaterialContentRevision');
+const Report          = require('../models/Report');
+const AuditLog        = require('../models/AuditLog');
 const { LEVELS, LEVEL_LABELS } = require('../models/Group');
 const { normalizeMaterialName, formatMaterialDisplayName } = require('../models/Material');
 const {
@@ -12,6 +15,13 @@ const {
   parseCheckbox,
   countUnlinkedReports,
 } = require('../services/materialService');
+const { computeHasContent } = require('../services/materialContentService');
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 function safeJson(data) {
   return JSON.stringify(data)
@@ -41,7 +51,7 @@ async function logAudit(req, action, targetId, targetLabel, meta = {}) {
    ═══════════════════════════════════════════════════════════════ */
 exports.materialsList = async (req, res) => {
   try {
-    const { level, q } = req.query;
+    const { level, q, noContent, sort } = req.query;
     const page  = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = 25;
 
@@ -56,35 +66,73 @@ exports.materialsList = async (req, res) => {
       filter.name = { $regex: q.trim(), $options: 'i' };
     }
 
+    if (noContent === '1') {
+      filter.hasContent = false;
+    }
+
+    let sortOption = { usageCount: -1, name: 1 };
+    if (sort === 'name') {
+      sortOption = { name: 1, usageCount: -1 };
+    } else if (sort === 'usage_asc') {
+      sortOption = { usageCount: 1, name: 1 };
+    }
+
     const [
       totalMaterials,
       totalWithLevel,
       totalNoLevel,
+      totalWithContent,
       filteredCount,
       materials,
       usedLevels,
       allMaterialsForMerge,
       unlinkedReportsCount,
+      recentEdits,
     ] = await Promise.all([
       Material.countDocuments(),
       Material.countDocuments({ level: { $ne: '' } }),
       Material.countDocuments({ level: '' }),
+      Material.countDocuments({ hasContent: true }),
       Material.countDocuments(filter),
       Material.find(filter)
-        .sort({ usageCount: -1, name: 1 })
+        .sort(sortOption)
         .skip((page - 1) * limit)
         .limit(limit)
         .populate('createdBy', 'displayName username')
         .lean(),
       Material.distinct('level'),
       Material.find()
-        .select('name level usageCount')
+        .select('name level usageCount hasContent')
         .sort({ name: 1 })
         .lean(),
       countUnlinkedReports(),
+      MaterialContentRevision.find()
+        .sort({ editedAt: -1 })
+        .limit(20)
+        .populate('material', 'name level')
+        .lean(),
     ]);
 
     const totalPages = Math.max(1, Math.ceil(filteredCount / limit));
+
+    // Fetch page contents to determine badge ("No content" / "n files" / "Text only")
+    const pageMatIds = materials.map(m => m._id);
+    const pageContents = await MaterialContent.find({ material: { $in: pageMatIds } })
+      .select('material body resources')
+      .lean();
+
+    const contentStatusMap = {};
+    for (const c of pageContents) {
+      const fileCount = (c.resources || []).filter(r => r.kind === 'file').length;
+      const hasText = (c.body || '').replace(/<[^>]*>/g, '').trim().length > 0;
+      if (fileCount > 0) {
+        contentStatusMap[String(c.material)] = { label: `${fileCount} file${fileCount > 1 ? 's' : ''}`, type: 'files' };
+      } else if (hasText) {
+        contentStatusMap[String(c.material)] = { label: 'Text only', type: 'text' };
+      } else {
+        contentStatusMap[String(c.material)] = { label: 'No content', type: 'none' };
+      }
+    }
 
     // Build available levels in canonical order (empty string excluded)
     const validUsed = usedLevels.filter(Boolean).map(l => l.toUpperCase());
@@ -98,6 +146,7 @@ exports.materialsList = async (req, res) => {
       name:       m.name,
       level:      m.level || '',
       usageCount: m.usageCount || 0,
+      hasContent: Boolean(m.hasContent),
     })));
 
     const flashMessage = req.session.flash || null;
@@ -108,9 +157,11 @@ exports.materialsList = async (req, res) => {
     res.render('admin/materials/index', {
       title: 'Admin — Materials',
       materials,
+      contentStatusMap,
       totalMaterials,
       totalWithLevel,
       totalNoLevel,
+      totalWithContent,
       filteredCount,
       page,
       totalPages,
@@ -120,7 +171,10 @@ exports.materialsList = async (req, res) => {
       materialsJson,
       selectedLevel: level || '',
       searchQuery:   q     || '',
+      noContentFilter: noContent === '1',
+      sortQuery:     sort || '',
       unlinkedReportsCount: unlinkedReportsCount || 0,
+      recentEdits,
       flashMessage,
       flashError,
     });
@@ -274,6 +328,11 @@ exports.materialMerge = async (req, res) => {
       ],
     }).lean();
 
+    const [sourceContent, targetContent] = await Promise.all([
+      MaterialContent.findOne({ material: source._id }),
+      MaterialContent.findOne({ material: target._id }),
+    ]);
+
     const plan = planMergeAliases(source, target, existingAliases);
 
     const updateReports = parseCheckbox(req.body.updateReportsSubject);
@@ -286,7 +345,8 @@ exports.materialMerge = async (req, res) => {
     // 1. Create/re-point aliases
     // 2. Re-point reports
     // 3. Move usage and lastUsedAt on target
-    // 4. Delete source last
+    // 4. Merge content & revisions
+    // 5. Delete source last
     const executeOperations = async (session = null) => {
       const opts = session ? { session } : {};
 
@@ -318,6 +378,57 @@ exports.materialMerge = async (req, res) => {
         targetUpdate.$max = { lastUsedAt: source.lastUsedAt };
       }
       await Material.updateOne({ _id: target._id }, targetUpdate, opts);
+
+      // Content merge logic
+      const sourceHas = sourceContent && computeHasContent(sourceContent.body, sourceContent.resources);
+      const targetHas = targetContent && computeHasContent(targetContent.body, targetContent.resources);
+
+      if (sourceHas) {
+        if (!targetHas) {
+          // Target has no content -> move source's content and revisions to target
+          if (targetContent) {
+            await MaterialContent.deleteOne({ _id: targetContent._id }, opts);
+          }
+          sourceContent.material = target._id;
+          await sourceContent.save(opts);
+          await MaterialContentRevision.updateMany(
+            { material: source._id },
+            { $set: { material: target._id } },
+            opts
+          );
+          await Material.updateOne(
+            { _id: target._id },
+            { $set: { hasContent: true, contentUpdatedAt: sourceContent.updatedAt || new Date() } },
+            opts
+          );
+        } else {
+          // Both have content -> KEEP target's content and store source's content as revision of target
+          const nextVersion = (targetContent.version || 1) + 1;
+          targetContent.version = nextVersion;
+          await targetContent.save(opts);
+
+          await MaterialContentRevision.create([{
+            material: target._id,
+            version: nextVersion,
+            body: sourceContent.body,
+            resources: sourceContent.resources || [],
+            note: `Merged from ${sourceName}`,
+            editedBy: req.session.user._id,
+            editedByName: req.session.user.displayName || req.session.user.username || '',
+            editedAt: new Date(),
+          }], opts);
+
+          await MaterialContentRevision.updateMany(
+            { material: source._id },
+            { $set: { material: target._id } },
+            opts
+          );
+
+          await MaterialContent.deleteOne({ _id: sourceContent._id }, opts);
+        }
+      } else if (sourceContent) {
+        await MaterialContent.deleteOne({ _id: sourceContent._id }, opts);
+      }
 
       // Delete source
       await source.deleteOne(opts);
@@ -399,6 +510,23 @@ exports.materialDelete = async (req, res) => {
 
     // Delete aliases pointing to it
     await MaterialAlias.deleteMany({ material: material._id });
+
+    // Delete content and revisions
+    await Promise.all([
+      MaterialContent.deleteMany({ material: material._id }),
+      MaterialContentRevision.deleteMany({ material: material._id }),
+    ]);
+
+    // Best-effort and non-fatal: destroy Cloudinary assets of that material
+    try {
+      const cloudRes = await cloudinary.api.delete_resources_by_prefix(`materials/${material._id}/`, {
+        type: 'authenticated',
+      });
+      const delCount = cloudRes && cloudRes.deleted ? Object.keys(cloudRes.deleted).length : 0;
+      console.log(`Destroyed ${delCount} Cloudinary assets for material ${material._id}`);
+    } catch (cErr) {
+      console.error('Non-fatal error destroying Cloudinary assets for material:', cErr.message);
+    }
 
     // Delete the material
     await material.deleteOne();

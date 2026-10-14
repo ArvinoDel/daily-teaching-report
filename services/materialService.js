@@ -31,7 +31,7 @@ async function getMaterialsJson() {
   }
   try {
     const materials = await Material.find()
-      .select('name level usageCount')
+      .select('name level usageCount hasContent')
       .sort({ usageCount: -1, name: 1 })
       .lean();
     _materialsCache = safeJsonForHtml(materials.map(function(m) {
@@ -40,6 +40,7 @@ async function getMaterialsJson() {
         name:       m.name,
         level:      m.level || '',
         usageCount: m.usageCount || 0,
+        hasContent: Boolean(m.hasContent),
       };
     }));
     _materialsCacheTime = Date.now();

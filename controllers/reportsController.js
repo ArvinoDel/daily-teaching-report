@@ -212,7 +212,7 @@ exports.index = async (req, res) => {
       Report.find({
         teacher: req.session.user._id,
         date: { $gte: monthStart, $lte: monthEnd },
-      }).sort({ date: 1 }),
+      }).populate('material', 'hasContent').sort({ date: 1 }),
       // Full list (with optional type/mode filters) for the report table
       Report.find(listFilter).sort({ date: -1 }),
     ]);
@@ -616,7 +616,8 @@ exports.createBulk = async (req, res) => {
 
 exports.show = async (req, res) => {
   try {
-    const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
+    const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id })
+      .populate('material', 'hasContent');
     if (!report) return res.render('error', { message: 'Report not found.' });
     res.render('reports/show', { report, typeBadgeColor });
   } catch (err) {
@@ -628,7 +629,7 @@ exports.show = async (req, res) => {
 exports.editForm = async (req, res) => {
   try {
     const [report, groupsJson, teachersJson, materialsJson] = await Promise.all([
-      Report.findOne({ _id: req.params.id, teacher: req.session.user._id }),
+      Report.findOne({ _id: req.params.id, teacher: req.session.user._id }).populate('material', 'hasContent'),
       getGroupsJson(),
       getTeachersJson(),
       getMaterialsJson(),

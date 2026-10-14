@@ -11,6 +11,8 @@ const Feedback = require('../models/Feedback');
 const Backup   = require('../models/Backup');
 const Material = require('../models/Material');
 const MaterialAlias = require('../models/MaterialAlias');
+const MaterialContent = require('../models/MaterialContent');
+const MaterialContentRevision = require('../models/MaterialContentRevision');
 
 // Configure Cloudinary using env variables
 cloudinary.config({
@@ -76,7 +78,7 @@ function sanitizeErrorMessage(msg) {
  * @returns {Promise<{collections, recordCounts}>}
  */
 async function fetchRawCollections() {
-  const [users, reports, groups, auditLogs, feedbacks, materials, materialAliases] = await Promise.all([
+  const [users, reports, groups, auditLogs, feedbacks, materials, materialAliases, materialContents, materialContentRevisions] = await Promise.all([
     User.find().lean(),
     Report.find().lean(),
     Group.find().lean(),
@@ -84,19 +86,23 @@ async function fetchRawCollections() {
     Feedback.find().lean(),
     Material.find().lean(),
     MaterialAlias.find().lean(),
+    MaterialContent.find().lean(),
+    MaterialContentRevision.find().lean(),
   ]);
 
   const recordCounts = {
-    users:           users.length,
-    reports:         reports.length,
-    groups:          groups.length,
-    auditLogs:       auditLogs.length,
-    feedbacks:       feedbacks.length,
-    materials:       materials.length,
-    materialAliases: materialAliases.length,
+    users:                    users.length,
+    reports:                  reports.length,
+    groups:                   groups.length,
+    auditLogs:                auditLogs.length,
+    feedbacks:                feedbacks.length,
+    materials:                materials.length,
+    materialAliases:          materialAliases.length,
+    materialContents:         materialContents.length,
+    materialContentRevisions: materialContentRevisions.length,
   };
 
-  const collections = { users, reports, groups, auditLogs, feedbacks, materials, materialAliases };
+  const collections = { users, reports, groups, auditLogs, feedbacks, materials, materialAliases, materialContents, materialContentRevisions };
   return { collections, recordCounts };
 }
 

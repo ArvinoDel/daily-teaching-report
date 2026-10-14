@@ -1,0 +1,191 @@
+<%- include('../partials/header', { title }) %>
+
+<div class="mb-6">
+  <!-- Header title & subtitle -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+    <div>
+      <div class="flex items-center gap-2 mb-1">
+        <span class="inline-flex items-center gap-1.5 bg-brand-50 text-brand-700 text-xs font-bold px-2.5 py-1 rounded-full">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+          </svg>
+          Teaching Materials
+        </span>
+        <% if (userIsAdmin) { %>
+          <a href="/admin/materials" class="text-xs font-semibold text-slate-400 hover:text-slate-600 transition flex items-center gap-1">
+            Manage Suggestions
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+          </a>
+        <% } %>
+      </div>
+      <h1 class="text-2xl font-bold text-slate-900">Materials Library</h1>
+      <p class="text-slate-500 text-sm mt-0.5">Explore curriculum guides, syllabus documents, and downloadable attachments.</p>
+    </div>
+  </div>
+
+  <!-- Filter & Search Bar -->
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 mb-6">
+    <form method="GET" action="/materials" class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+      <!-- Search input -->
+      <div class="relative flex-1">
+        <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 15.803a7.5 7.5 0 0 0 10.607 0Z" />
+        </svg>
+        <input
+          type="text"
+          name="q"
+          value="<%= searchQuery %>"
+          placeholder="Search materials by name…"
+          autocomplete="off"
+          class="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-brand-500 transition">
+      </div>
+
+      <!-- Level filter -->
+      <div class="flex items-center gap-2">
+        <div class="relative min-w-[140px]">
+          <select
+            name="level"
+            onchange="this.form.submit()"
+            class="w-full text-xs font-semibold rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white px-3 py-2.5 appearance-none focus:outline-none focus:ring-2 focus:ring-brand-400 pr-8 text-slate-700 cursor-pointer">
+            <option value="" <%= !selectedLevel ? 'selected' : '' %>>All Levels</option>
+            <% (availableLevels || []).forEach(function(lvl) { %>
+              <option value="<%= lvl %>" <%= selectedLevel === lvl ? 'selected' : '' %>><%= lvl %></option>
+            <% }); %>
+          </select>
+          <div class="pointer-events-none absolute inset-y-0 right-2.5 flex items-center text-slate-400">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
+          </div>
+        </div>
+
+        <button type="submit" class="px-4 py-2 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm transition active:scale-95">Filter</button>
+        <% if (searchQuery || selectedLevel) { %>
+          <a href="/materials" class="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 transition">Clear</a>
+        <% } %>
+      </div>
+    </form>
+  </div>
+
+  <!-- Count summary -->
+  <div class="flex items-center justify-between text-xs text-slate-500 mb-4 px-1">
+    <span>Showing <strong><%= totalMatching %></strong> material<%= totalMatching === 1 ? '' : 's' %> with content</span>
+  </div>
+
+  <!-- Cards Grid -->
+  <% if (materials && materials.length > 0) { %>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <% materials.forEach(function(mat) { %>
+        <%
+          const cInfo = (contentMap && contentMap[String(mat._id)]) || { fileCount: 0, updatedAt: mat.contentUpdatedAt };
+          const fileCount = cInfo.fileCount || 0;
+          const updatedDate = cInfo.updatedAt || mat.contentUpdatedAt || mat.updatedAt;
+        %>
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-brand-200 transition-all flex flex-col justify-between p-5 group">
+          <div>
+            <!-- Top badge row -->
+            <div class="flex items-center justify-between gap-2 mb-3">
+              <% if (mat.level) { %>
+                <span class="inline-flex items-center text-xs font-bold px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
+                  <%= mat.level %>
+                </span>
+              <% } else { %>
+                <span class="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                  General
+                </span>
+              <% } %>
+
+              <% if (fileCount > 0) { %>
+                <span class="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13" />
+                  </svg>
+                  <%= fileCount %> file<%= fileCount === 1 ? '' : 's' %>
+                </span>
+              <% } %>
+            </div>
+
+            <!-- Material Name -->
+            <h2 class="text-base font-bold text-slate-800 group-hover:text-brand-600 transition mb-1">
+              <a href="/materials/<%= mat._id %>" class="focus:outline-none">
+                <%= mat.name %>
+              </a>
+            </h2>
+
+            <!-- Updated date -->
+            <% if (updatedDate) { %>
+              <p class="text-xs text-slate-400 mt-2 flex items-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+                Updated <%= new Date(updatedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) %>
+              </p>
+            <% } %>
+          </div>
+
+          <!-- Bottom Action Buttons -->
+          <div class="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+            <a href="/materials/<%= mat._id %>"
+              class="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-3.5 py-1.5 rounded-xl transition">
+              Open Material
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+            </a>
+
+            <div class="flex items-center gap-1">
+              <a href="/materials/<%= mat._id %>/edit"
+                class="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 px-2.5 py-1.5 rounded-lg transition"
+                title="Edit material">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125"/></svg>
+                Edit
+              </a>
+            </div>
+          </div>
+        </div>
+      <% }); %>
+    </div>
+
+    <!-- Pagination -->
+    <% if (totalPages > 1) { %>
+      <div class="mt-8 flex items-center justify-between text-xs text-slate-500">
+        <div>
+          Page <span class="font-bold text-slate-700"><%= page %></span> of <span class="font-bold text-slate-700"><%= totalPages %></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <% if (page > 1) { %>
+            <a href="/materials?q=<%= encodeURIComponent(searchQuery) %>&level=<%= encodeURIComponent(selectedLevel) %>&page=<%= page - 1 %>"
+              class="px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 font-medium text-slate-700 transition">Previous</a>
+          <% } %>
+          <% if (page < totalPages) { %>
+            <a href="/materials?q=<%= encodeURIComponent(searchQuery) %>&level=<%= encodeURIComponent(selectedLevel) %>&page=<%= page + 1 %>"
+              class="px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 font-medium text-slate-700 transition">Next</a>
+          <% } %>
+        </div>
+      </div>
+    <% } %>
+
+  <% } else { %>
+    <!-- Empty State -->
+    <div class="bg-white rounded-2xl border border-slate-100 p-12 text-center max-w-lg mx-auto my-6 shadow-sm">
+      <div class="w-14 h-14 bg-brand-50 text-brand-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+        </svg>
+      </div>
+      <h3 class="text-base font-bold text-slate-800 mb-1">No Materials Found</h3>
+      <p class="text-xs text-slate-500 mb-6 leading-relaxed">
+        <% if (searchQuery || selectedLevel) { %>
+          No materials match your current search or level filters. Try clearing filters.
+        <% } else { %>
+          No materials have written content or attachments yet. You can attach content from the admin materials list or click Edit on any material.
+        <% } %>
+      </p>
+      <% if (searchQuery || selectedLevel) { %>
+        <a href="/materials" class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition">
+          Clear Filters
+        </a>
+      <% } else if (userIsAdmin) { %>
+        <a href="/admin/materials" class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm transition">
+          Go to Materials Management
+        </a>
+      <% } %>
+    </div>
+  <% } %>
+</div>
+
+<%- include('../partials/footer') %>

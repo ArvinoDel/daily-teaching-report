@@ -8,6 +8,8 @@
         return {
           _id:                   String(r._id),
           subject:               r.subject,
+          materialId:            (r.material && (r.material._id || r.material)) ? String(r.material._id || r.material) : null,
+          materialHasContent:    Boolean(r.material && r.material.hasContent),
           class_name:            r.class_name,
           teaching_type:         r.teaching_type,
           durationFormatted:     r.durationFormatted,
@@ -74,13 +76,21 @@
         ? '<span class="ml-1 text-xs font-bold text-purple-400" title="Private">Private</span>'
         : '';
 
+      var subjectHtml = escHtml(r.subject || '—');
+      if (r.materialId && r.materialHasContent) {
+        subjectHtml = '<a href="/materials/' + encodeURIComponent(r.materialId) + '" class="text-brand-600 hover:text-brand-700 hover:underline font-medium inline-flex items-center gap-1" title="View material content">' +
+          subjectHtml +
+          '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>' +
+        '</a>';
+      }
+
       return '<tr class="' + rowCls + '">' +
         '<td class="px-4 sm:px-6 py-4 font-semibold text-slate-800">' +
           '<span class="inline-flex items-center gap-0.5">' +
             escHtml(r.class_name) + modePip + privatePip +
           '</span>' +
         '</td>' +
-        '<td class="px-4 sm:px-6 py-4 text-slate-600 hidden sm:table-cell">'  + escHtml(r.subject || '—') + '</td>' +
+        '<td class="px-4 sm:px-6 py-4 text-slate-600 hidden sm:table-cell">'  + subjectHtml + '</td>' +
         '<td class="px-4 sm:px-6 py-4 hidden sm:table-cell"><span class="' + badge + ' text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap">' + escHtml(r.teaching_type) + '</span></td>' +
         '<td class="px-4 sm:px-6 py-4 font-mono text-xs text-slate-500 hidden md:table-cell whitespace-nowrap">' + escHtml(r.durationFormatted) + '</td>' +
         '<td class="px-4 sm:px-6 py-4">' +

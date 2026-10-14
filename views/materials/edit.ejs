@@ -1,0 +1,222 @@
+<%- include('../partials/header', { title }) %>
+
+<!-- Pinned Quill 2.x from cdn.jsdelivr.net -->
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+
+<style>
+/* Quill Toolbar & Editor Styling */
+.ql-toolbar.ql-snow {
+  border-top-left-radius: 1rem;
+  border-top-right-radius: 1rem;
+  border-color: #e2e8f0;
+  background-color: #f8fafc;
+  padding: 0.75rem 1rem;
+}
+.ql-container.ql-snow {
+  border-bottom-left-radius: 1rem;
+  border-bottom-right-radius: 1rem;
+  border-color: #e2e8f0;
+  font-family: inherit;
+  font-size: 0.95rem;
+  min-height: 380px;
+}
+.ql-editor {
+  min-height: 360px;
+  line-height: 1.7;
+}
+.ql-editor p { margin-bottom: 0.75em; }
+.ql-editor h1, .ql-editor h2, .ql-editor h3 { font-weight: 700; margin-top: 1.25em; margin-bottom: 0.5em; }
+</style>
+
+<div class="mb-10">
+  <!-- Breadcrumbs & Header -->
+  <nav class="flex items-center gap-2 text-xs text-slate-400 mb-3">
+    <a href="/materials" class="hover:text-brand-600 transition flex items-center gap-1 font-medium">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+      Materials Library
+    </a>
+    <span>/</span>
+    <a href="/materials/<%= material._id %>" class="hover:text-brand-600 transition truncate max-w-[150px] sm:max-w-xs"><%= material.name %></a>
+    <span>/</span>
+    <span class="text-slate-700 font-semibold">Edit Content</span>
+  </nav>
+
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div>
+      <div class="flex items-center gap-2 mb-1">
+        <h1 class="text-xl font-bold text-slate-900">Editing: <%= material.name %></h1>
+        <% if (material.level) { %>
+          <span class="inline-flex items-center text-xs font-bold px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
+            <%= material.level %>
+          </span>
+        <% } %>
+      </div>
+      <p class="text-xs text-slate-500">Changes are versioned. You can attach up to 20 resources (files up to <%= maxFileMb %> MB or reference links).</p>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <span id="save-status" class="text-xs font-medium text-slate-400">All changes saved</span>
+      <a href="/materials/<%= material._id %>" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition">
+        Cancel
+      </a>
+      <button id="btn-save-content" type="button"
+        class="inline-flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold bg-brand-600 hover:bg-brand-700 active:scale-95 text-white shadow-sm transition">
+        <svg id="save-spinner" class="hidden animate-spin -ml-1 mr-1.5 h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span>Save Changes</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main 2-Column Grid -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- Left 2 Cols: Quill Editor & Revision Note -->
+    <div class="lg:col-span-2 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2.5">
+          Written Notes & Lesson Material
+        </label>
+        <!-- Quill Editor container -->
+        <div id="quill-editor" class="bg-white"><%- content.body || '' %></div>
+
+        <!-- Revision Note input -->
+        <div class="mt-4 pt-4 border-t border-slate-100">
+          <label for="revision-note" class="block text-xs font-semibold text-slate-600 mb-1">
+            Revision Note (Optional)
+          </label>
+          <input
+            type="text"
+            id="revision-note"
+            maxlength="200"
+            placeholder="e.g. Added vocabulary section and exercises"
+            class="w-full text-xs rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-brand-500 transition" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Right 1 Col: Resources Panel (Files & Links) -->
+    <div class="space-y-5">
+      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
+        <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
+          <h2 class="text-xs font-bold text-slate-800 uppercase tracking-wider">
+            Resources (<span id="resource-count">0</span>/20)
+          </h2>
+          <span class="text-[11px] text-slate-400">Files & Links</span>
+        </div>
+
+        <!-- Add Actions -->
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <button type="button" id="btn-show-add-file"
+            class="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+            Attach File
+          </button>
+          <button type="button" id="btn-show-add-link"
+            class="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-teal-50 text-teal-700 hover:bg-teal-100 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+            Add Link
+          </button>
+        </div>
+
+        <!-- Direct Cloudinary Upload Dropzone / Box (Hidden initially) -->
+        <div id="upload-panel" class="hidden mb-4 p-4 rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50/40 text-center">
+          <input type="file" id="file-input" class="hidden">
+          <p class="text-xs font-semibold text-indigo-900 mb-1">Upload a Document or Image</p>
+          <p class="text-[11px] text-indigo-600 mb-3">Allowed: <%= allowedExtensions.join(', ') %> (Max <%= maxFileMb %> MB)</p>
+          
+          <button type="button" id="btn-browse-file"
+            class="px-4 py-1.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition">
+            Choose File
+          </button>
+
+          <!-- Upload progress indicator -->
+          <div id="upload-progress-wrap" class="hidden mt-3">
+            <div class="flex items-center justify-between text-[11px] text-indigo-900 mb-1">
+              <span id="upload-filename" class="truncate max-w-[150px]">Uploading...</span>
+              <span id="upload-percent">0%</span>
+            </div>
+            <div class="w-full bg-indigo-100 rounded-full h-1.5 overflow-hidden">
+              <div id="upload-progress-bar" class="bg-indigo-600 h-1.5 rounded-full transition-all duration-150" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div id="upload-error" class="hidden mt-2 text-xs font-medium text-red-600"></div>
+        </div>
+
+        <!-- Add Link Form (Hidden initially) -->
+        <div id="link-panel" class="hidden mb-4 p-3.5 rounded-xl border border-teal-200 bg-teal-50/40 space-y-2.5">
+          <div>
+            <label for="link-url" class="block text-[11px] font-bold text-teal-900 mb-1">URL (http/https)</label>
+            <input type="url" id="link-url" placeholder="https://example.com/material"
+              class="w-full text-xs rounded-lg border border-teal-200 bg-white px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-400">
+          </div>
+          <div>
+            <label for="link-label" class="block text-[11px] font-bold text-teal-900 mb-1">Label (Optional)</label>
+            <input type="text" id="link-label" placeholder="e.g. Reference Video or Slides"
+              class="w-full text-xs rounded-lg border border-teal-200 bg-white px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-400">
+          </div>
+          <div class="flex items-center justify-end gap-2 pt-1">
+            <button type="button" id="btn-cancel-link" class="text-xs font-medium text-slate-500 hover:text-slate-700 px-2.5 py-1">Cancel</button>
+            <button type="button" id="btn-submit-link" class="text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white px-3.5 py-1 rounded-lg transition">Add</button>
+          </div>
+          <div id="link-error" class="hidden text-xs font-medium text-red-600"></div>
+        </div>
+
+        <!-- Resources List Container -->
+        <div id="resources-container" class="space-y-2">
+          <!-- Populated dynamically via JS -->
+        </div>
+
+        <!-- Empty state -->
+        <div id="resources-empty" class="hidden py-8 text-center text-xs text-slate-400">
+          No attachments or links added yet.
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Version Conflict Modal -->
+<div id="conflict-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+  <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
+    <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mb-4">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/>
+      </svg>
+    </div>
+    <h3 class="text-base font-bold text-slate-900 mb-2">Edit Conflict Detected</h3>
+    <p class="text-xs text-slate-600 leading-relaxed mb-6">
+      Someone else has updated this material since you opened the editor. To prevent overwriting their updates, please copy your latest changes below before reloading.
+    </p>
+    <div class="flex items-center justify-end gap-3">
+      <button type="button" id="btn-copy-content" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition">
+        Copy My Text
+      </button>
+      <button type="button" onclick="window.location.reload()" class="px-4 py-2 rounded-xl text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white transition">
+        Reload Page
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Initial Data Pass to Client Script -->
+<script type="application/json" id="material-editor-data">
+  <%- JSON.stringify({
+    materialId: String(material._id),
+    baseVersion: content.version || 1,
+    resources: content.resources || [],
+    maxFileMb: maxFileMb,
+    allowedExtensions: allowedExtensions,
+    csrfToken: csrfToken
+  }) %>
+</script>
+
+<!-- External Client Script -->
+<script src="/js/material-editor.js"></script>
+
+<%- include('../partials/footer') %>

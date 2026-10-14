@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 const mongoose = require('mongoose');
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -90,6 +90,19 @@ const materialSchema = new mongoose.Schema(
 
     // When this material was most recently referenced by a report.
     lastUsedAt: {
+      type:    Date,
+      default: null,
+    },
+
+    // Whether this material has written content or attached resources
+    hasContent: {
+      type:    Boolean,
+      default: false,
+      index:   true,
+    },
+
+    // When material content was last updated
+    contentUpdatedAt: {
       type:    Date,
       default: null,
     },

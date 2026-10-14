@@ -11,14 +11,15 @@ const multer = require('multer');
 const compression = require('compression'); // ⚡ gzip compression
 
 const csrfProtection = require('./middleware/csrf');
-const reportRoutes   = require('./routes/reports');
-const authRoutes     = require('./routes/auth');
-const profileRoutes  = require('./routes/profile');
-const adminRoutes    = require('./routes/admin');
-const feedbackRoutes = require('./routes/feedback');
+const reportRoutes      = require('./routes/reports');
+const authRoutes        = require('./routes/auth');
+const profileRoutes     = require('./routes/profile');
+const adminRoutes       = require('./routes/admin');
+const feedbackRoutes    = require('./routes/feedback');
 const notificationRoutes = require('./routes/notifications');
 const publicCardRoutes   = require('./routes/publicCard');
 const cronRoutes         = require('./routes/cron');
+const materialRoutes     = require('./routes/materials');
 const Notification   = require('./models/Notification');
 const Feedback = require('./models/Feedback');
 const { requireAuth } = require('./middleware/auth');
@@ -97,7 +98,8 @@ app.use(helmet({
           "https://*.tailwindcss.com",
           "https://cdn.jsdelivr.net",
           "https://tessdata.projectnaptha.com",
-          "https://raw.githubusercontent.com"
+          "https://raw.githubusercontent.com",
+          "https://api.cloudinary.com"
         ],
       },
     }
@@ -222,8 +224,9 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use('/auth',    authRoutes);
-app.use('/reports', requireAuth, reportRoutes);
+app.use('/auth',      authRoutes);
+app.use('/reports',   requireAuth, reportRoutes);
+app.use('/materials', materialRoutes);
 app.use('/profile', requireAuth, profileRoutes);
 app.use('/notifications', requireAuth, notificationRoutes);
 app.use('/admin',   adminRoutes);
