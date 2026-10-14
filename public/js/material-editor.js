@@ -25,7 +25,7 @@
   }
 
   const materialId = config.materialId;
-  let currentVersion = config.baseVersion || 1;
+  let currentVersion = Number(config.baseVersion) || 1;
   let resources = Array.isArray(config.resources) ? [...config.resources] : [];
   const maxFileMb = config.maxFileMb || 10;
   const allowedExtensions = config.allowedExtensions || [];
@@ -230,7 +230,7 @@
       delBtn.onclick = async function () {
         if (res._id) {
           try {
-            const resp = await fetch(`/materials/${materialId}/resources/${res._id}?baseVersion=${currentVersion}`, {
+            const resp = await fetch(`/materials/${materialId}/resources/${res._id}?baseVersion=${Number(currentVersion) || 1}`, {
               method: 'DELETE',
               headers: {
                 'X-CSRF-Token': csrfToken,
@@ -306,7 +306,7 @@
             'X-CSRF-Token': csrfToken,
             'Accept': 'application/json'
           },
-          body: JSON.stringify({ kind: 'link', url, label, baseVersion: currentVersion })
+          body: JSON.stringify({ kind: 'link', url, label, baseVersion: Number(currentVersion) || 1 })
         });
 
         if (resp.status === 409) {
@@ -464,7 +464,7 @@
                 resourceType: cloudRes.resource_type,
                 deliveryType: 'authenticated',
                 format: cloudRes.format,
-                baseVersion: currentVersion
+                baseVersion: Number(currentVersion) || 1
               })
             });
 
@@ -546,7 +546,7 @@
             body: bodyHtml,
             resources: resourcesPayload,
             note: note,
-            baseVersion: currentVersion
+            baseVersion: Number(currentVersion) || 1
           })
         });
 

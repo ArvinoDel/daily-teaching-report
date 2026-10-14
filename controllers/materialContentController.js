@@ -177,12 +177,8 @@ exports.editMaterial = async (req, res) => {
  * ───────────────────────────────────────────────────────────────────── */
 exports.saveMaterial = async (req, res) => {
   try {
-    const { body, resources, note, baseVersion } = req.body;
-
-    // baseVersion is required
-    if (baseVersion === undefined || baseVersion === null || baseVersion === '') {
-      return res.status(400).json({ error: 'baseVersion is required.' });
-    }
+    const { body, resources, note } = req.body;
+    let baseVersion = req.body?.baseVersion;
 
     // Body size validation: do not truncate, return 422
     if (body && typeof body === 'string' && Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) {
@@ -199,6 +195,10 @@ exports.saveMaterial = async (req, res) => {
 
     if (!canEdit(user, content)) {
       return res.status(403).json({ error: 'This material is locked for editing.' });
+    }
+
+    if (baseVersion === undefined || baseVersion === null || baseVersion === '') {
+      baseVersion = content ? (content.version || 1) : 1;
     }
 
     // Sanitize body
@@ -260,8 +260,12 @@ exports.saveMaterial = async (req, res) => {
       const currentVersion = Number(baseVersion);
       newVersion = currentVersion + 1;
 
+      const versionFilter = currentVersion === 1
+        ? { _id: content._id, $or: [{ version: 1 }, { version: { $exists: false } }, { version: null }] }
+        : { _id: content._id, version: currentVersion };
+
       updatedContent = await MaterialContent.findOneAndUpdate(
-        { _id: content._id, version: currentVersion },
+        versionFilter,
         {
           $set: {
             body: sanitizedBody,
@@ -622,11 +626,6 @@ exports.signUpload = async (req, res) => {
  * ───────────────────────────────────────────────────────────────────── */
 exports.addResource = async (req, res) => {
   try {
-    const baseVersion = req.body?.baseVersion !== undefined ? req.body.baseVersion : req.query.baseVersion;
-    if (baseVersion === undefined || baseVersion === null || baseVersion === '') {
-      return res.status(400).json({ error: 'baseVersion is required.' });
-    }
-
     const material = await Material.findById(req.params.id);
     if (!material) {
       return res.status(404).json({ error: 'Material not found.' });
@@ -640,6 +639,11 @@ exports.addResource = async (req, res) => {
 
     if (content && content.resources.length >= MAX_RESOURCES) {
       return res.status(422).json({ error: `Maximum ${MAX_RESOURCES} resources reached.` });
+    }
+
+    let baseVersion = req.body?.baseVersion !== undefined ? req.body.baseVersion : req.query.baseVersion;
+    if (baseVersion === undefined || baseVersion === null || baseVersion === '') {
+      baseVersion = content ? (content.version || 1) : 1;
     }
 
     const { kind, label, publicId, resourceType, deliveryType, url } = req.body;
@@ -729,8 +733,12 @@ exports.addResource = async (req, res) => {
       const currentVersion = Number(baseVersion);
       newVersion = currentVersion + 1;
 
+      const versionFilter = currentVersion === 1
+        ? { _id: content._id, $or: [{ version: 1 }, { version: { $exists: false } }, { version: null }] }
+        : { _id: content._id, version: currentVersion };
+
       updatedContent = await MaterialContent.findOneAndUpdate(
-        { _id: content._id, version: currentVersion },
+        versionFilter,
         {
           $push: { resources: resourceToSave },
           $set: {
@@ -817,11 +825,6 @@ exports.addResource = async (req, res) => {
  * ───────────────────────────────────────────────────────────────────── */
 exports.removeResource = async (req, res) => {
   try {
-    const baseVersion = req.body?.baseVersion !== undefined ? req.body.baseVersion : req.query.baseVersion;
-    if (baseVersion === undefined || baseVersion === null || baseVersion === '') {
-      return res.status(400).json({ error: 'baseVersion is required.' });
-    }
-
     const material = await Material.findById(req.params.id);
     if (!material) {
       return res.status(404).json({ error: 'Material not found.' });
@@ -842,13 +845,22 @@ exports.removeResource = async (req, res) => {
       return res.status(404).json({ error: 'Resource not found.' });
     }
 
+    let baseVersion = req.body?.baseVersion !== undefined ? req.body.baseVersion : req.query.baseVersion;
+    if (baseVersion === undefined || baseVersion === null || baseVersion === '') {
+      baseVersion = content.version || 1;
+    }
+
     const currentVersion = Number(baseVersion);
     const newVersion = currentVersion + 1;
     const now = new Date();
     const userName = user.displayName || user.name || user.username || 'User';
 
+    const versionFilter = currentVersion === 1
+      ? { _id: content._id, $or: [{ version: 1 }, { version: { $exists: false } }, { version: null }] }
+      : { _id: content._id, version: currentVersion };
+
     const updatedContent = await MaterialContent.findOneAndUpdate(
-      { _id: content._id, version: currentVersion },
+      versionFilter,
       {
         $pull: { resources: { _id: toRemove._id } },
         $set: {
