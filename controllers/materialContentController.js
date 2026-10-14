@@ -8,6 +8,7 @@
  */
 
 const cloudinary = require('cloudinary').v2;
+const User = require('../models/User');
 const Material = require('../models/Material');
 const MaterialContent = require('../models/MaterialContent');
 const MaterialContentRevision = require('../models/MaterialContentRevision');

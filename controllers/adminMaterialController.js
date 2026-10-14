@@ -1,5 +1,6 @@
 const cloudinary      = require('cloudinary').v2;
 const mongoose        = require('mongoose');
+const User            = require('../models/User');
 const Material        = require('../models/Material');
 const MaterialAlias   = require('../models/MaterialAlias');
 const MaterialContent = require('../models/MaterialContent');

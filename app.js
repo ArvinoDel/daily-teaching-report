@@ -20,6 +20,7 @@ const notificationRoutes = require('./routes/notifications');
 const publicCardRoutes   = require('./routes/publicCard');
 const cronRoutes         = require('./routes/cron');
 const materialRoutes     = require('./routes/materials');
+const User           = require('./models/User');
 const Notification   = require('./models/Notification');
 const Feedback = require('./models/Feedback');
 const { requireAuth } = require('./middleware/auth');
@@ -182,7 +183,6 @@ app.use(async (req, res, next) => {
   const needsNotifRefresh = now - lastNotifCheck > 15000;  // Bug #10 fix: 15-sec cache
 
   try {
-    const User = require('./models/User');
     // Atomic update if needsTrackUpdate is true to guarantee fresh lastActiveAt without race conditions
     const userQuery = needsTrackUpdate
       ? User.findByIdAndUpdate(

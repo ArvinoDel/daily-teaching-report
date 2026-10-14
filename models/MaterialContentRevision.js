@@ -14,7 +14,6 @@ const materialContentRevisionSchema = new mongoose.Schema(
       type:     mongoose.Schema.Types.ObjectId,
       ref:      'Material',
       required: true,
-      index:    true,
     },
     version: {
       type:     Number,

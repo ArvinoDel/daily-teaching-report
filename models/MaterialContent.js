@@ -57,7 +57,6 @@ const materialContentSchema = new mongoose.Schema(
       ref: 'Material',
       required: true,
       unique: true,
-      index: true,
     },
     // Sanitized HTML (max 200 KB)
     body: {
@@ -97,8 +96,6 @@ const materialContentSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
-
-materialContentSchema.index({ material: 1 }, { unique: true });
 
 const MaterialContent = mongoose.model('MaterialContent', materialContentSchema);
 module.exports = MaterialContent;
