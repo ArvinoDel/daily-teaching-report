@@ -9,6 +9,8 @@ const {
   invalidateMaterialsCache,
   recountMaterialUsage,
   planMergeAliases,
+  parseCheckbox,
+  countUnlinkedReports,
 } = require('../services/materialService');
 
 function safeJson(data) {
@@ -62,6 +64,7 @@ exports.materialsList = async (req, res) => {
       materials,
       usedLevels,
       allMaterialsForMerge,
+      unlinkedReportsCount,
     ] = await Promise.all([
       Material.countDocuments(),
       Material.countDocuments({ level: { $ne: '' } }),
@@ -78,6 +81,7 @@ exports.materialsList = async (req, res) => {
         .select('name level usageCount')
         .sort({ name: 1 })
         .lean(),
+      countUnlinkedReports(),
     ]);
 
     const totalPages = Math.max(1, Math.ceil(filteredCount / limit));
@@ -116,6 +120,7 @@ exports.materialsList = async (req, res) => {
       materialsJson,
       selectedLevel: level || '',
       searchQuery:   q     || '',
+      unlinkedReportsCount: unlinkedReportsCount || 0,
       flashMessage,
       flashError,
     });
@@ -208,9 +213,7 @@ exports.materialUpdate = async (req, res) => {
     await material.save();
 
     // Checkbox: Also update the material name on existing reports (default ON)
-    const updateReports = req.body.updateReportsSubject === 'true' ||
-                          req.body.updateReportsSubject === 'on' ||
-                          req.body.updateReportsSubject !== 'false';
+    const updateReports = parseCheckbox(req.body.updateReportsSubject);
     if (updateReports) {
       await Report.updateMany(
         { material: material._id },
@@ -273,9 +276,7 @@ exports.materialMerge = async (req, res) => {
 
     const plan = planMergeAliases(source, target, existingAliases);
 
-    const updateReports = req.body.updateReportsSubject === 'true' ||
-                          req.body.updateReportsSubject === 'on' ||
-                          req.body.updateReportsSubject !== 'false';
+    const updateReports = parseCheckbox(req.body.updateReportsSubject);
 
     const reportUpdateDoc = updateReports
       ? { material: target._id, subject: target.name }
@@ -311,14 +312,12 @@ exports.materialMerge = async (req, res) => {
       // Re-point reports
       await Report.updateMany({ material: source._id }, reportUpdateDoc, opts);
 
-      // Move usage count and lastUsedAt
-      target.usageCount = (target.usageCount || 0) + sourceUsage;
+      // Move usage count and lastUsedAt atomically (never mutate target.usageCount in memory)
+      const targetUpdate = { $inc: { usageCount: sourceUsage } };
       if (source.lastUsedAt) {
-        if (!target.lastUsedAt || new Date(source.lastUsedAt) > new Date(target.lastUsedAt)) {
-          target.lastUsedAt = source.lastUsedAt;
-        }
+        targetUpdate.$max = { lastUsedAt: source.lastUsedAt };
       }
-      await target.save(opts);
+      await Material.updateOne({ _id: target._id }, targetUpdate, opts);
 
       // Delete source
       await source.deleteOne(opts);
@@ -348,17 +347,23 @@ exports.materialMerge = async (req, res) => {
       }
     }
 
-    // Accurate recount for target
-    await recountMaterialUsage([target._id]);
+    // Call recountMaterialUsage ONLY if countUnlinkedReports() is 0;
+    // otherwise keep the transferred value so legacy reports aren't lost from usage
+    const unlinkedCount = await countUnlinkedReports();
+    if (unlinkedCount === 0) {
+      await recountMaterialUsage([target._id]);
+    }
 
     invalidateMaterialsCache();
+
+    const newTotalUsage = (target.usageCount || 0) + sourceUsage;
 
     await logAudit(req, 'merge', target._id, target.name, {
       mergedFromId:     source._id,
       mergedFromName:   sourceName,
       mergedFromLevel:  sourceLevel,
       transferredUsage: sourceUsage,
-      newTotalUsage:    target.usageCount,
+      newTotalUsage,
       updateReports,
     });
 
@@ -424,8 +429,13 @@ exports.materialDelete = async (req, res) => {
 exports.materialRecalculateUsage = async (req, res) => {
   try {
     await recountMaterialUsage();
-    await logAudit(req, 'update', null, 'All Materials', { action: 'recalculate_usage' });
-    req.session.flash = 'All material usage counts and dates have been recalculated successfully!';
+    const unlinkedCount = await countUnlinkedReports();
+    await logAudit(req, 'update', null, 'All Materials', { action: 'recalculate_usage', unlinkedCount });
+    if (unlinkedCount > 0) {
+      req.session.flash = `All material usage counts and dates have been recalculated successfully. Note: ${unlinkedCount} reports are not linked to a material yet.`;
+    } else {
+      req.session.flash = 'All material usage counts and dates have been recalculated successfully!';
+    }
     res.redirect('/admin/materials');
   } catch (err) {
     console.error('adminMaterialController.materialRecalculateUsage error:', err);

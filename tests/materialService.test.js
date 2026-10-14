@@ -5,6 +5,10 @@ const {
   findCanonicalMaterial,
   planMergeAliases,
   planRename,
+  parseCheckbox,
+  buildBackfillMaps,
+  resolveForBackfill,
+  planRecountUpdates,
 } = require('../services/materialService');
 
 test('Material Service - Pure Helper Tests', async (t) => {
@@ -183,8 +187,6 @@ test('Material Service - Pure Helper Tests', async (t) => {
   });
 
   await t.test('13. planMergeAliases: Multiple aliases in a merge chain are all repointed to the new target', () => {
-    // A was merged into B previously, so alias(A -> B) exists.
-    // Now B is merged into C.
     const sourceB = { _id: 'mat-B', nameNormalized: 'math b', level: 'E3' };
     const targetC = { _id: 'mat-C', nameNormalized: 'math c', level: 'E3' };
     const existingAliases = [
@@ -193,12 +195,10 @@ test('Material Service - Pure Helper Tests', async (t) => {
     ];
 
     const plan = planMergeAliases(sourceB, targetC, existingAliases);
-    // B's own key becomes alias to C
     assert.equal(plan.aliasesToCreate.length, 1);
     assert.equal(plan.aliasesToCreate[0].nameNormalized, 'math b');
     assert.equal(String(plan.aliasesToCreate[0].material), 'mat-C');
 
-    // Both old aliases pointing to B are repointed to C
     assert.equal(plan.aliasesToRepoint.length, 2);
     assert.ok(plan.aliasesToRepoint.every(a => String(a.material) === 'mat-C'));
   });
@@ -213,5 +213,175 @@ test('Material Service - Pure Helper Tests', async (t) => {
 
     assert.equal(String(findCanonicalMaterial(materials, aliases, 'intro to science', 'e4')._id), 'mat-e4');
     assert.equal(String(findCanonicalMaterial(materials, aliases, 'intro to biology', ' e5 ')._id), 'mat-e4');
+  });
+
+  /* ─────────────────────────────────────────────────────────────────────
+   *  PROBLEM 2: parseCheckbox Tests
+   * ───────────────────────────────────────────────────────────────────── */
+  await t.test('15. parseCheckbox: Truthy values return true', () => {
+    assert.equal(parseCheckbox('true'), true);
+    assert.equal(parseCheckbox('on'), true);
+    assert.equal(parseCheckbox(true), true);
+    assert.equal(parseCheckbox('1'), true);
+  });
+
+  await t.test('16. parseCheckbox: Falsy and missing values return false', () => {
+    assert.equal(parseCheckbox(undefined), false);
+    assert.equal(parseCheckbox(''), false);
+    assert.equal(parseCheckbox('false'), false);
+    assert.equal(parseCheckbox(false), false);
+    assert.equal(parseCheckbox(null), false);
+    assert.equal(parseCheckbox('0'), false);
+    assert.equal(parseCheckbox(0), false);
+    assert.equal(parseCheckbox('random'), false);
+  });
+
+  /* ─────────────────────────────────────────────────────────────────────
+   *  PROBLEM 1: resolveForBackfill Tests
+   * ───────────────────────────────────────────────────────────────────── */
+  const bfMaterials = [
+    { _id: 'm-e4', name: 'Scratch 1', nameNormalized: 'scratch 1', level: 'E4', usageCount: 10, lastUsedAt: new Date('2026-01-01') },
+    { _id: 'm-e5', name: 'Scratch 1', nameNormalized: 'scratch 1', level: 'E5', usageCount: 25, lastUsedAt: new Date('2026-02-01') },
+    { _id: 'm-e6', name: 'Scratch 1', nameNormalized: 'scratch 1', level: 'E6', usageCount: 25, lastUsedAt: new Date('2026-03-01') }, // tie-break date
+    { _id: 'm-uniq', name: 'Robotics', nameNormalized: 'robotics', level: 'E3', usageCount: 5, lastUsedAt: new Date('2026-01-10') },
+    { _id: 'm-canon', name: 'Python Basics', nameNormalized: 'python basics', level: 'E5', usageCount: 12, lastUsedAt: new Date('2026-01-15') },
+  ];
+
+  const bfAliases = [
+    { _id: 'a-1', nameNormalized: 'python intro', level: 'E5', material: 'm-canon' },
+    // Alias at E4 pointing to python basics
+    { _id: 'a-2', nameNormalized: 'py intro', level: 'E4', material: 'm-canon' },
+  ];
+
+  const maps = buildBackfillMaps(bfMaterials, bfAliases);
+
+  await t.test('17. resolveForBackfill: via "exact" when nameNormalized and level match', () => {
+    const res = resolveForBackfill('scratch 1', 'E4', maps);
+    assert.equal(res.via, 'exact');
+    assert.equal(String(res.materialId), 'm-e4');
+  });
+
+  await t.test('18. resolveForBackfill: via "alias" when nameNormalized and level match an alias', () => {
+    const res = resolveForBackfill('python intro', 'E5', maps);
+    assert.equal(res.via, 'alias');
+    assert.equal(String(res.materialId), 'm-canon');
+  });
+
+  await t.test('19. resolveForBackfill: via "name-unique" when name exists at only 1 level and report has different/no level', () => {
+    // Robotics is only at E3; report comes with level E6 or no level
+    const res = resolveForBackfill('robotics', 'E6', maps);
+    assert.equal(res.via, 'name-unique');
+    assert.equal(String(res.materialId), 'm-uniq');
+
+    const resNoLvl = resolveForBackfill('robotics', '', maps);
+    assert.equal(resNoLvl.via, 'name-unique');
+    assert.equal(String(resNoLvl.materialId), 'm-uniq');
+  });
+
+  await t.test('20. resolveForBackfill: via "name-unique" when all name matches point to same canonical material', () => {
+    // py intro only has an alias at E4 pointing to m-canon
+    const res = resolveForBackfill('py intro', 'E6', maps);
+    assert.equal(res.via, 'name-unique');
+    assert.equal(String(res.materialId), 'm-canon');
+  });
+
+  await t.test('21. resolveForBackfill: via "name-ambiguous" without linkAmbiguous flag skips linking', () => {
+    // scratch 1 exists at E4, E5, E6. Report comes with level '' or E2 (no exact match)
+    const res = resolveForBackfill('scratch 1', 'E2', maps, { linkAmbiguous: false });
+    assert.equal(res.via, 'name-ambiguous');
+    assert.equal(res.materialId, null);
+    assert.equal(res.ambiguousLinked, false);
+    assert.equal(res.candidates.length, 3);
+  });
+
+  await t.test('22. resolveForBackfill: via "name-ambiguous" with linkAmbiguous links highest usageCount (breaks tie by lastUsedAt)', () => {
+    // E4 has usage 10. E5 has usage 25, 2026-02-01. E6 has usage 25, 2026-03-01.
+    // Winner should be E6 due to later lastUsedAt.
+    const res = resolveForBackfill('scratch 1', 'E2', maps, { linkAmbiguous: true });
+    assert.equal(res.via, 'name-ambiguous');
+    assert.equal(res.ambiguousLinked, true);
+    assert.equal(String(res.materialId), 'm-e6');
+  });
+
+  await t.test('23. resolveForBackfill: strict mode disables name-only fallback', () => {
+    // Robotics is unique, but in strict mode no name-only fallback should happen
+    const res = resolveForBackfill('robotics', 'E6', maps, { strict: true });
+    assert.equal(res.via, null);
+    assert.equal(res.materialId, null);
+
+    // Scratch 1 ambiguous also returns null in strict mode
+    const resAmb = resolveForBackfill('scratch 1', 'E2', maps, { strict: true });
+    assert.equal(resAmb.via, null);
+    assert.equal(resAmb.materialId, null);
+
+    // Exact still matches in strict mode
+    const resExact = resolveForBackfill('scratch 1', 'E4', maps, { strict: true });
+    assert.equal(resExact.via, 'exact');
+    assert.equal(String(resExact.materialId), 'm-e4');
+  });
+
+  await t.test('24. resolveForBackfill: returns null for completely unknown subject', () => {
+    const res = resolveForBackfill('completely unknown', 'E4', maps);
+    assert.equal(res.via, null);
+    assert.equal(res.materialId, null);
+  });
+
+  /* ─────────────────────────────────────────────────────────────────────
+   *  PROBLEM 1: planRecountUpdates Tests
+   * ───────────────────────────────────────────────────────────────────── */
+  await t.test('25. planRecountUpdates: Full recount by default ONLY updates materials with linked reports', () => {
+    const aggRows = [
+      { _id: 'mat-1', count: 15, lastUsedAt: new Date('2026-04-01') },
+      { _id: 'mat-2', count: 3, lastUsedAt: new Date('2026-03-15') },
+    ];
+    const allMaterialIds = ['mat-1', 'mat-2', 'mat-3', 'mat-4'];
+
+    const updates = planRecountUpdates(aggRows, allMaterialIds, { zeroUnused: false, isTargeted: false });
+
+    // Only mat-1 and mat-2 should be in updates! mat-3 and mat-4 are UNTOUCHED!
+    assert.equal(updates.length, 2);
+    assert.ok(updates.some(u => String(u.id) === 'mat-1' && u.usageCount === 15));
+    assert.ok(updates.some(u => String(u.id) === 'mat-2' && u.usageCount === 3));
+    assert.ok(!updates.some(u => String(u.id) === 'mat-3'));
+    assert.ok(!updates.some(u => String(u.id) === 'mat-4'));
+  });
+
+  await t.test('26. planRecountUpdates: Full recount with zeroUnused=true zeroes materials without reports', () => {
+    const aggRows = [
+      { _id: 'mat-1', count: 15, lastUsedAt: new Date('2026-04-01') },
+    ];
+    const allMaterialIds = ['mat-1', 'mat-2', 'mat-3'];
+
+    const updates = planRecountUpdates(aggRows, allMaterialIds, { zeroUnused: true, isTargeted: false });
+
+    assert.equal(updates.length, 3);
+    const u1 = updates.find(u => String(u.id) === 'mat-1');
+    assert.equal(u1.usageCount, 15);
+
+    const u2 = updates.find(u => String(u.id) === 'mat-2');
+    assert.equal(u2.usageCount, 0);
+    assert.equal(u2.lastUsedAt, null);
+
+    const u3 = updates.find(u => String(u.id) === 'mat-3');
+    assert.equal(u3.usageCount, 0);
+    assert.equal(u3.lastUsedAt, null);
+  });
+
+  await t.test('27. planRecountUpdates: Targeted recount zeroes targeted materials that have no reports', () => {
+    // Targeted recount with ids ['mat-1', 'mat-target-empty']
+    const aggRows = [
+      { _id: 'mat-1', count: 10, lastUsedAt: new Date('2026-01-01') },
+    ];
+    const targetedIds = ['mat-1', 'mat-target-empty'];
+
+    const updates = planRecountUpdates(aggRows, targetedIds, { isTargeted: true });
+
+    assert.equal(updates.length, 2);
+    const u1 = updates.find(u => String(u.id) === 'mat-1');
+    assert.equal(u1.usageCount, 10);
+
+    const uEmpty = updates.find(u => String(u.id) === 'mat-target-empty');
+    assert.equal(uEmpty.usageCount, 0);
+    assert.equal(uEmpty.lastUsedAt, null);
   });
 });

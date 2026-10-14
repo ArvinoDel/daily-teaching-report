@@ -395,14 +395,265 @@ async function resolveMaterialId(subject, className, sessionType) {
 }
 
 /**
+ * Safely parse HTML checkbox input.
+ * Returns true ONLY for 'true', 'on', true, '1'.
+ * Everything else (undefined, '', 'false', false, null, 0, etc.) returns false.
+ *
+ * @param {any} value
+ * @returns {boolean}
+ */
+function parseCheckbox(value) {
+  return value === true || value === 'true' || value === 'on' || value === '1';
+}
+
+/**
+ * Counts reports that have a non-empty subject but no linked material.
+ *
+ * @returns {Promise<number>}
+ */
+async function countUnlinkedReports() {
+  try {
+    return await Report.countDocuments({
+      subject: { $exists: true, $ne: '' },
+      $or: [{ material: null }, { material: { $exists: false } }],
+    });
+  } catch (err) {
+    console.error('countUnlinkedReports error:', err);
+    return 0;
+  }
+}
+
+/**
+ * Pre-builds lookup indices from material and alias collections for fast in-memory resolution.
+ *
+ * @param {Array<Object>} materials
+ * @param {Array<Object>} aliases
+ */
+function buildBackfillMaps(materials = [], aliases = []) {
+  const materialsByKey  = new Map(); // `${nameNormalized}|||${level}` -> Material
+  const aliasesByKey    = new Map(); // `${nameNormalized}|||${level}` -> MaterialAlias
+  const materialsByName = new Map(); // `${nameNormalized}` -> [Material, ...]
+  const aliasesByName   = new Map(); // `${nameNormalized}` -> [MaterialAlias, ...]
+  const materialsById   = new Map(); // `${_id}` -> Material
+
+  for (const m of materials) {
+    const lvl  = (m.level || '').trim().toUpperCase();
+    const norm = (m.nameNormalized || '').trim().toLowerCase();
+    const key  = `${norm}|||${lvl}`;
+    materialsByKey.set(key, m);
+    materialsById.set(String(m._id), m);
+
+    if (!materialsByName.has(norm)) materialsByName.set(norm, []);
+    materialsByName.get(norm).push(m);
+  }
+
+  for (const a of aliases) {
+    const lvl  = (a.level || '').trim().toUpperCase();
+    const norm = (a.nameNormalized || '').trim().toLowerCase();
+    const key  = `${norm}|||${lvl}`;
+    aliasesByKey.set(key, a);
+
+    if (!aliasesByName.has(norm)) aliasesByName.set(norm, []);
+    aliasesByName.get(norm).push(a);
+  }
+
+  return { materialsByKey, aliasesByKey, materialsByName, aliasesByName, materialsById };
+}
+
+/**
+ * Backfill matching order:
+ *   1. Exact (nameNormalized, level)
+ *   2. Alias (nameNormalized, level)
+ *   3. Name-only fallback (unless options.strict === true):
+ *      - 'name-unique': exactly one Material (or all aliases/materials point to 1 Material)
+ *      - 'name-ambiguous': multiple distinct Materials share the name at different levels:
+ *         -> if options.linkAmbiguous === true: link the one with highest usageCount (ties broken by latest lastUsedAt)
+ *         -> otherwise: do not link (materialId: null)
+ *
+ * @param {string} nameNorm
+ * @param {string} level
+ * @param {Object} maps
+ * @param {{ strict?: boolean, linkAmbiguous?: boolean }} [options]
+ * @returns {{ materialId: any|null, via: 'exact'|'alias'|'name-unique'|'name-ambiguous'|null, candidates?: Array<Object>, ambiguousLinked?: boolean }}
+ */
+function resolveForBackfill(nameNorm, level, maps, options = {}) {
+  const norm = (nameNorm || '').trim().toLowerCase();
+  const lvl  = (level || '').trim().toUpperCase();
+  if (!norm) return { materialId: null, via: null };
+
+  const strict        = options && options.strict === true;
+  const linkAmbiguous = options && options.linkAmbiguous === true;
+
+  const bMaps = (maps && maps.materialsByKey)
+    ? maps
+    : buildBackfillMaps(maps && maps.materials ? maps.materials : [], maps && maps.aliases ? maps.aliases : []);
+
+  const exactKey = `${norm}|||${lvl}`;
+
+  // 1. Exact match on (name, level)
+  const exactMat = bMaps.materialsByKey.get(exactKey);
+  if (exactMat) {
+    return { materialId: exactMat._id, via: 'exact', material: exactMat };
+  }
+
+  // 2. Alias match on (name, level)
+  const alias = bMaps.aliasesByKey.get(exactKey);
+  if (alias) {
+    const targetId = (typeof alias.material === 'object' && alias.material) ? alias.material._id : alias.material;
+    const targetMat = bMaps.materialsById.get(String(targetId));
+    return { materialId: targetId, via: 'alias', material: targetMat };
+  }
+
+  // Strict mode: disable name-only fallback
+  if (strict) {
+    return { materialId: null, via: null };
+  }
+
+  // 3. Name-only fallback: find all candidate canonical materials
+  const candidateMaterialIds  = new Set();
+  const candidateMaterialsMap = new Map();
+
+  const nameMats = bMaps.materialsByName.get(norm) || [];
+  for (const m of nameMats) {
+    const idStr = String(m._id);
+    candidateMaterialIds.add(idStr);
+    candidateMaterialsMap.set(idStr, m);
+  }
+
+  const nameAliases = bMaps.aliasesByName.get(norm) || [];
+  for (const a of nameAliases) {
+    const targetId = (typeof a.material === 'object' && a.material) ? a.material._id : a.material;
+    if (targetId) {
+      const idStr = String(targetId);
+      candidateMaterialIds.add(idStr);
+      if (!candidateMaterialsMap.has(idStr)) {
+        const foundMat = bMaps.materialsById.get(idStr);
+        if (foundMat) candidateMaterialsMap.set(idStr, foundMat);
+      }
+    }
+  }
+
+  if (candidateMaterialIds.size === 0) {
+    return { materialId: null, via: null };
+  }
+
+  if (candidateMaterialIds.size === 1) {
+    const [uniqueId] = candidateMaterialIds;
+    const mat = candidateMaterialsMap.get(uniqueId);
+    return {
+      materialId: mat ? mat._id : uniqueId,
+      via: 'name-unique',
+      material: mat,
+    };
+  }
+
+  // Multiple candidates -> name-ambiguous
+  const candidates = [...candidateMaterialsMap.values()];
+  candidates.sort((a, b) => {
+    const countA = a.usageCount || 0;
+    const countB = b.usageCount || 0;
+    if (countB !== countA) return countB - countA;
+    const dateA = a.lastUsedAt ? new Date(a.lastUsedAt).getTime() : 0;
+    const dateB = b.lastUsedAt ? new Date(b.lastUsedAt).getTime() : 0;
+    if (dateB !== dateA) return dateB - dateA;
+    return String(a._id).localeCompare(String(b._id));
+  });
+
+  if (linkAmbiguous) {
+    return {
+      materialId: candidates[0]._id,
+      via: 'name-ambiguous',
+      material: candidates[0],
+      candidates,
+      ambiguousLinked: true,
+    };
+  }
+
+  return {
+    materialId: null,
+    via: 'name-ambiguous',
+    material: null,
+    candidates,
+    ambiguousLinked: false,
+  };
+}
+
+/**
+ * Pure helper to plan usage count and date updates from report aggregation rows.
+ *
+ * - When isTargeted is true (or targetedIds given): every targeted ID is updated (set to 0 if not in aggRows).
+ * - When full recount (no targetedIds):
+ *     - Materials with linked reports (in aggRows) are updated.
+ *     - Materials with zero reports are UNTOUCHED by default, unless options.zeroUnused is true.
+ *
+ * @param {Array<{ _id: any, count: number, lastUsedAt: any }>} aggRows
+ * @param {Array<any>} [allMaterialIds]
+ * @param {{ zeroUnused?: boolean, isTargeted?: boolean }} [options]
+ * @returns {Array<{ id: any, usageCount: number, lastUsedAt: any }>}
+ */
+function planRecountUpdates(aggRows = [], allMaterialIds = [], options = {}) {
+  const zeroUnused = options && options.zeroUnused === true;
+  const isTargeted = options && options.isTargeted === true;
+
+  const aggMap = new Map();
+  for (const r of (aggRows || [])) {
+    aggMap.set(String(r._id), {
+      id: r._id,
+      usageCount: r.count,
+      lastUsedAt: r.lastUsedAt || null,
+    });
+  }
+
+  const updates = [];
+
+  if (isTargeted) {
+    for (const id of (allMaterialIds || [])) {
+      const rawId = (id && id._id) ? id._id : id;
+      const strId = String(rawId);
+      const agg = aggMap.get(strId);
+      updates.push({
+        id: rawId,
+        usageCount: agg ? agg.usageCount : 0,
+        lastUsedAt: agg ? agg.lastUsedAt : null,
+      });
+    }
+  } else {
+    // Full recount:
+    // Update materials that have at least one linked report
+    for (const agg of aggMap.values()) {
+      updates.push(agg);
+    }
+
+    // Only zero out unused materials if zeroUnused is explicitly true
+    if (zeroUnused && Array.isArray(allMaterialIds)) {
+      for (const id of allMaterialIds) {
+        const rawId = (id && id._id) ? id._id : id;
+        const strId = String(rawId);
+        if (!aggMap.has(strId)) {
+          updates.push({
+            id: rawId,
+            usageCount: 0,
+            lastUsedAt: null,
+          });
+        }
+      }
+    }
+  }
+
+  return updates;
+}
+
+/**
  * Recount usageCount and lastUsedAt for specified materials, or for all materials if no ids given.
- * - usageCount: count of reports referencing material._id that are NOT auto-generated.
- * - lastUsedAt: maximum report date (or null).
+ * - Targeted recount (with ids): always sets usageCount (0 if no reports left).
+ * - Full recount (no ids): ONLY updates materials that have at least one linked report.
+ *   Materials with zero reports retain their current usageCount and lastUsedAt unless options.zeroUnused === true.
  *
  * @param {Array<string|mongoose.Types.ObjectId>|string|mongoose.Types.ObjectId} [materialIds]
+ * @param {{ zeroUnused?: boolean }} [options]
  * @returns {Promise<void>}
  */
-async function recountMaterialUsage(materialIds) {
+async function recountMaterialUsage(materialIds, options = {}) {
   try {
     if (materialIds !== undefined && materialIds !== null) {
       let ids = Array.isArray(materialIds) ? materialIds : [materialIds];
@@ -425,32 +676,26 @@ async function recountMaterialUsage(materialIds) {
         },
       ]);
 
-      const aggMap = new Map();
-      for (const r of agg) {
-        aggMap.set(String(r._id), { count: r.count, lastUsedAt: r.lastUsedAt || null });
-      }
-
-      const bulkOps = ids.map(id => {
-        const strId = String(id);
-        const data = aggMap.get(strId) || { count: 0, lastUsedAt: null };
-        return {
-          updateOne: {
-            filter: { _id: id },
-            update: {
-              $set: {
-                usageCount: data.count,
-                lastUsedAt: data.lastUsedAt,
-              },
+      const planned = planRecountUpdates(agg, ids, { isTargeted: true });
+      const bulkOps = planned.map(u => ({
+        updateOne: {
+          filter: { _id: u.id },
+          update: {
+            $set: {
+              usageCount: u.usageCount,
+              lastUsedAt: u.lastUsedAt,
             },
           },
-        };
-      });
+        },
+      }));
 
       if (bulkOps.length > 0) {
         await Material.bulkWrite(bulkOps);
       }
     } else {
       // Full recount of ALL materials
+      const zeroUnused = options && options.zeroUnused === true;
+
       const agg = await Report.aggregate([
         {
           $match: {
@@ -467,28 +712,41 @@ async function recountMaterialUsage(materialIds) {
         },
       ]);
 
-      const activeIds = agg.map(r => r._id);
-
-      // Reset materials not in aggregation to 0 usage and null lastUsedAt
-      await Material.updateMany(
-        { _id: { $nin: activeIds } },
-        { $set: { usageCount: 0, lastUsedAt: null } }
-      );
-
-      // Set usageCount and lastUsedAt for active materials
-      if (agg.length > 0) {
-        const bulkOps = agg.map(r => ({
+      if (zeroUnused) {
+        const allMaterials = await Material.find().select('_id').lean();
+        const allIds = allMaterials.map(m => m._id);
+        const planned = planRecountUpdates(agg, allIds, { zeroUnused: true });
+        const bulkOps = planned.map(u => ({
           updateOne: {
-            filter: { _id: r._id },
+            filter: { _id: u.id },
             update: {
               $set: {
-                usageCount: r.count,
-                lastUsedAt: r.lastUsedAt || null,
+                usageCount: u.usageCount,
+                lastUsedAt: u.lastUsedAt,
               },
             },
           },
         }));
-        await Material.bulkWrite(bulkOps);
+        if (bulkOps.length > 0) {
+          await Material.bulkWrite(bulkOps);
+        }
+      } else {
+        // Safe default: ONLY update materials with at least one linked report
+        const planned = planRecountUpdates(agg, null, { zeroUnused: false });
+        if (planned.length > 0) {
+          const bulkOps = planned.map(u => ({
+            updateOne: {
+              filter: { _id: u.id },
+              update: {
+                $set: {
+                  usageCount: u.usageCount,
+                  lastUsedAt: u.lastUsedAt,
+                },
+              },
+            },
+          }));
+          await Material.bulkWrite(bulkOps);
+        }
       }
     }
 
@@ -509,4 +767,9 @@ module.exports = {
   findCanonicalMaterial,
   planMergeAliases,
   planRename,
+  parseCheckbox,
+  countUnlinkedReports,
+  buildBackfillMaps,
+  resolveForBackfill,
+  planRecountUpdates,
 };
