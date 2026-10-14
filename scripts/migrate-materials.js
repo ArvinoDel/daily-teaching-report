@@ -23,7 +23,6 @@
 'use strict';
 
 require('dotenv').config();
-require('dotenv').config({ path: '.env.local', override: true });
 
 const mongoose = require('mongoose');
 const Report   = require('../models/Report');
@@ -31,7 +30,8 @@ const Group    = require('../models/Group');
 const Material = require('../models/Material');
 const { normalizeMaterialName, formatMaterialDisplayName } = require('../models/Material');
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/daily_teaching_report';
+const uriArg = process.argv.find(a => a.startsWith('--uri='));
+const MONGO_URI = uriArg ? uriArg.slice(6) : process.env.MONGO_URI;
 
 const args  = process.argv.slice(2);
 const APPLY = args.includes('--apply');
@@ -43,10 +43,21 @@ async function run() {
   console.log(`  Mode: ${DRY_RUN ? 'DRY RUN (Preview only, no DB writes)' : 'APPLY (Writing to database)'}`);
   console.log('='.repeat(65));
 
+  if (!MONGO_URI || (!MONGO_URI.startsWith('mongodb://') && !MONGO_URI.startsWith('mongodb+srv://'))) {
+    console.error('\nError: Invalid or missing MongoDB URI.');
+    console.error('MONGO_URI must be provided in .env or via --uri=<mongo uri> and must start with "mongodb://" or "mongodb+srv://".\n');
+    process.exit(1);
+  }
+
   try {
     console.log('\n[1/5] Connecting to database...');
     await mongoose.connect(MONGO_URI);
-    console.log('Connected to MongoDB successfully.');
+    const connHost = mongoose.connection.host;
+    const connDb   = mongoose.connection.db ? mongoose.connection.db.databaseName : mongoose.connection.name;
+    console.log(`Connected to MongoDB successfully: host=${connHost} db=${connDb}`);
+    if (APPLY) {
+      console.log(`⚠️  LIVE RUN: changes will be written to ${connDb} on ${connHost}\n`);
+    }
 
     // 1. Build map of group_name -> level from Group collection
     console.log('\n[2/5] Loading groups and resolving levels...');
