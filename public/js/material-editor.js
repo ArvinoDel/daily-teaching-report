@@ -207,16 +207,34 @@
       delBtn.className = 'p-1 text-slate-400 hover:text-red-500 rounded hover:bg-red-50 ml-1';
       delBtn.title = 'Remove resource';
       delBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>';
-      delBtn.onclick = function () {
+      delBtn.onclick = async function () {
         if (res._id) {
-          // Send delete to server
-          fetch(`/materials/${materialId}/resources/${res._id}`, {
-            method: 'DELETE',
-            headers: {
-              'X-CSRF-Token': csrfToken,
-              'Accept': 'application/json'
+          try {
+            const resp = await fetch(`/materials/${materialId}/resources/${res._id}?baseVersion=${currentVersion}`, {
+              method: 'DELETE',
+              headers: {
+                'X-CSRF-Token': csrfToken,
+                'Accept': 'application/json'
+              }
+            });
+            if (resp.status === 409) {
+              if (conflictModal) conflictModal.classList.remove('hidden');
+              return;
             }
-          }).catch(console.error);
+            if (!resp.ok) {
+              const errJson = await resp.json().catch(() => ({}));
+              alert(errJson.error || 'Failed to remove resource.');
+              return;
+            }
+            const json = await resp.json();
+            if (json && json.version) {
+              currentVersion = json.version;
+            }
+          } catch (delErr) {
+            console.error('Delete resource error:', delErr);
+            alert('Network error removing resource.');
+            return;
+          }
         }
         resources.splice(idx, 1);
         markDirty();
@@ -268,8 +286,14 @@
             'X-CSRF-Token': csrfToken,
             'Accept': 'application/json'
           },
-          body: JSON.stringify({ kind: 'link', url, label })
+          body: JSON.stringify({ kind: 'link', url, label, baseVersion: currentVersion })
         });
+
+        if (resp.status === 409) {
+          if (conflictModal) conflictModal.classList.remove('hidden');
+          btnSubmitLink.disabled = false;
+          return;
+        }
 
         const json = await resp.json();
         if (!resp.ok) {
@@ -278,6 +302,9 @@
           return;
         }
 
+        if (json.version) {
+          currentVersion = json.version;
+        }
         resources.push(json.resource);
         linkUrl.value = '';
         linkLabel.value = '';
@@ -416,9 +443,16 @@
                 publicId: cloudRes.public_id,
                 resourceType: cloudRes.resource_type,
                 deliveryType: 'authenticated',
-                format: cloudRes.format
+                format: cloudRes.format,
+                baseVersion: currentVersion
               })
             });
+
+            if (regResp.status === 409) {
+              if (conflictModal) conflictModal.classList.remove('hidden');
+              if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
+              return;
+            }
 
             const regJson = await regResp.json();
             if (!regResp.ok) {
@@ -426,6 +460,9 @@
               return;
             }
 
+            if (regJson.version) {
+              currentVersion = regJson.version;
+            }
             resources.push(regJson.resource);
             uploadPanel.classList.add('hidden');
             if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
@@ -470,6 +507,12 @@
 
       const bodyHtml = quill ? quill.root.innerHTML : '';
       const note = revisionNoteInput ? revisionNoteInput.value.trim() : '';
+      const resourcesPayload = resources.map(function (r) {
+        return {
+          _id: r._id,
+          label: (r.label || '').trim().slice(0, 100)
+        };
+      });
 
       try {
         const resp = await fetch(`/materials/${materialId}`, {
@@ -481,7 +524,7 @@
           },
           body: JSON.stringify({
             body: bodyHtml,
-            resources: resources,
+            resources: resourcesPayload,
             note: note,
             baseVersion: currentVersion
           })

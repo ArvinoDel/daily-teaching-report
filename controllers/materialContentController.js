@@ -18,12 +18,15 @@ const {
   getAllowedExtensions,
   getMaxFileBytes,
   sanitizeMaterialHtml,
+  renderMaterialBody,
+  safeJson,
   computeHasContent,
   validateResource,
   validateLink,
   canEdit,
   checkVersionConflict,
   MAX_RESOURCES,
+  MAX_BODY_BYTES,
 } = require('../services/materialContentService');
 
 cloudinary.config({
@@ -94,6 +97,8 @@ exports.materialsLibrary = async (req, res) => {
       selectedLevel: level || '',
       searchQuery:   q || '',
       userIsAdmin:   isAdminUser(req),
+      renderMaterialBody,
+      safeJson,
     });
   } catch (err) {
     console.error('materialsLibrary error:', err);
@@ -122,6 +127,8 @@ exports.showMaterial = async (req, res) => {
       content: content || { body: '', resources: [], locked: false, version: 1 },
       userCanEdit,
       userIsAdmin,
+      renderMaterialBody,
+      safeJson,
       csrfToken: (req.session && req.session.csrfToken) || (res.locals && res.locals.csrfToken) || '',
     });
   } catch (err) {
@@ -154,6 +161,8 @@ exports.editMaterial = async (req, res) => {
       userIsAdmin: isAdminUser(req),
       maxFileMb: parseInt(process.env.MATERIAL_MAX_FILE_MB, 10) || 10,
       allowedExtensions: getAllowedExtensions(),
+      renderMaterialBody,
+      safeJson,
       csrfToken: (req.session && req.session.csrfToken) || (res.locals && res.locals.csrfToken) || '',
     });
   } catch (err) {
@@ -167,6 +176,18 @@ exports.editMaterial = async (req, res) => {
  * ───────────────────────────────────────────────────────────────────── */
 exports.saveMaterial = async (req, res) => {
   try {
+    const { body, resources, note, baseVersion } = req.body;
+
+    // baseVersion is required
+    if (baseVersion === undefined || baseVersion === null || baseVersion === '') {
+      return res.status(400).json({ error: 'baseVersion is required.' });
+    }
+
+    // Body size validation: do not truncate, return 422
+    if (body && typeof body === 'string' && Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) {
+      return res.status(422).json({ error: 'Content body exceeds 200 KB limit.' });
+    }
+
     const material = await Material.findById(req.params.id);
     if (!material) {
       return res.status(404).json({ error: 'Material not found.' });
@@ -179,65 +200,107 @@ exports.saveMaterial = async (req, res) => {
       return res.status(403).json({ error: 'This material is locked for editing.' });
     }
 
-    const { body, resources, note, baseVersion } = req.body;
-
-    // Check version conflict
-    if (content && checkVersionConflict(baseVersion, content.version)) {
-      return res.status(409).json({ message: 'Someone else saved changes. Reload to merge.' });
-    }
-
     // Sanitize body
     const sanitizedBody = sanitizeMaterialHtml(body || '');
 
-    // Validate resources if passed
-    let validatedResources = content ? [...content.resources] : [];
-    if (Array.isArray(resources)) {
+    // Server-side resource integrity:
+    // Build saved resources ONLY from existing stored resources.
+    // Client may send [{ _id, label }] in desired order.
+    let savedResources = [];
+    if (content) {
+      savedResources = [...content.resources];
+    }
+
+    if (resources !== undefined) {
+      if (!Array.isArray(resources)) {
+        return res.status(422).json({ error: 'Resources must be an array.' });
+      }
       if (resources.length > MAX_RESOURCES) {
         return res.status(422).json({ error: `Maximum ${MAX_RESOURCES} resources allowed.` });
       }
-      // Re-order or update labels based on resources array
-      const mapped = [];
-      for (const item of resources) {
-        if (!item || !item.kind) continue;
-        const validRes = validateResource(item, material._id);
-        if (!validRes.valid) {
-          return res.status(422).json({ error: validRes.error || 'Invalid resource.' });
+
+      const existingMap = new Map();
+      if (content && Array.isArray(content.resources)) {
+        for (const r of content.resources) {
+          existingMap.set(String(r._id), r);
         }
-        mapped.push(item);
       }
-      validatedResources = mapped;
+
+      const mapped = [];
+      const seenIds = new Set();
+      for (const item of resources) {
+        if (!item || typeof item !== 'object' || !item._id) {
+          return res.status(422).json({ error: 'Resource item must include _id.' });
+        }
+        const idStr = String(item._id);
+        if (seenIds.has(idStr)) {
+          return res.status(422).json({ error: 'Duplicate resource _id.' });
+        }
+        seenIds.add(idStr);
+
+        const existing = existingMap.get(idStr);
+        if (!existing) {
+          return res.status(422).json({ error: `Unknown resource _id: ${idStr}` });
+        }
+
+        const resObj = existing.toObject ? existing.toObject() : { ...existing };
+        resObj.label = item.label !== undefined ? String(item.label).trim().slice(0, 100) : (resObj.label || '');
+        mapped.push(resObj);
+      }
+      savedResources = mapped;
     }
 
-    const currentVersion = content ? (content.version || 1) : 0;
-    const newVersion = currentVersion + 1;
     const now = new Date();
     const userName = user.displayName || user.name || user.username || 'User';
+    let updatedContent;
+    let newVersion;
 
-    if (!content) {
-      content = new MaterialContent({
-        material: material._id,
-        body: sanitizedBody,
-        resources: validatedResources,
-        version: newVersion,
-        updatedBy: user._id,
-        updatedByName: userName,
-      });
+    if (content) {
+      const currentVersion = Number(baseVersion);
+      newVersion = currentVersion + 1;
+
+      updatedContent = await MaterialContent.findOneAndUpdate(
+        { _id: content._id, version: currentVersion },
+        {
+          $set: {
+            body: sanitizedBody,
+            resources: savedResources,
+            version: newVersion,
+            updatedBy: user._id,
+            updatedByName: userName,
+          },
+        },
+        { new: true }
+      );
+
+      if (!updatedContent) {
+        return res.status(409).json({ message: 'Someone else saved changes. Reload to merge.' });
+      }
     } else {
-      content.body = sanitizedBody;
-      content.resources = validatedResources;
-      content.version = newVersion;
-      content.updatedBy = user._id;
-      content.updatedByName = userName;
+      newVersion = 1;
+      try {
+        updatedContent = await MaterialContent.create({
+          material: material._id,
+          body: sanitizedBody,
+          resources: savedResources,
+          version: newVersion,
+          updatedBy: user._id,
+          updatedByName: userName,
+        });
+      } catch (err) {
+        if (err.code === 11000) {
+          return res.status(409).json({ message: 'Someone else saved changes. Reload to merge.' });
+        }
+        throw err;
+      }
     }
-
-    await content.save();
 
     // Snapshot revision
     await MaterialContentRevision.create({
       material: material._id,
       version: newVersion,
       body: sanitizedBody,
-      resources: content.resources,
+      resources: updatedContent.resources,
       note: note ? String(note).trim().slice(0, 200) : '',
       editedBy: user._id,
       editedByName: userName,
@@ -256,7 +319,7 @@ exports.saveMaterial = async (req, res) => {
     }
 
     // Update Material.hasContent
-    const hasContent = computeHasContent(sanitizedBody, content.resources);
+    const hasContent = computeHasContent(sanitizedBody, updatedContent.resources);
     material.hasContent = hasContent;
     material.contentUpdatedAt = now;
     await material.save();
@@ -355,6 +418,8 @@ exports.getHistory = async (req, res) => {
       material,
       revisions,
       currentVersion: currentContent ? currentContent.version : 1,
+      renderMaterialBody,
+      safeJson,
       csrfToken: (req.session && req.session.csrfToken) || (res.locals && res.locals.csrfToken) || '',
     });
   } catch (err) {
@@ -384,38 +449,65 @@ exports.restoreRevision = async (req, res) => {
       return res.status(404).json({ error: 'Revision not found.' });
     }
 
+    // Sanitize restored body before saving
+    const sanitizedBody = sanitizeMaterialHtml(revision.body || '');
+    if (Buffer.byteLength(sanitizedBody, 'utf8') > MAX_BODY_BYTES) {
+      return res.status(422).json({ error: 'Restored body exceeds 200 KB limit.' });
+    }
+
     let content = await MaterialContent.findOne({ material: material._id });
-    const currentVersion = content ? (content.version || 1) : 0;
-    const newVersion = currentVersion + 1;
     const user = req.session.user;
     const userName = user.displayName || user.username || 'Admin';
     const now = new Date();
+    let updatedContent;
+    let newVersion;
 
-    if (!content) {
-      content = new MaterialContent({
-        material: material._id,
-        body: revision.body,
-        resources: revision.resources || [],
-        version: newVersion,
-        updatedBy: user._id,
-        updatedByName: userName,
-      });
+    if (content) {
+      const currentVersion = content.version;
+      newVersion = currentVersion + 1;
+
+      updatedContent = await MaterialContent.findOneAndUpdate(
+        { _id: content._id, version: currentVersion },
+        {
+          $set: {
+            body: sanitizedBody,
+            resources: revision.resources || [],
+            version: newVersion,
+            updatedBy: user._id,
+            updatedByName: userName,
+          },
+        },
+        { new: true }
+      );
+
+      if (!updatedContent) {
+        return res.status(409).json({ message: 'Someone else saved changes. Reload to merge.' });
+      }
     } else {
-      content.body = revision.body;
-      content.resources = revision.resources || [];
-      content.version = newVersion;
-      content.updatedBy = user._id;
-      content.updatedByName = userName;
+      newVersion = 1;
+      try {
+        updatedContent = await MaterialContent.create({
+          material: material._id,
+          body: sanitizedBody,
+          resources: revision.resources || [],
+          version: newVersion,
+          updatedBy: user._id,
+          updatedByName: userName,
+        });
+      } catch (err) {
+        if (err.code === 11000) {
+          return res.status(409).json({ message: 'Someone else saved changes. Reload to merge.' });
+        }
+        throw err;
+      }
     }
-
-    await content.save();
 
     // Create a NEW revision record (never rewrite history)
     await MaterialContentRevision.create({
       material: material._id,
       version: newVersion,
-      body: content.body,
-      resources: content.resources,
+      body: sanitizedBody,
+      resources: updatedContent.resources,
       note: `Restored version ${targetVer}`,
       editedBy: user._id,
       editedByName: userName,
@@ -434,7 +526,7 @@ exports.restoreRevision = async (req, res) => {
     }
 
     // Update Material
-    const hasContent = computeHasContent(content.body, content.resources);
+    const hasContent = computeHasContent(sanitizedBody, updatedContent.resources);
     material.hasContent = hasContent;
     material.contentUpdatedAt = now;
     await material.save();
@@ -529,24 +621,23 @@ exports.signUpload = async (req, res) => {
  * ───────────────────────────────────────────────────────────────────── */
 exports.addResource = async (req, res) => {
   try {
+    const baseVersion = req.body?.baseVersion !== undefined ? req.body.baseVersion : req.query.baseVersion;
+    if (baseVersion === undefined || baseVersion === null || baseVersion === '') {
+      return res.status(400).json({ error: 'baseVersion is required.' });
+    }
+
     const material = await Material.findById(req.params.id);
     if (!material) {
       return res.status(404).json({ error: 'Material not found.' });
     }
 
     let content = await MaterialContent.findOne({ material: material._id });
-    if (!canEdit(req.session.user, content)) {
+    const user = req.session.user;
+    if (!canEdit(user, content)) {
       return res.status(403).json({ error: 'Editing is not permitted.' });
     }
 
-    if (!content) {
-      content = new MaterialContent({
-        material: material._id,
-        version: 1,
-      });
-    }
-
-    if (content.resources.length >= MAX_RESOURCES) {
+    if (content && content.resources.length >= MAX_RESOURCES) {
       return res.status(422).json({ error: `Maximum ${MAX_RESOURCES} resources reached.` });
     }
 
@@ -608,7 +699,7 @@ exports.addResource = async (req, res) => {
           bytes: asset.bytes || 0,
           originalFilename: asset.original_filename || '',
         },
-        addedBy: req.session.user._id,
+        addedBy: user._id,
         addedAt: new Date(),
       };
     } else if (kind === 'link') {
@@ -621,23 +712,99 @@ exports.addResource = async (req, res) => {
         kind: 'link',
         label: label ? String(label).trim().slice(0, 100) : 'Link',
         url: linkCheck.cleanUrl,
-        addedBy: req.session.user._id,
+        addedBy: user._id,
         addedAt: new Date(),
       };
     } else {
       return res.status(422).json({ error: 'Invalid resource kind.' });
     }
 
-    content.resources.push(resourceToSave);
-    await content.save();
+    const now = new Date();
+    const userName = user.displayName || user.name || user.username || 'User';
+    let updatedContent;
+    let newVersion;
+
+    if (content) {
+      const currentVersion = Number(baseVersion);
+      newVersion = currentVersion + 1;
+
+      updatedContent = await MaterialContent.findOneAndUpdate(
+        { _id: content._id, version: currentVersion },
+        {
+          $push: { resources: resourceToSave },
+          $set: {
+            version: newVersion,
+            updatedBy: user._id,
+            updatedByName: userName,
+          },
+        },
+        { new: true }
+      );
+
+      if (!updatedContent) {
+        return res.status(409).json({ message: 'Someone else saved changes. Reload to merge.' });
+      }
+    } else {
+      newVersion = 1;
+      try {
+        updatedContent = await MaterialContent.create({
+          material: material._id,
+          resources: [resourceToSave],
+          version: newVersion,
+          updatedBy: user._id,
+          updatedByName: userName,
+        });
+      } catch (err) {
+        if (err.code === 11000) {
+          return res.status(409).json({ message: 'Someone else saved changes. Reload to merge.' });
+        }
+        throw err;
+      }
+    }
+
+    const created = updatedContent.resources[updatedContent.resources.length - 1];
+    const note = kind === 'file' ? `Added file: ${created.label}` : `Added link: ${created.label}`;
+
+    // Record revision
+    await MaterialContentRevision.create({
+      material: material._id,
+      version: newVersion,
+      body: updatedContent.body,
+      resources: updatedContent.resources,
+      note,
+      editedBy: user._id,
+      editedByName: userName,
+      editedAt: now,
+    });
+
+    // Prune revisions
+    const oldRevs = await MaterialContentRevision.find({ material: material._id })
+      .sort({ version: -1 })
+      .select('_id')
+      .skip(30)
+      .lean();
+
+    if (oldRevs.length > 0) {
+      await MaterialContentRevision.deleteMany({ _id: { $in: oldRevs.map(r => r._id) } });
+    }
 
     material.hasContent = true;
-    material.contentUpdatedAt = new Date();
+    material.contentUpdatedAt = now;
     await material.save();
     invalidateMaterialsCache();
 
-    const created = content.resources[content.resources.length - 1];
-    return res.json({ ok: true, resource: created });
+    // Audit log
+    await AuditLog.create({
+      admin: user._id,
+      adminName: userName,
+      action: 'update',
+      targetType: 'material',
+      targetId: material._id,
+      targetLabel: material.name,
+      meta: { contentVersion: newVersion, note },
+    }).catch(() => {});
+
+    return res.json({ ok: true, version: newVersion, resource: created });
   } catch (err) {
     console.error('addResource error:', err);
     return res.status(500).json({ error: 'Failed to add resource.' });
@@ -649,6 +816,11 @@ exports.addResource = async (req, res) => {
  * ───────────────────────────────────────────────────────────────────── */
 exports.removeResource = async (req, res) => {
   try {
+    const baseVersion = req.body?.baseVersion !== undefined ? req.body.baseVersion : req.query.baseVersion;
+    if (baseVersion === undefined || baseVersion === null || baseVersion === '') {
+      return res.status(400).json({ error: 'baseVersion is required.' });
+    }
+
     const material = await Material.findById(req.params.id);
     if (!material) {
       return res.status(404).json({ error: 'Material not found.' });
@@ -659,27 +831,81 @@ exports.removeResource = async (req, res) => {
       return res.status(404).json({ error: 'Content not found.' });
     }
 
-    if (!canEdit(req.session.user, content)) {
+    const user = req.session.user;
+    if (!canEdit(user, content)) {
       return res.status(403).json({ error: 'Editing is not permitted.' });
     }
 
-    const initialLen = content.resources.length;
-    content.resources = content.resources.filter(r => String(r._id) !== req.params.rid);
-
-    if (content.resources.length === initialLen) {
+    const toRemove = content.resources.find(r => String(r._id) === String(req.params.rid));
+    if (!toRemove) {
       return res.status(404).json({ error: 'Resource not found.' });
     }
 
-    // Do NOT destroy Cloudinary asset — older revisions may reference it
-    await content.save();
+    const currentVersion = Number(baseVersion);
+    const newVersion = currentVersion + 1;
+    const now = new Date();
+    const userName = user.displayName || user.name || user.username || 'User';
 
-    const hasContent = computeHasContent(content.body, content.resources);
+    const updatedContent = await MaterialContent.findOneAndUpdate(
+      { _id: content._id, version: currentVersion },
+      {
+        $pull: { resources: { _id: toRemove._id } },
+        $set: {
+          version: newVersion,
+          updatedBy: user._id,
+          updatedByName: userName,
+        },
+      },
+      { new: true }
+    );
+
+    if (!updatedContent) {
+      return res.status(409).json({ message: 'Someone else saved changes. Reload to merge.' });
+    }
+
+    const note = `Removed: ${toRemove.label || 'Resource'}`;
+
+    // Record revision
+    await MaterialContentRevision.create({
+      material: material._id,
+      version: newVersion,
+      body: updatedContent.body,
+      resources: updatedContent.resources,
+      note,
+      editedBy: user._id,
+      editedByName: userName,
+      editedAt: now,
+    });
+
+    // Prune revisions
+    const oldRevs = await MaterialContentRevision.find({ material: material._id })
+      .sort({ version: -1 })
+      .select('_id')
+      .skip(30)
+      .lean();
+
+    if (oldRevs.length > 0) {
+      await MaterialContentRevision.deleteMany({ _id: { $in: oldRevs.map(r => r._id) } });
+    }
+
+    const hasContent = computeHasContent(updatedContent.body, updatedContent.resources);
     material.hasContent = hasContent;
-    material.contentUpdatedAt = new Date();
+    material.contentUpdatedAt = now;
     await material.save();
     invalidateMaterialsCache();
 
-    return res.json({ ok: true });
+    // Audit log
+    await AuditLog.create({
+      admin: user._id,
+      adminName: userName,
+      action: 'update',
+      targetType: 'material',
+      targetId: material._id,
+      targetLabel: material.name,
+      meta: { contentVersion: newVersion, note },
+    }).catch(() => {});
+
+    return res.json({ ok: true, version: newVersion });
   } catch (err) {
     console.error('removeResource error:', err);
     return res.status(500).json({ error: 'Failed to remove resource.' });

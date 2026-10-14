@@ -128,6 +128,10 @@ const generalLimiter = rateLimit({
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 
+const { renderMaterialBody, safeJson } = require('./services/materialContentService');
+app.locals.renderMaterialBody = renderMaterialBody;
+app.locals.safeJson = safeJson;
+
 app.use(generalLimiter);
 app.use(compression()); // ⚡ gzip all responses — reduces page size by 70–85%
 

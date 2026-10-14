@@ -41,7 +41,8 @@
         <%
           const isCurrent = rev.version === currentVersion;
           const resCount = (rev.resources && rev.resources.length) || 0;
-          const hasBody = rev.body && rev.body.trim().length > 0;
+          const renderedRevBody = (typeof renderMaterialBody === 'function' ? renderMaterialBody(rev.body) : (rev.body || ''));
+          const hasBody = renderedRevBody && renderedRevBody.trim().length > 0;
         %>
         <div class="bg-white rounded-2xl border <%= isCurrent ? 'border-brand-300 ring-2 ring-brand-100' : 'border-slate-100' %> shadow-sm p-5 sm:p-6 transition">
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
@@ -103,7 +104,7 @@
               <div class="mt-3 p-4 rounded-xl border border-slate-100 bg-slate-50 max-h-60 overflow-y-auto">
                 <% if (hasBody) { %>
                   <div class="prose prose-xs max-w-none text-slate-700">
-                    <%- rev.body %>
+                    <%- renderedRevBody %>
                   </div>
                 <% } else { %>
                   <p class="text-slate-400 italic">No written content body in this version.</p>

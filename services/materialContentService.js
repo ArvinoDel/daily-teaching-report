@@ -4,12 +4,15 @@
  * services/materialContentService.js
  *
  * Core service & helpers for Material Content:
- * - HTML sanitization (sanitize-html with strict allowlist)
+ * - HTML sanitization (xss with strict allowlist, escaping unknown tags)
+ * - Safe JSON rendering for views
  * - Resource validation (links & files)
  * - Permission checking (admin vs teacher vs lock)
- * - Revision management & pruning (keep latest 30)
+ * - Revision management & versioning
  * - Content merge planning
  */
+
+const xss = require('xss');
 
 const DEFAULT_ALLOWED_EXTENSIONS = [
   'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx',
@@ -35,93 +38,92 @@ function getMaxFileBytes() {
 }
 
 /* ─────────────────────────────────────────────────────────────────────
- *  1. Sanitization (Pure CommonJS — zero external ESM dependencies)
+ *  1. Sanitization (Whitelist-based via xss, Pure CommonJS)
  * ───────────────────────────────────────────────────────────────────── */
-const ALLOWED_TAGS = new Set([
-  'h1', 'h2', 'h3', 'h4',
-  'p', 'br',
-  'strong', 'em', 'u', 's',
-  'ul', 'ol', 'li',
-  'blockquote',
-  'a',
-  'code', 'pre',
-  'hr',
-]);
+function decodeHtmlEntities(str) {
+  let decoded = str;
+  for (let i = 0; i < 3; i++) {
+    const next = decoded
+      .replace(/&#x([0-9a-f]+);?/gi, (_, hex) => {
+        try { return String.fromCharCode(parseInt(hex, 16)); } catch (_) { return ''; }
+      })
+      .replace(/&#([0-9]+);?/gi, (_, dec) => {
+        try { return String.fromCharCode(parseInt(dec, 10)); } catch (_) { return ''; }
+      })
+      .replace(/&colon;?/gi, ':')
+      .replace(/&tab;?/gi, '')
+      .replace(/&newline;?/gi, '');
+    if (next === decoded) break;
+    decoded = next;
+  }
+  return decoded;
+}
+
+function isSafeHref(val) {
+  if (!val || typeof val !== 'string') return false;
+  const decoded = decodeHtmlEntities(val);
+  const normalized = decoded.replace(/[\x00-\x20\x7f-\x9f\s]/g, '').toLowerCase();
+
+  // Reject protocol-relative links (//evil.com or \\evil.com)
+  if (normalized.startsWith('//') || normalized.startsWith('\\\\')) {
+    return false;
+  }
+
+  // Must have a scheme starting with http:, https:, or mailto:
+  const colonIndex = normalized.indexOf(':');
+  if (colonIndex === -1) {
+    return false;
+  }
+  const scheme = normalized.slice(0, colonIndex + 1);
+  if (scheme === 'http:' || scheme === 'https:' || scheme === 'mailto:') {
+    return true;
+  }
+  return false;
+}
+
+const materialHtmlFilter = new xss.FilterXSS({
+  whiteList: {
+    h1: [], h2: [], h3: [], h4: [],
+    p: [], br: [],
+    strong: [], em: [], u: [], s: [],
+    ul: [], ol: [], li: [],
+    blockquote: [],
+    a: ['href'],
+    code: [], pre: [],
+    hr: [],
+  },
+  stripIgnoreTagBody: ['script', 'style', 'iframe', 'object', 'embed'],
+  onIgnoreTag: (tag, html, options) => {
+    // Non-whitelisted tags are escaped as text (never silently removed)
+    return xss.escapeHtml(html);
+  },
+  onTagAttr: (tag, name, value, isWhiteAttr) => {
+    if (tag === 'a' && name === 'href') {
+      if (!isSafeHref(value)) {
+        return '';
+      }
+      return `href="${xss.escapeAttrValue(value)}" rel="noopener noreferrer" target="_blank"`;
+    }
+  },
+});
 
 function sanitizeMaterialHtml(dirtyHtml) {
   if (!dirtyHtml || typeof dirtyHtml !== 'string') return '';
-  if (Buffer.byteLength(dirtyHtml, 'utf8') > MAX_BODY_BYTES) {
-    dirtyHtml = dirtyHtml.slice(0, MAX_BODY_BYTES);
-  }
+  return materialHtmlFilter.process(dirtyHtml);
+}
 
-  // 1. Remove dangerous blocks entirely including contents
-  let clean = dirtyHtml
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '')
-    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, '')
-    .replace(/<embed\b[^>]*>[\s\S]*?<\/embed>/gi, '');
+function renderMaterialBody(html) {
+  if (!html || typeof html !== 'string') return '';
+  return sanitizeMaterialHtml(html);
+}
 
-  let openLinks = 0;
-
-  // 2. Tokenize tags
-  clean = clean.replace(/<(\/)?([a-zA-Z0-9]+)([^>]*)>/gi, (match, isClosing, tagName, attrsStr) => {
-    const tag = tagName.toLowerCase();
-    if (!ALLOWED_TAGS.has(tag)) {
-      return ''; // Strip disallowed tag entirely
-    }
-
-    if (isClosing) {
-      if (tag === 'a') {
-        if (openLinks > 0) {
-          openLinks--;
-          return '</a>';
-        }
-        return '';
-      }
-      return `</${tag}>`;
-    }
-
-    if (tag === 'br' || tag === 'hr') {
-      return `<${tag}>`;
-    }
-
-    if (tag === 'a') {
-      // Extract href attribute
-      const hrefMatch = attrsStr.match(/href\s*=\s*(["'])(.*?)\1/i) || attrsStr.match(/href\s*=\s*([^"'\s>]+)/i);
-      if (hrefMatch) {
-        const rawHref = (hrefMatch[2] || hrefMatch[1] || '').trim();
-        const lowerHref = rawHref.toLowerCase();
-        // Disallow dangerous schemes
-        if (
-          lowerHref.startsWith('javascript:') ||
-          lowerHref.startsWith('data:') ||
-          lowerHref.startsWith('vbscript:') ||
-          lowerHref.includes('javascript&')
-        ) {
-          return '';
-        }
-        // Must start with http://, https://, mailto:, /, or #
-        if (
-          lowerHref.startsWith('http://') ||
-          lowerHref.startsWith('https://') ||
-          lowerHref.startsWith('mailto:') ||
-          lowerHref.startsWith('/') ||
-          lowerHref.startsWith('#')
-        ) {
-          const safeHref = rawHref.replace(/"/g, '&quot;');
-          openLinks++;
-          return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">`;
-        }
-      }
-      return '';
-    }
-
-    // For all other allowed tags, strip all attributes (no event handlers, style, class, etc.)
-    return `<${tag}>`;
-  });
-
-  return clean;
+function safeJson(data) {
+  return JSON.stringify(data)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -256,6 +258,8 @@ module.exports = {
   getAllowedExtensions,
   getMaxFileBytes,
   sanitizeMaterialHtml,
+  renderMaterialBody,
+  safeJson,
   computeHasContent,
   validateLink,
   validateResource,

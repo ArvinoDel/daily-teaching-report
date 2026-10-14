@@ -23,11 +23,19 @@
   const _partnerTeacherId   = typeof partnerTeacherId   !== 'undefined' ? partnerTeacherId   : '';
   const _teachersJson = typeof teachersJson !== 'undefined' ? teachersJson : '[]';
   const _materialsJson = typeof materialsJson !== 'undefined' ? materialsJson : '[]';
+  const _safeJson = typeof safeJson === 'function' ? safeJson : function(obj) {
+    return JSON.stringify(obj)
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/&/g, '\\u0026')
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029');
+  };
 %>
 
 <!-- Embedded teachers data for partner-teacher autocomplete -->
 <script id="teachers-json" type="application/json"><%- _teachersJson %></script>
-<script id="current-user-info" type="application/json"><%- JSON.stringify((typeof currentUser !== 'undefined' && currentUser) ? { id: String(currentUser._id), displayName: currentUser.displayName, username: currentUser.username } : {}) %></script>
+<script id="current-user-info" type="application/json"><%- _safeJson((typeof currentUser !== 'undefined' && currentUser) ? { id: String(currentUser._id), displayName: currentUser.displayName, username: currentUser.username } : {}) %></script>
 
 <!-- Embedded materials data for material autocomplete -->
 <script id="report-form-materials-json" type="application/json"><%- _materialsJson %></script>
@@ -2002,9 +2010,9 @@ if (mainSubjInp && mainSubjList) {
 </script>
 
 <% if (!_isEdit) { %>
-<script id="bulk-teaching-types-json" type="application/json"><%- JSON.stringify(typeof teachingTypes !== 'undefined' ? teachingTypes : []) %></script>
-<script id="bulk-is-admin-json" type="application/json"><%- JSON.stringify((_isAdmin) || false) %></script>
-<script id="bulk-teachers-json" type="application/json"><%- JSON.stringify((typeof teachers !== 'undefined' && Array.isArray(teachers) && teachers.length > 0) ? teachers.map(function(t){ return { _id: String(t._id), displayName: t.displayName, username: t.username }; }) : []) %></script>
+<script id="bulk-teaching-types-json" type="application/json"><%- _safeJson(typeof teachingTypes !== 'undefined' ? teachingTypes : []) %></script>
+<script id="bulk-is-admin-json" type="application/json"><%- _safeJson((_isAdmin) || false) %></script>
+<script id="bulk-teachers-json" type="application/json"><%- _safeJson((typeof teachers !== 'undefined' && Array.isArray(teachers) && teachers.length > 0) ? teachers.map(function(t){ return { _id: String(t._id), displayName: t.displayName, username: t.username }; }) : []) %></script>
 <script>
 /* ═══════════════════════════════════════════════════════════════════════
    BULK ADD: Multi-Class Entry Management

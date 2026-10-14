@@ -3,7 +3,8 @@
 <%
   const mat = material;
   const mc  = content || {};
-  const hasBody  = mc.body && mc.body.trim().length > 0;
+  const renderedBody = (typeof renderMaterialBody === 'function' ? renderMaterialBody(mc.body) : (mc.body || ''));
+  const hasBody  = renderedBody && renderedBody.trim().length > 0;
   const allResources = mc.resources || [];
   const fileResources = allResources.filter(r => r.kind === 'file');
   const linkResources = allResources.filter(r => r.kind === 'link');
@@ -150,7 +151,7 @@
 
         <% if (hasBody) { %>
           <div class="mc-body text-slate-700">
-            <%- mc.body %>
+            <%- renderedBody %>
           </div>
         <% } else { %>
           <div class="py-12 text-center">
