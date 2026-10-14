@@ -54,11 +54,12 @@ router.post('/groups/:id',            groupCtrl.groupUpdate);
 router.delete('/groups/:id',          groupCtrl.groupDelete);
 
 // Materials — autocomplete suggestions management
-router.get('/materials',             materialCtrl.materialsList);
-router.post('/materials/:id/edit',   materialCtrl.materialUpdate);
-router.put('/materials/:id',         materialCtrl.materialUpdate);
-router.post('/materials/:id/merge',  materialCtrl.materialMerge);
-router.delete('/materials/:id',      materialCtrl.materialDelete);
+router.get('/materials',                     materialCtrl.materialsList);
+router.post('/materials/recalculate-usage',  materialCtrl.materialRecalculateUsage);
+router.post('/materials/:id/edit',           materialCtrl.materialUpdate);
+router.put('/materials/:id',                 materialCtrl.materialUpdate);
+router.post('/materials/:id/merge',          materialCtrl.materialMerge);
+router.delete('/materials/:id',              materialCtrl.materialDelete);
 
 // Commission
 router.get('/commission', ctrl.commissionIndex);

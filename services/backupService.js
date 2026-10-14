@@ -9,6 +9,8 @@ const Group    = require('../models/Group');
 const AuditLog = require('../models/AuditLog');
 const Feedback = require('../models/Feedback');
 const Backup   = require('../models/Backup');
+const Material = require('../models/Material');
+const MaterialAlias = require('../models/MaterialAlias');
 
 // Configure Cloudinary using env variables
 cloudinary.config({
@@ -74,23 +76,27 @@ function sanitizeErrorMessage(msg) {
  * @returns {Promise<{collections, recordCounts}>}
  */
 async function fetchRawCollections() {
-  const [users, reports, groups, auditLogs, feedbacks] = await Promise.all([
+  const [users, reports, groups, auditLogs, feedbacks, materials, materialAliases] = await Promise.all([
     User.find().lean(),
     Report.find().lean(),
     Group.find().lean(),
     AuditLog.find().lean(),
     Feedback.find().lean(),
+    Material.find().lean(),
+    MaterialAlias.find().lean(),
   ]);
 
   const recordCounts = {
-    users:     users.length,
-    reports:   reports.length,
-    groups:    groups.length,
-    auditLogs: auditLogs.length,
-    feedbacks: feedbacks.length,
+    users:           users.length,
+    reports:         reports.length,
+    groups:          groups.length,
+    auditLogs:       auditLogs.length,
+    feedbacks:       feedbacks.length,
+    materials:       materials.length,
+    materialAliases: materialAliases.length,
   };
 
-  const collections = { users, reports, groups, auditLogs, feedbacks };
+  const collections = { users, reports, groups, auditLogs, feedbacks, materials, materialAliases };
   return { collections, recordCounts };
 }
 

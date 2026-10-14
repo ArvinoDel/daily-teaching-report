@@ -5,7 +5,7 @@ const AuditLog = require('../models/AuditLog'); // 🟢 Audit log
 const Group    = require('../models/Group');
 const Material = require('../models/Material'); // 🟢 Added for material autocomplete
 const { normalizeMaterialName, formatMaterialDisplayName } = require('../models/Material');
-const { recordMaterial, resolveGroupLevel } = require('./reportsController');
+const { recordMaterial, resolveMaterialId, recountMaterialUsage, resolveGroupLevel } = require('../services/materialService');
 
 const TEACHING_TYPES = [
   'Prime Teacher (Full)',
@@ -430,7 +430,10 @@ exports.userDelete = async (req, res) => {
     const label = `${user.displayName} (@${user.username})`;
 
     // Bug #5 fix: nullify partner refs in other teachers' reports before deleting
-    const userReportIds = await Report.find({ teacher: user._id }).distinct('_id');
+    const userReports = await Report.find({ teacher: user._id }).select('material').lean();
+    const userReportIds = userReports.map(r => r._id);
+    const affectedMaterialIds = [...new Set(userReports.map(r => r.material).filter(Boolean).map(id => String(id)))];
+
     await Promise.all([
       Report.deleteMany({ teacher: user._id }),
       Salary.deleteMany({ teacher: user._id }),
@@ -439,6 +442,13 @@ exports.userDelete = async (req, res) => {
         ? Report.updateMany({ linked_report: { $in: userReportIds } }, { $set: { linked_report: null } })
         : Promise.resolve(),
     ]);
+
+    if (affectedMaterialIds.length > 0) {
+      recountMaterialUsage(affectedMaterialIds).catch(e =>
+        console.error('recountMaterialUsage error on userDelete (non-fatal):', e)
+      );
+    }
+
     await user.deleteOne();
     await logAudit(req, 'delete', 'user', user._id, label); // 🟢 log
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
@@ -472,7 +482,10 @@ exports.usersBulkDelete = async (req, res) => {
     }
 
     // Bug #5 fix: nullify partner refs in other teachers' reports before bulk delete
-    const bulkReportIds = await Report.find({ teacher: { $in: ids } }).distinct('_id');
+    const bulkReports = await Report.find({ teacher: { $in: ids } }).select('material').lean();
+    const bulkReportIds = bulkReports.map(r => r._id);
+    const affectedMaterialIds = [...new Set(bulkReports.map(r => r.material).filter(Boolean).map(id => String(id)))];
+
     await Promise.all([
       Report.deleteMany({ teacher: { $in: ids } }),
       Salary.deleteMany({ teacher: { $in: ids } }),
@@ -481,6 +494,13 @@ exports.usersBulkDelete = async (req, res) => {
         ? Report.updateMany({ linked_report: { $in: bulkReportIds } }, { $set: { linked_report: null } })
         : Promise.resolve(),
     ]);
+
+    if (affectedMaterialIds.length > 0) {
+      recountMaterialUsage(affectedMaterialIds).catch(e =>
+        console.error('recountMaterialUsage error on usersBulkDelete (non-fatal):', e)
+      );
+    }
+
     const result = await User.deleteMany({ _id: { $in: ids } });
     await logAudit(req, 'delete', 'user', ids[0], `Bulk delete — ${result.deletedCount} user(s)`);
     return res.status(200).json({ ok: true, deleted: result.deletedCount });
@@ -575,13 +595,47 @@ exports.reportUpdate = async (req, res) => {
 
     // Load old report values BEFORE update to detect material/level changes
     const oldReport = await Report.findById(req.params.id)
-      .select('subject class_name session_type')
+      .select('subject class_name session_type material')
       .lean();
+
+    // Resolve material for the updated report
+    let newMaterialId = null;
+    const newSubjectTrimmed = subject ? subject.trim() : '';
+    const oldSubjectTrimmed = (oldReport && oldReport.subject) || '';
+    const newNorm = normalizeMaterialName(newSubjectTrimmed);
+    const oldNorm = normalizeMaterialName(oldSubjectTrimmed);
+    const newLevel = await resolveGroupLevel(class_name ? class_name.trim() : '', session_type || 'group');
+    const oldLevel = oldReport ? await resolveGroupLevel(oldReport.class_name || '', oldReport.session_type || 'group') : '';
+    const isMaterialChanged = (newNorm !== oldNorm || newLevel !== oldLevel);
+    const materialExists = isMaterialChanged ? true : await Material.exists({ nameNormalized: newNorm, level: newLevel });
+
+    if (newNorm && (isMaterialChanged || !materialExists)) {
+      newMaterialId = await recordMaterial({
+        subject:     newSubjectTrimmed,
+        className:   class_name ? class_name.trim() : '',
+        sessionType: session_type || 'group',
+        teacherId:   teacher || req.session.user._id,
+      });
+    } else if (newNorm && oldReport && !oldReport.material) {
+      // Legacy report where text/level didn't change but material is null: resolve and set it
+      newMaterialId = await resolveMaterialId(newSubjectTrimmed, class_name ? class_name.trim() : '', session_type || 'group');
+      if (!newMaterialId) {
+        newMaterialId = await recordMaterial({
+          subject:     newSubjectTrimmed,
+          className:   class_name ? class_name.trim() : '',
+          sessionType: session_type || 'group',
+          teacherId:   teacher || req.session.user._id,
+        });
+      }
+    } else if (newNorm && oldReport) {
+      newMaterialId = oldReport.material;
+    }
 
     const sharedUpdate = {
       teacher,
       date,
       subject:                subject ? subject.trim() : '',
+      material:               newMaterialId || null,
       class_name:             class_name.trim(),
       duration:               Number(duration),
       teaching_type,
@@ -612,6 +666,7 @@ exports.reportUpdate = async (req, res) => {
       await Report.findByIdAndUpdate(report.linked_report, {
         date,
         subject:                subject ? subject.trim() : '',
+        material:               newMaterialId || null,
         class_name:             class_name.trim(),
         duration:               Number(duration),
         notes:                  (notes || '').trim(),
@@ -626,23 +681,14 @@ exports.reportUpdate = async (req, res) => {
       });
     }
 
-    // 🟢 Record material only when subject or resolved level has changed, or doesn't exist yet in suggestions
+    // Recount usage if material reference changed
     if (oldReport) {
-      const newSubjectTrimmed = subject ? subject.trim() : '';
-      const oldSubjectTrimmed = oldReport.subject || '';
-      const newNorm = normalizeMaterialName(newSubjectTrimmed);
-      const oldNorm = normalizeMaterialName(oldSubjectTrimmed);
-      const newLevel = await resolveGroupLevel(class_name ? class_name.trim() : '', session_type || 'group');
-      const oldLevel = await resolveGroupLevel(oldReport.class_name || '', oldReport.session_type || 'group');
-      const isMaterialChanged = (newNorm !== oldNorm || newLevel !== oldLevel);
-      const materialExists = isMaterialChanged ? true : await Material.exists({ nameNormalized: newNorm, level: newLevel });
-      if (newNorm && (isMaterialChanged || !materialExists)) {
-        await recordMaterial({
-          subject:     newSubjectTrimmed,
-          className:   class_name ? class_name.trim() : '',
-          sessionType: session_type || 'group',
-          teacherId:   teacher || req.session.user._id,
-        });
+      const oldMatId = oldReport.material ? String(oldReport.material) : '';
+      const newMatId = newMaterialId ? String(newMaterialId) : '';
+      if (oldMatId !== newMatId) {
+        recountMaterialUsage([oldReport.material, newMaterialId].filter(Boolean)).catch(e =>
+          console.error('recountMaterialUsage error on admin update (non-fatal):', e)
+        );
       }
     }
 
@@ -667,6 +713,7 @@ exports.reportDelete = async (req, res) => {
     const report = await Report.findById(req.params.id);
     if (!report) return res.status(404).json({ error: 'Report not found.' });
     const label = `${report.class_name} — ${report.date.toISOString().substring(0, 10)}`;
+    const affectedMaterialId = report.material;
 
     // Delete auto-generated linked report if it exists
     if (report.linked_report) {
@@ -675,6 +722,13 @@ exports.reportDelete = async (req, res) => {
     }
 
     await report.deleteOne();
+
+    if (affectedMaterialId) {
+      recountMaterialUsage([affectedMaterialId]).catch(e =>
+        console.error('recountMaterialUsage error on admin reportDelete (non-fatal):', e)
+      );
+    }
+
     await logAudit(req, 'delete', 'report', report._id, label);
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
       return res.status(200).json({ ok: true });
@@ -695,7 +749,9 @@ exports.reportsBulkDelete = async (req, res) => {
     if (ids.length === 0) return res.status(400).json({ error: 'No reports selected.' });
 
     // Also delete auto-generated linked reports for each selected report
-    const reportsToDelete = await Report.find({ _id: { $in: ids } }).select('linked_report').lean();
+    const reportsToDelete = await Report.find({ _id: { $in: ids } }).select('material linked_report').lean();
+    const affectedMaterialIds = [...new Set(reportsToDelete.map(r => r.material).filter(Boolean).map(id => String(id)))];
+
     const linkedIds = reportsToDelete
       .map(r => r.linked_report)
       .filter(Boolean)
@@ -705,6 +761,12 @@ exports.reportsBulkDelete = async (req, res) => {
     }
 
     const result = await Report.deleteMany({ _id: { $in: ids } });
+
+    if (affectedMaterialIds.length > 0) {
+      recountMaterialUsage(affectedMaterialIds).catch(e =>
+        console.error('recountMaterialUsage error on admin reportsBulkDelete (non-fatal):', e)
+      );
+    }
     await logAudit(req, 'delete', 'report', ids[0], `Bulk delete — ${result.deletedCount} report(s)`);
     return res.status(200).json({ ok: true, deleted: result.deletedCount });
   } catch (err) {

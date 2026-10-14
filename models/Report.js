@@ -18,6 +18,11 @@ const reportSchema = new mongoose.Schema(
       maxlength: [100, 'Subject max 100 characters.'],
       default: '',
     },
+    material: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Material',
+      default: null,
+    },
     class_name: {
       type: String,
       required: [true, 'Class name is required.'],
@@ -150,5 +155,8 @@ reportSchema.index({ ac_reduced_students: 1, is_auto_generated: 1 });
 // Linked-report and partner cleanup queries
 reportSchema.index({ linked_report:   1 });
 reportSchema.index({ partner_teacher: 1 });
+
+// Material lookup index
+reportSchema.index({ material: 1 });
 
 module.exports = mongoose.model('Report', reportSchema);

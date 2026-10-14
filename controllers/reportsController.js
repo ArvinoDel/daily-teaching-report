@@ -134,131 +134,21 @@ async function getTeachersJson() {
   return (await getTeachersData()).json;
 }
 
-// ⚡ 60-second in-memory TTL cache for materials
-//    Shorter TTL than groups because teachers add new materials regularly.
-//    On serverless (Vercel) each instance has its own cache; writes call
-//    invalidateMaterialsCache() to reset this instance's copy immediately.
-const MATERIALS_CACHE_TTL = 60 * 1000;
-let _materialsCache     = null;
-let _materialsCacheTime = 0;
-
-function invalidateMaterialsCache() {
-  _materialsCache     = null;
-  _materialsCacheTime = 0;
-}
-exports.invalidateMaterialsCache = invalidateMaterialsCache;
-
-async function getMaterialsJson() {
-  if (_materialsCache && Date.now() - _materialsCacheTime < MATERIALS_CACHE_TTL) {
-    return _materialsCache;
-  }
-  try {
-    const materials = await Material.find()
-      .select('name level usageCount')
-      .sort({ usageCount: -1, name: 1 })
-      .lean();
-    _materialsCache     = safeJsonForHtml(materials.map(function(m) { return {
-      _id:        String(m._id),
-      name:       m.name,
-      level:      m.level || '',
-      usageCount: m.usageCount || 0,
-    }; }));
-    _materialsCacheTime = Date.now();
-    return _materialsCache;
-  } catch (e) {
-    console.error('getMaterialsJson error:', e);
-    return '[]';
-  }
-}
-
-/**
- * Resolve the group level for a given class_name server-side.
- * Never trusts client-supplied level.
- *
- * Rules (Decision 4):
- *   - Competition session type -> always ""
- *   - Look up group by exact trimmed class_name
- *   - If group not found, or group.level not in Group.LEVELS -> ""
- *   - Otherwise -> group.level (uppercase, trimmed)
- *
- * @param {string} className
- * @param {string} sessionType  ('group'|'private'|'competition')
- * @returns {Promise<string>}
- */
-async function resolveGroupLevel(className, sessionType) {
-  if (sessionType === 'competition') return '';
-  if (!className || !className.trim()) return '';
-  try {
-    const escaped = className.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const group = await Group.findOne({
-      group_name: { $regex: '^' + escaped + '$', $options: 'i' },
-    }).select('level').lean();
-    if (!group || !group.level) return '';
-    return group.level.trim().toUpperCase();
-  } catch (e) {
-    console.error('resolveGroupLevel error:', e);
-    return '';
-  }
-}
-
-/**
- * Record (upsert) a material after a report is saved.
- *
- * - Skip if subject is empty/whitespace or normalizes to empty.
- * - Resolve level server-side; never accept client-supplied level.
- * - Upsert: $setOnInsert name+createdBy, always $inc usageCount + $set lastUsedAt.
- * - Handle E11000 race (two concurrent first-time inserts) by retrying once.
- * - NEVER throws — failure must not roll back the report.
- * - Invalidates the materials cache on success.
- *
- * @param {{ subject: string, className: string, sessionType: string, teacherId: any }} opts
- */
-async function recordMaterial(opts) {
-  var subject     = opts.subject;
-  var className   = opts.className;
-  var sessionType = opts.sessionType;
-  var teacherId   = opts.teacherId;
-  try {
-    if (!subject || !subject.trim()) return;
-    var displayName = formatMaterialDisplayName(subject);
-    var nameNorm    = normalizeMaterialName(displayName);
-    if (!nameNorm) return; // e.g. subject was "---"
-
-    var level = await resolveGroupLevel(className, sessionType);
-
-    var upsertFn = function() {
-      return Material.findOneAndUpdate(
-        { nameNormalized: nameNorm, level: level },
-        {
-          $setOnInsert: { name: displayName, createdBy: teacherId || null },
-          $inc:         { usageCount: 1 },
-          $set:         { lastUsedAt: new Date() },
-        },
-        { upsert: true, new: true }
-      );
-    };
-
-    try {
-      await upsertFn();
-    } catch (e) {
-      // E11000: two concurrent writes for a brand-new (nameNorm, level) pair.
-      // Retry once — by now the document exists so the upsert becomes an update.
-      if (e.code === 11000) {
-        await upsertFn();
-      } else {
-        throw e;
-      }
-    }
-
-    invalidateMaterialsCache();
-  } catch (err) {
-    // A material recording failure must NEVER break the report save.
-    console.error('recordMaterial error (non-fatal):', err);
-  }
-}
+const {
+  recordMaterial,
+  resolveMaterialId,
+  recountMaterialUsage,
+  resolveGroupLevel,
+  getMaterialsJson,
+  invalidateMaterialsCache,
+} = require('../services/materialService');
 
 exports.recordMaterial = recordMaterial;
+exports.resolveMaterialId = resolveMaterialId;
+exports.recountMaterialUsage = recountMaterialUsage;
 exports.resolveGroupLevel = resolveGroupLevel;
+exports.getMaterialsJson = getMaterialsJson;
+exports.invalidateMaterialsCache = invalidateMaterialsCache;
 
 // GET / — Dashboard
 
@@ -465,10 +355,26 @@ exports.create = async (req, res) => {
       return res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: validationErrors, formData: req.body, groupsJson, teachersJson, teachers, materialsJson });
     }
 
+    // Record material and obtain canonical Material _id
+    let materialId = null;
+    if (subject && subject.trim()) {
+      try {
+        materialId = await recordMaterial({
+          subject:     subject.trim(),
+          className:   class_name ? class_name.trim() : '',
+          sessionType: session_type || 'group',
+          teacherId,
+        });
+      } catch (matErr) {
+        console.error('recordMaterial error in create (non-fatal):', matErr);
+      }
+    }
+
     // Build shared class data for potential linked report
     const sharedData = {
       date,
       subject: subject ? subject.trim() : '',
+      material: materialId || null,
       class_name: class_name.trim(),
       duration: Number(duration),
       notes: (notes || '').trim(),
@@ -515,14 +421,6 @@ exports.create = async (req, res) => {
       report.linked_report = linkedReport._id;
       await report.save();
     }
-
-    // 🟢 Record material — after save, non-auto-generated report only
-    await recordMaterial({
-      subject:     subject ? subject.trim() : '',
-      className:   class_name ? class_name.trim() : '',
-      sessionType: session_type || 'group',
-      teacherId,
-    });
 
     req.session.flash = 'Report has been created!';
     res.redirect('/reports');
@@ -619,6 +517,25 @@ exports.createBulk = async (req, res) => {
       return res.status(400).json({ ok: false, errors: allErrors });
     }
 
+    // Resolve and record materials for all valid entries
+    const materialIds = await Promise.all(validEntries.map(ve => {
+      const subj = (ve.data.subject || '').trim();
+      if (!subj) return Promise.resolve(null);
+      return recordMaterial({
+        subject:     subj,
+        className:   ve.data.class_name || '',
+        sessionType: ve.data.session_type || 'group',
+        teacherId:   ve.teacherId,
+      }).catch(err => {
+        console.error('recordMaterial error in createBulk (non-fatal):', err);
+        return null;
+      });
+    }));
+
+    validEntries.forEach((e, idx) => {
+      e.data.material = materialIds[idx] || null;
+    });
+
     // Save all valid entries and build linked reports for Assistant Teacher and 1/2 Prime Teacher entries
     const linkedReportsDocs = [];
     const savedReports = await Report.insertMany(validEntries.map(e => e.data));
@@ -652,6 +569,7 @@ exports.createBulk = async (req, res) => {
         const linked = new Report({
           date:                   saved.date,
           subject:                saved.subject,
+          material:               saved.material || null,
           class_name:             saved.class_name,
           duration:               saved.duration,
           teaching_type:          partnerTeachingType,
@@ -681,18 +599,6 @@ exports.createBulk = async (req, res) => {
         Report.findByIdAndUpdate(linkedReportsDocs[idx].originalId, { linked_report: lk._id })
       ));
     }
-
-    // 🟢 Record materials for each non-auto-generated saved report
-    //    Fire-and-forget style — each recordMaterial is wrapped in its own try/catch
-    await Promise.all(savedReports.map(function(saved, i) {
-      var ve = validEntries[i];
-      return recordMaterial({
-        subject:     saved.subject || '',
-        className:   saved.class_name || '',
-        sessionType: saved.session_type || 'group',
-        teacherId:   ve.teacherId,
-      });
-    }));
 
     const count = savedReports.length;
     req.session.flash = `${count} report${count > 1 ? 's' : ''} have been created!`;
@@ -769,13 +675,47 @@ exports.update = async (req, res) => {
 
     // Load old report values BEFORE update to detect material/level changes
     const oldReport = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id })
-      .select('subject class_name session_type')
+      .select('subject class_name session_type material')
       .lean();
+
+    // Resolve material for the updated report
+    let newMaterialId = null;
+    const newSubjectTrimmed = subject ? subject.trim() : '';
+    const oldSubjectTrimmed = (oldReport && oldReport.subject) || '';
+    const newNorm = normalizeMaterialName(newSubjectTrimmed);
+    const oldNorm = normalizeMaterialName(oldSubjectTrimmed);
+    const newLevel = await resolveGroupLevel(class_name ? class_name.trim() : '', session_type || 'group');
+    const oldLevel = oldReport ? await resolveGroupLevel(oldReport.class_name || '', oldReport.session_type || 'group') : '';
+    const isMaterialChanged = (newNorm !== oldNorm || newLevel !== oldLevel);
+    const materialExists = isMaterialChanged ? true : await Material.exists({ nameNormalized: newNorm, level: newLevel });
+
+    if (newNorm && (isMaterialChanged || !materialExists)) {
+      newMaterialId = await recordMaterial({
+        subject:     newSubjectTrimmed,
+        className:   class_name ? class_name.trim() : '',
+        sessionType: session_type || 'group',
+        teacherId,
+      });
+    } else if (newNorm && oldReport && !oldReport.material) {
+      // Legacy report where text/level didn't change but material is null: resolve and set it
+      newMaterialId = await resolveMaterialId(newSubjectTrimmed, class_name ? class_name.trim() : '', session_type || 'group');
+      if (!newMaterialId) {
+        newMaterialId = await recordMaterial({
+          subject:     newSubjectTrimmed,
+          className:   class_name ? class_name.trim() : '',
+          sessionType: session_type || 'group',
+          teacherId,
+        });
+      }
+    } else if (newNorm && oldReport) {
+      newMaterialId = oldReport.material;
+    }
 
     // Shared update fields
     const sharedUpdate = {
       date,
       subject: subject ? subject.trim() : '',
+      material: newMaterialId || null,
       class_name: class_name.trim(),
       duration: Number(duration),
       teaching_type,
@@ -807,6 +747,7 @@ exports.update = async (req, res) => {
       await Report.findByIdAndUpdate(report.linked_report, {
         date,
         subject:                subject ? subject.trim() : '',
+        material:               newMaterialId || null,
         class_name:             class_name.trim(),
         duration:               Number(duration),
         notes:                  (notes || '').trim(),
@@ -821,31 +762,18 @@ exports.update = async (req, res) => {
       });
     }
 
-    req.session.flash = 'Report has been updated!';
-
-    // 🟢 Record material only when subject or resolved level has actually changed
-    //    Load the old values already captured above (before findOneAndUpdate)
+    // Recount usage if material reference changed
     if (oldReport) {
-      var newSubjectTrimmed = subject ? subject.trim() : '';
-      var oldSubjectTrimmed = oldReport.subject || '';
-      var newNorm = normalizeMaterialName(newSubjectTrimmed);
-      var oldNorm = normalizeMaterialName(oldSubjectTrimmed);
-      // Resolve levels for both old and new class names
-      var newLevel = await resolveGroupLevel(class_name ? class_name.trim() : '', session_type || 'group');
-      var oldLevel = await resolveGroupLevel(oldReport.class_name || '', oldReport.session_type || 'group');
-      // Record if normalized text or level changed, or if material does not exist yet in suggestions
-      var isMaterialChanged = (newNorm !== oldNorm || newLevel !== oldLevel);
-      var materialExists = isMaterialChanged ? true : await Material.exists({ nameNormalized: newNorm, level: newLevel });
-      if (newNorm && (isMaterialChanged || !materialExists)) {
-        await recordMaterial({
-          subject:     newSubjectTrimmed,
-          className:   class_name ? class_name.trim() : '',
-          sessionType: session_type || 'group',
-          teacherId,
-        });
+      const oldMatId = oldReport.material ? String(oldReport.material) : '';
+      const newMatId = newMaterialId ? String(newMaterialId) : '';
+      if (oldMatId !== newMatId) {
+        recountMaterialUsage([oldReport.material, newMaterialId].filter(Boolean)).catch(e =>
+          console.error('recountMaterialUsage error on update (non-fatal):', e)
+        );
       }
     }
 
+    req.session.flash = 'Report has been updated!';
     res.redirect('/reports');
   } catch (err) {
     const errors = err.errors ? Object.values(err.errors).map(e => e.message) : ['An error occurred while updating.'];
@@ -864,6 +792,8 @@ exports.destroy = async (req, res) => {
     const report = await Report.findOne({ _id: req.params.id, teacher: req.session.user._id });
     if (!report) return res.status(404).json({ error: 'Report not found.' });
 
+    const affectedMaterialId = report.material;
+
     // Delete auto-generated linked report (created for the tagged partner)
     if (report.linked_report) {
       await Report.findOneAndDelete({ _id: report.linked_report, is_auto_generated: true });
@@ -871,6 +801,13 @@ exports.destroy = async (req, res) => {
     }
 
     await report.deleteOne();
+
+    if (affectedMaterialId) {
+      recountMaterialUsage([affectedMaterialId]).catch(e =>
+        console.error('recountMaterialUsage error on destroy (non-fatal):', e)
+      );
+    }
+
     req.session.flash = 'Report has been deleted!';
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
       return res.status(200).json({ ok: true });

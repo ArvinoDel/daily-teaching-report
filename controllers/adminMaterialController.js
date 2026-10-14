@@ -1,9 +1,15 @@
-'use strict';
-const Material    = require('../models/Material');
-const AuditLog    = require('../models/AuditLog');
+const mongoose      = require('mongoose');
+const Material      = require('../models/Material');
+const MaterialAlias = require('../models/MaterialAlias');
+const Report        = require('../models/Report');
+const AuditLog      = require('../models/AuditLog');
 const { LEVELS, LEVEL_LABELS } = require('../models/Group');
 const { normalizeMaterialName, formatMaterialDisplayName } = require('../models/Material');
-const { invalidateMaterialsCache } = require('./reportsController');
+const {
+  invalidateMaterialsCache,
+  recountMaterialUsage,
+  planMergeAliases,
+} = require('../services/materialService');
 
 function safeJson(data) {
   return JSON.stringify(data)
@@ -153,34 +159,73 @@ exports.materialUpdate = async (req, res) => {
     const validatedLevel = (rawLevel && (LEVELS.includes(rawLevel) || rawLevel.length <= 50)) ? rawLevel : '';
 
     // Check collision with another existing material
-    const collision = await Material.findOne({
+    const matCollision = await Material.findOne({
       nameNormalized: nameNorm,
       level:          validatedLevel,
       _id:            { $ne: material._id },
     });
 
-    if (collision) {
-      req.session.flashError = `A material named "${collision.name}" with level "${validatedLevel || 'No level'}" already exists. You can use the Merge feature to combine them.`;
+    if (matCollision) {
+      req.session.flashError = `A material named "${matCollision.name}" with level "${validatedLevel || 'No level'}" already exists. You can use the Merge feature to combine them.`;
       return res.redirect('/admin/materials');
     }
 
-    const oldName  = material.name;
-    const oldLevel = material.level;
+    // Check collision with an existing alias pointing to a DIFFERENT material
+    const aliasCollision = await MaterialAlias.findOne({
+      nameNormalized: nameNorm,
+      level:          validatedLevel,
+      material:       { $ne: material._id },
+    });
+
+    if (aliasCollision) {
+      req.session.flashError = `A material alias with level "${validatedLevel || 'No level'}" already exists. You can use the Merge feature to combine them.`;
+      return res.redirect('/admin/materials');
+    }
+
+    const oldName           = material.name;
+    const oldNameNormalized = material.nameNormalized;
+    const oldLevel          = material.level;
+
+    // If an alias existed for this new key that was pointing to this material, remove it (material directly holds it now)
+    await MaterialAlias.deleteOne({
+      nameNormalized: nameNorm,
+      level:          validatedLevel,
+      material:       material._id,
+    });
+
+    // If normalized name or level changed, create an alias for the OLD normalized name at old level
+    if (oldNameNormalized !== nameNorm || oldLevel !== validatedLevel) {
+      await MaterialAlias.findOneAndUpdate(
+        { nameNormalized: oldNameNormalized, level: oldLevel },
+        { $set: { material: material._id } },
+        { upsert: true }
+      );
+    }
 
     material.name           = cleanName;
     material.nameNormalized = nameNorm;
     material.level          = validatedLevel;
     await material.save();
 
-    if (typeof invalidateMaterialsCache === 'function') {
-      invalidateMaterialsCache();
+    // Checkbox: Also update the material name on existing reports (default ON)
+    const updateReports = req.body.updateReportsSubject === 'true' ||
+                          req.body.updateReportsSubject === 'on' ||
+                          req.body.updateReportsSubject !== 'false';
+    if (updateReports) {
+      await Report.updateMany(
+        { material: material._id },
+        { $set: { subject: material.name } }
+      );
     }
+
+    invalidateMaterialsCache();
 
     await logAudit(req, 'update', material._id, material.name, {
       oldName,
       oldLevel,
       newName: material.name,
       newLevel: material.level,
+      updateReports,
     });
 
     req.session.flash = `Material "${material.name}" updated successfully!`;
@@ -219,29 +264,102 @@ exports.materialMerge = async (req, res) => {
     const sourceLevel = source.level;
     const sourceUsage = source.usageCount || 0;
 
-    // Combine usage count
-    target.usageCount = (target.usageCount || 0) + sourceUsage;
+    const existingAliases = await MaterialAlias.find({
+      $or: [
+        { material: source._id },
+        { nameNormalized: source.nameNormalized, level: source.level },
+      ],
+    }).lean();
 
-    // Keep the latest lastUsedAt
-    if (source.lastUsedAt) {
-      if (!target.lastUsedAt || new Date(source.lastUsedAt) > new Date(target.lastUsedAt)) {
-        target.lastUsedAt = source.lastUsedAt;
+    const plan = planMergeAliases(source, target, existingAliases);
+
+    const updateReports = req.body.updateReportsSubject === 'true' ||
+                          req.body.updateReportsSubject === 'on' ||
+                          req.body.updateReportsSubject !== 'false';
+
+    const reportUpdateDoc = updateReports
+      ? { material: target._id, subject: target.name }
+      : { material: target._id };
+
+    // Run changes in safe order:
+    // 1. Create/re-point aliases
+    // 2. Re-point reports
+    // 3. Move usage and lastUsedAt on target
+    // 4. Delete source last
+    const executeOperations = async (session = null) => {
+      const opts = session ? { session } : {};
+
+      // Create new aliases
+      for (const item of plan.aliasesToCreate) {
+        await MaterialAlias.findOneAndUpdate(
+          { nameNormalized: item.nameNormalized, level: item.level },
+          { $set: { material: target._id } },
+          { upsert: true, ...opts }
+        );
+      }
+
+      // Re-point existing aliases
+      for (const item of plan.aliasesToRepoint) {
+        await MaterialAlias.findByIdAndUpdate(item._id, { $set: { material: target._id } }, opts);
+      }
+
+      // Delete colliding aliases
+      for (const item of plan.aliasesToDelete) {
+        await MaterialAlias.findByIdAndDelete(item._id, opts);
+      }
+
+      // Re-point reports
+      await Report.updateMany({ material: source._id }, reportUpdateDoc, opts);
+
+      // Move usage count and lastUsedAt
+      target.usageCount = (target.usageCount || 0) + sourceUsage;
+      if (source.lastUsedAt) {
+        if (!target.lastUsedAt || new Date(source.lastUsedAt) > new Date(target.lastUsedAt)) {
+          target.lastUsedAt = source.lastUsedAt;
+        }
+      }
+      await target.save(opts);
+
+      // Delete source
+      await source.deleteOne(opts);
+    };
+
+    try {
+      const session = await mongoose.startSession();
+      try {
+        session.startTransaction();
+        await executeOperations(session);
+        await session.commitTransaction();
+      } catch (txErr) {
+        await session.abortTransaction();
+        throw txErr;
+      } finally {
+        session.endSession();
+      }
+    } catch (txErr) {
+      const isTxUnsupported = /Transaction numbers are only allowed/.test(txErr.message) ||
+                              /transactions are not supported/.test(txErr.message) ||
+                              txErr.codeName === 'OperationNotSupportedInTransaction' ||
+                              txErr.code === 20;
+      if (isTxUnsupported) {
+        await executeOperations();
+      } else {
+        throw txErr;
       }
     }
 
-    await target.save();
-    await source.deleteOne();
+    // Accurate recount for target
+    await recountMaterialUsage([target._id]);
 
-    if (typeof invalidateMaterialsCache === 'function') {
-      invalidateMaterialsCache();
-    }
+    invalidateMaterialsCache();
 
     await logAudit(req, 'merge', target._id, target.name, {
-      mergedFromId:    source._id,
-      mergedFromName:  sourceName,
-      mergedFromLevel: sourceLevel,
+      mergedFromId:     source._id,
+      mergedFromName:   sourceName,
+      mergedFromLevel:  sourceLevel,
       transferredUsage: sourceUsage,
-      newTotalUsage:   target.usageCount,
+      newTotalUsage:    target.usageCount,
+      updateReports,
     });
 
     req.session.flash = `Merged "${sourceName}" into "${target.name}" successfully! (${sourceUsage} usage points transferred)`;
@@ -271,11 +389,16 @@ exports.materialDelete = async (req, res) => {
     const level      = material.level;
     const usageCount = material.usageCount;
 
+    // Reports keep their subject text, set Report.material = null
+    await Report.updateMany({ material: material._id }, { $set: { material: null } });
+
+    // Delete aliases pointing to it
+    await MaterialAlias.deleteMany({ material: material._id });
+
+    // Delete the material
     await material.deleteOne();
 
-    if (typeof invalidateMaterialsCache === 'function') {
-      invalidateMaterialsCache();
-    }
+    invalidateMaterialsCache();
 
     await logAudit(req, 'delete', material._id, label, { level, usageCount });
 
@@ -291,6 +414,22 @@ exports.materialDelete = async (req, res) => {
       return res.status(500).json({ error: 'Failed to delete material.' });
     }
     req.session.flashError = 'Failed to delete material.';
+    res.redirect('/admin/materials');
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   Recalculate Usage   POST /admin/materials/recalculate-usage
+   ═══════════════════════════════════════════════════════════════ */
+exports.materialRecalculateUsage = async (req, res) => {
+  try {
+    await recountMaterialUsage();
+    await logAudit(req, 'update', null, 'All Materials', { action: 'recalculate_usage' });
+    req.session.flash = 'All material usage counts and dates have been recalculated successfully!';
+    res.redirect('/admin/materials');
+  } catch (err) {
+    console.error('adminMaterialController.materialRecalculateUsage error:', err);
+    req.session.flashError = 'Failed to recalculate material usage.';
     res.redirect('/admin/materials');
   }
 };
