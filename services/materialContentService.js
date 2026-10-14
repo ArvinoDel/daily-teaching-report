@@ -107,9 +107,72 @@ const materialHtmlFilter = new xss.FilterXSS({
   },
 });
 
+/**
+ * Normalizes Quill 2 internal list markup to standard HTML lists before sanitization.
+ * In Quill 2, all lists are internally represented as <ol><li data-list="bullet|ordered|..."><span class="ql-ui"...></span>text</li></ol>.
+ *
+ * NOTE: String/regex transformation is acceptable ONLY because the resulting HTML
+ * strictly passes through the whitelist-based xss filter immediately afterwards.
+ * Non-whitelisted tags and attributes are always escaped or stripped by xss.
+ */
+function normalizeQuillLists(html) {
+  if (!html || typeof html !== 'string') return '';
+
+  // 1. Remove Quill UI spans (<span class="ql-ui"...>...</span>)
+  let clean = html.replace(/<span\b[^>]*class=["'][^"']*\bql-ui\b[^"']*["'][^>]*>[\s\S]*?<\/span>/gi, '');
+
+  // 2. Convert <ol> elements containing data-list attributes into appropriate <ul> or <ol> lists
+  clean = clean.replace(/<ol\b[^>]*>([\s\S]*?)<\/ol>/gi, (match, listContent) => {
+    if (!/data-list\s*=/i.test(listContent)) {
+      return match;
+    }
+
+    const liRegex = /<li\b([^>]*)>([\s\S]*?)<\/li>/gi;
+    let liMatch;
+    const items = [];
+
+    while ((liMatch = liRegex.exec(listContent)) !== null) {
+      const attrs = liMatch[1];
+      const inner = liMatch[2];
+      const dataListMatch = attrs.match(/data-list\s*=\s*(["'])(.*?)\1/i) || attrs.match(/data-list\s*=\s*([^\s>]+)/i);
+      const listType = dataListMatch ? dataListMatch[2].toLowerCase() : 'ordered';
+      const cleanAttrs = attrs.replace(/\s*data-list\s*=\s*(["']).*?\1/gi, '').replace(/\s*data-list\s*=\s*[^\s>]+/gi, '').trim();
+      const openTag = cleanAttrs ? `<li ${cleanAttrs}>` : '<li>';
+      items.push({
+        type: (listType === 'bullet' || listType === 'checked' || listType === 'unchecked') ? 'bullet' : 'ordered',
+        html: `${openTag}${inner}</li>`,
+      });
+    }
+
+    if (items.length === 0) {
+      return match;
+    }
+
+    const groups = [];
+    let currentGroup = null;
+
+    for (const item of items) {
+      if (!currentGroup || currentGroup.type !== item.type) {
+        currentGroup = { type: item.type, items: [item.html] };
+        groups.push(currentGroup);
+      } else {
+        currentGroup.items.push(item.html);
+      }
+    }
+
+    return groups.map(g => {
+      const tag = g.type === 'bullet' ? 'ul' : 'ol';
+      return `<${tag}>${g.items.join('')}</${tag}>`;
+    }).join('');
+  });
+
+  return clean;
+}
+
 function sanitizeMaterialHtml(dirtyHtml) {
   if (!dirtyHtml || typeof dirtyHtml !== 'string') return '';
-  return materialHtmlFilter.process(dirtyHtml);
+  const normalized = normalizeQuillLists(dirtyHtml);
+  return materialHtmlFilter.process(normalized);
 }
 
 function renderMaterialBody(html) {
@@ -266,4 +329,5 @@ module.exports = {
   canEdit,
   checkVersionConflict,
   planContentMerge,
+  normalizeQuillLists,
 };

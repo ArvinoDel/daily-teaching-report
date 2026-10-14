@@ -97,6 +97,14 @@
     });
   }
 
+  function getEditorHtml() {
+    if (!quill) return '';
+    if (typeof quill.getSemanticHTML === 'function') {
+      return quill.getSemanticHTML();
+    }
+    return quill.root.innerHTML;
+  }
+
   function markDirty() {
     isDirty = true;
     if (saveStatus) {
@@ -505,7 +513,7 @@
         saveStatus.className = 'text-xs font-medium text-slate-500';
       }
 
-      const bodyHtml = quill ? quill.root.innerHTML : '';
+      const bodyHtml = getEditorHtml();
       const note = revisionNoteInput ? revisionNoteInput.value.trim() : '';
       const resourcesPayload = resources.map(function (r) {
         return {
@@ -564,7 +572,7 @@
   // Copy HTML helper in conflict modal
   if (btnCopyContent) {
     btnCopyContent.addEventListener('click', function () {
-      const bodyHtml = quill ? quill.root.innerHTML : '';
+      const bodyHtml = getEditorHtml();
       navigator.clipboard.writeText(bodyHtml).then(function () {
         btnCopyContent.textContent = 'Copied to Clipboard!';
         setTimeout(function () {

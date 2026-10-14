@@ -456,3 +456,79 @@ test('Material Content - Body Size 200 KB Limit Validation', () => {
   assert.ok(result.error.includes('200 KB limit'));
 });
 
+test('Material Content - Quill 2 List Normalization & Sanitization', async (t) => {
+  await t.test('(a) Quill 2 bullet list markup -> <ul><li>One</li><li>Two</li></ul>', () => {
+    const input = '<ol><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>One</li><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Two</li></ol>';
+    const output = sanitizeMaterialHtml(input);
+    assert.equal(output, '<ul><li>One</li><li>Two</li></ul>');
+    assert.ok(!output.includes('ql-ui'));
+    assert.ok(!output.includes('data-list'));
+  });
+
+  await t.test('(b) ordered list markup -> <ol>', () => {
+    const input = '<ol><li data-list="ordered"><span class="ql-ui" contenteditable="false"></span>Step 1</li><li data-list="ordered"><span class="ql-ui" contenteditable="false"></span>Step 2</li></ol>';
+    const output = sanitizeMaterialHtml(input);
+    assert.equal(output, '<ol><li>Step 1</li><li>Step 2</li></ol>');
+    assert.ok(!output.includes('ql-ui'));
+    assert.ok(!output.includes('data-list'));
+  });
+
+  await t.test('(c) a bullet list followed by an ordered list stays two lists', () => {
+    const input = '<ol><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Bullet 1</li><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Bullet 2</li><li data-list="ordered"><span class="ql-ui" contenteditable="false"></span>Num 1</li><li data-list="ordered"><span class="ql-ui" contenteditable="false"></span>Num 2</li></ol>';
+    const output = sanitizeMaterialHtml(input);
+    assert.equal(output, '<ul><li>Bullet 1</li><li>Bullet 2</li></ul><ol><li>Num 1</li><li>Num 2</li></ol>');
+  });
+
+  await t.test('(d) mixed formatting (heading, bold, italic, underline, strike, link, blockquote) survives', () => {
+    const input = '<h2>Lesson Title</h2><p><strong>Bold</strong> <em>Italic</em> <u>Underline</u> <s>Strike</s></p><blockquote>Important quote</blockquote><p><a href="https://example.com">Resource</a></p><ol><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Item A</li><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>Item B</li></ol>';
+    const output = sanitizeMaterialHtml(input);
+    assert.ok(output.includes('<h2>Lesson Title</h2>'));
+    assert.ok(output.includes('<strong>Bold</strong>'));
+    assert.ok(output.includes('<em>Italic</em>'));
+    assert.ok(output.includes('<u>Underline</u>'));
+    assert.ok(output.includes('<s>Strike</s>'));
+    assert.ok(output.includes('<blockquote>Important quote</blockquote>'));
+    assert.ok(output.includes('<a href="https://example.com" rel="noopener noreferrer" target="_blank">Resource</a>'));
+    assert.ok(output.includes('<ul><li>Item A</li><li>Item B</li></ul>'));
+    assert.ok(!output.includes('ql-ui'));
+  });
+
+  await t.test('(e) earlier XSS payload table still passes with list normalization', () => {
+    const table = [
+      '<<b>img src=x onerror=alert(1)>',
+      'hello <img src=x onerror=alert(1)',
+      '<scr<b>ipt>alert(1)</scr</b>ipt>',
+      '<<b>script>alert(1)</script>',
+      '<a href="javascript:alert(1)">x</a>',
+      '<a href="jav&#x61;script:alert(1)">x</a>',
+      '<a href=" java\\tscript:alert(1)">x</a>',
+      '<a href="https://ok.com" title=">" onclick=alert(1)>x</a>',
+      '<svg onload=alert(1)>',
+      '<IMG SRC=x ONERROR=alert(1)>',
+      '<math><mi xlink:href="javascript:alert(1)">',
+      '<!--><img src=x onerror=alert(1)-->',
+      '<a href=//evil.com>x</a>',
+    ];
+    for (const p of table) {
+      const sanitized = sanitizeMaterialHtml(p);
+      assertSanitizerInvariants(sanitized);
+    }
+  });
+
+  await t.test('(f) sanitizing twice equals sanitizing once (idempotent)', () => {
+    const samples = [
+      '<ol><li data-list="bullet"><span class="ql-ui" contenteditable="false"></span>One</li></ol>',
+      '<ol><li data-list="ordered"><span class="ql-ui" contenteditable="false"></span>Step</li></ol>',
+      '<ul><li>Already UL</li></ul>',
+      '<ol><li>Already OL</li></ol>',
+      '<p>Para with <strong>bold</strong></p>',
+      '<ol><li data-list="bullet">A</li><li data-list="ordered">B</li></ol>',
+    ];
+    for (const sample of samples) {
+      const once = sanitizeMaterialHtml(sample);
+      const twice = sanitizeMaterialHtml(once);
+      assert.equal(twice, once, `Idempotency failure for: ${sample}`);
+    }
+  });
+});
+
