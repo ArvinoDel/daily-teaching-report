@@ -122,6 +122,7 @@ exports.showMaterial = async (req, res) => {
       content: content || { body: '', resources: [], locked: false, version: 1 },
       userCanEdit,
       userIsAdmin,
+      csrfToken: (req.session && req.session.csrfToken) || (res.locals && res.locals.csrfToken) || '',
     });
   } catch (err) {
     console.error('showMaterial error:', err);
@@ -153,7 +154,7 @@ exports.editMaterial = async (req, res) => {
       userIsAdmin: isAdminUser(req),
       maxFileMb: parseInt(process.env.MATERIAL_MAX_FILE_MB, 10) || 10,
       allowedExtensions: getAllowedExtensions(),
-      csrfToken: req.csrfToken ? req.csrfToken() : '',
+      csrfToken: (req.session && req.session.csrfToken) || (res.locals && res.locals.csrfToken) || '',
     });
   } catch (err) {
     console.error('editMaterial error:', err);
@@ -354,7 +355,7 @@ exports.getHistory = async (req, res) => {
       material,
       revisions,
       currentVersion: currentContent ? currentContent.version : 1,
-      csrfToken: req.csrfToken ? req.csrfToken() : '',
+      csrfToken: (req.session && req.session.csrfToken) || (res.locals && res.locals.csrfToken) || '',
     });
   } catch (err) {
     console.error('getHistory error:', err);

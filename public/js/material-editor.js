@@ -29,7 +29,15 @@
   let resources = Array.isArray(config.resources) ? [...config.resources] : [];
   const maxFileMb = config.maxFileMb || 10;
   const allowedExtensions = config.allowedExtensions || [];
-  const csrfToken = config.csrfToken || '';
+  function getCsrfToken() {
+    if (config.csrfToken) return config.csrfToken;
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta && meta.getAttribute('content')) return meta.getAttribute('content');
+    const input = document.querySelector('input[name="_csrf"]');
+    if (input && input.value) return input.value;
+    return '';
+  }
+  const csrfToken = getCsrfToken();
 
   let isDirty = false;
 
