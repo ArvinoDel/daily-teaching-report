@@ -11,8 +11,6 @@
  * - Content merge planning
  */
 
-const sanitizeHtml = require('sanitize-html');
-
 const DEFAULT_ALLOWED_EXTENSIONS = [
   'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx',
   'jpg', 'jpeg', 'png', 'mp3', 'm4a', 'wav', 'mp4',
@@ -37,47 +35,93 @@ function getMaxFileBytes() {
 }
 
 /* ─────────────────────────────────────────────────────────────────────
- *  1. Sanitization
+ *  1. Sanitization (Pure CommonJS — zero external ESM dependencies)
  * ───────────────────────────────────────────────────────────────────── */
-const SANITIZE_OPTIONS = {
-  allowedTags: [
-    'h1', 'h2', 'h3', 'h4',
-    'p', 'br',
-    'strong', 'em', 'u', 's',
-    'ul', 'ol', 'li',
-    'blockquote',
-    'a',
-    'code', 'pre',
-    'hr',
-  ],
-  allowedAttributes: {
-    'a': ['href', 'target', 'rel'],
-  },
-  transformTags: {
-    'a': function(tagName, attribs) {
-      return {
-        tagName: 'a',
-        attribs: {
-          href: attribs.href || '',
-          target: '_blank',
-          rel: 'noopener noreferrer',
-        },
-      };
-    },
-  },
-  allowedSchemes: ['http', 'https', 'mailto'],
-  allowedSchemesByTag: {
-    'a': ['http', 'https', 'mailto'],
-  },
-  allowProtocolRelative: false,
-};
+const ALLOWED_TAGS = new Set([
+  'h1', 'h2', 'h3', 'h4',
+  'p', 'br',
+  'strong', 'em', 'u', 's',
+  'ul', 'ol', 'li',
+  'blockquote',
+  'a',
+  'code', 'pre',
+  'hr',
+]);
 
 function sanitizeMaterialHtml(dirtyHtml) {
   if (!dirtyHtml || typeof dirtyHtml !== 'string') return '';
   if (Buffer.byteLength(dirtyHtml, 'utf8') > MAX_BODY_BYTES) {
     dirtyHtml = dirtyHtml.slice(0, MAX_BODY_BYTES);
   }
-  return sanitizeHtml(dirtyHtml, SANITIZE_OPTIONS);
+
+  // 1. Remove dangerous blocks entirely including contents
+  let clean = dirtyHtml
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<object\b[^>]*>[\s\S]*?<\/object>/gi, '')
+    .replace(/<embed\b[^>]*>[\s\S]*?<\/embed>/gi, '');
+
+  let openLinks = 0;
+
+  // 2. Tokenize tags
+  clean = clean.replace(/<(\/)?([a-zA-Z0-9]+)([^>]*)>/gi, (match, isClosing, tagName, attrsStr) => {
+    const tag = tagName.toLowerCase();
+    if (!ALLOWED_TAGS.has(tag)) {
+      return ''; // Strip disallowed tag entirely
+    }
+
+    if (isClosing) {
+      if (tag === 'a') {
+        if (openLinks > 0) {
+          openLinks--;
+          return '</a>';
+        }
+        return '';
+      }
+      return `</${tag}>`;
+    }
+
+    if (tag === 'br' || tag === 'hr') {
+      return `<${tag}>`;
+    }
+
+    if (tag === 'a') {
+      // Extract href attribute
+      const hrefMatch = attrsStr.match(/href\s*=\s*(["'])(.*?)\1/i) || attrsStr.match(/href\s*=\s*([^"'\s>]+)/i);
+      if (hrefMatch) {
+        const rawHref = (hrefMatch[2] || hrefMatch[1] || '').trim();
+        const lowerHref = rawHref.toLowerCase();
+        // Disallow dangerous schemes
+        if (
+          lowerHref.startsWith('javascript:') ||
+          lowerHref.startsWith('data:') ||
+          lowerHref.startsWith('vbscript:') ||
+          lowerHref.includes('javascript&')
+        ) {
+          return '';
+        }
+        // Must start with http://, https://, mailto:, /, or #
+        if (
+          lowerHref.startsWith('http://') ||
+          lowerHref.startsWith('https://') ||
+          lowerHref.startsWith('mailto:') ||
+          lowerHref.startsWith('/') ||
+          lowerHref.startsWith('#')
+        ) {
+          const safeHref = rawHref.replace(/"/g, '&quot;');
+          openLinks++;
+          return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">`;
+        }
+      }
+      return '';
+    }
+
+    // For all other allowed tags, strip all attributes (no event handlers, style, class, etc.)
+    return `<${tag}>`;
+  });
+
+  return clean;
 }
 
 /* ─────────────────────────────────────────────────────────────────────
