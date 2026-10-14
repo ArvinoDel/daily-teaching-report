@@ -9,6 +9,9 @@ const {
   buildBackfillMaps,
   resolveForBackfill,
   planRecountUpdates,
+  countUnlinkedReports,
+  getUnlinkedCutoff,
+  buildUnlinkedReportsFilter,
 } = require('../services/materialService');
 
 test('Material Service - Pure Helper Tests', async (t) => {
@@ -383,5 +386,87 @@ test('Material Service - Pure Helper Tests', async (t) => {
     const uEmpty = updates.find(u => String(u.id) === 'mat-target-empty');
     assert.equal(uEmpty.usageCount, 0);
     assert.equal(uEmpty.lastUsedAt, null);
+  });
+
+  /* ─────────────────────────────────────────────────────────────────────
+   *  Unlinked Reports Cutoff Tests
+   * ───────────────────────────────────────────────────────────────────── */
+  await t.test('28. getUnlinkedCutoff: returns null when materials list is empty', () => {
+    assert.equal(getUnlinkedCutoff([]), null);
+    assert.equal(getUnlinkedCutoff(null), null);
+  });
+
+  await t.test('29. getUnlinkedCutoff: returns earliest createdAt among materials', () => {
+    const materials = [
+      { createdAt: new Date('2026-10-10T12:00:00Z') },
+      { createdAt: new Date('2026-10-07T08:50:00Z') },
+      { createdAt: new Date('2026-10-09T05:00:00Z') },
+    ];
+    const cutoff = getUnlinkedCutoff(materials);
+    assert.ok(cutoff instanceof Date);
+    assert.equal(cutoff.toISOString(), '2026-10-07T08:50:00.000Z');
+  });
+
+  await t.test('30. buildUnlinkedReportsFilter: builds date gte filter with subject and material null/exists', () => {
+    assert.equal(buildUnlinkedReportsFilter(null), null);
+
+    const cutoff = new Date('2026-10-07T08:50:00Z');
+    const filter = buildUnlinkedReportsFilter(cutoff);
+    assert.ok(filter);
+    assert.equal(filter.date.$gte.toISOString(), cutoff.toISOString());
+    assert.equal(filter.subject.$exists, true);
+    assert.equal(filter.subject.$ne, '');
+    assert.equal(filter.$or.length, 2);
+  });
+
+  await t.test('31. countUnlinkedReports: returns 0 when no materials exist in DB', async () => {
+    const mockMaterialModel = {
+      findOne: () => ({
+        sort: () => ({
+          select: () => ({
+            lean: async () => null,
+          }),
+        }),
+      }),
+    };
+    const mockReportModel = {
+      countDocuments: async () => 999,
+    };
+
+    const count = await countUnlinkedReports({
+      MaterialModel: mockMaterialModel,
+      ReportModel: mockReportModel,
+    });
+    // With no materials, count is 0 without querying reports
+    assert.equal(count, 0);
+  });
+
+  await t.test('32. countUnlinkedReports: queries reports on or after earliest createdAt', async () => {
+    const earliestDate = new Date('2026-10-07T08:50:00Z');
+    let capturedFilter = null;
+
+    const mockMaterialModel = {
+      findOne: () => ({
+        sort: () => ({
+          select: () => ({
+            lean: async () => ({ createdAt: earliestDate }),
+          }),
+        }),
+      }),
+    };
+    const mockReportModel = {
+      countDocuments: async (filter) => {
+        capturedFilter = filter;
+        return 42;
+      },
+    };
+
+    const count = await countUnlinkedReports({
+      MaterialModel: mockMaterialModel,
+      ReportModel: mockReportModel,
+    });
+    assert.equal(count, 42);
+    assert.ok(capturedFilter);
+    assert.equal(capturedFilter.date.$gte.toISOString(), earliestDate.toISOString());
   });
 });

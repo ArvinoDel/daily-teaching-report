@@ -407,16 +407,72 @@ function parseCheckbox(value) {
 }
 
 /**
- * Counts reports that have a non-empty subject but no linked material.
+ * Pure helper to compute cutoff date (earliest createdAt among materials).
+ * Returns null if materials is empty or no valid createdAt.
  *
+ * @param {Array<{ createdAt?: any }>} materials
+ * @returns {Date|null}
+ */
+function getUnlinkedCutoff(materials = []) {
+  if (!materials || materials.length === 0) return null;
+  let earliest = null;
+  for (const m of materials) {
+    if (m && m.createdAt) {
+      const d = new Date(m.createdAt);
+      if (!earliest || d < earliest) earliest = d;
+    }
+  }
+  return earliest;
+}
+
+/**
+ * Pure helper to build the MongoDB filter query for unlinked reports given a cutoff date.
+ * Returns null if cutoff is not provided.
+ *
+ * @param {Date|string|null} cutoff
+ * @returns {Object|null}
+ */
+function buildUnlinkedReportsFilter(cutoff) {
+  if (!cutoff) return null;
+  return {
+    date: { $gte: new Date(cutoff) },
+    subject: { $exists: true, $ne: '' },
+    $or: [{ material: null }, { material: { $exists: false } }],
+  };
+}
+
+/**
+ * Counts reports that have a non-empty subject but no linked material.
+ * Only counts reports whose date is on or after the cutoff
+ * (the earliest createdAt among existing Materials).
+ * If there are no materials, the count is 0.
+ *
+ * @param {Object} [options] Optional dependency injection for unit tests
+ * @param {any} [options.MaterialModel]
+ * @param {any} [options.ReportModel]
+ * @param {Date|string|null} [options.cutoff]
  * @returns {Promise<number>}
  */
-async function countUnlinkedReports() {
+async function countUnlinkedReports(options = {}) {
+  const MaterialModel = (options && options.MaterialModel) || Material;
+  const ReportModel   = (options && options.ReportModel) || Report;
+
   try {
-    return await Report.countDocuments({
-      subject: { $exists: true, $ne: '' },
-      $or: [{ material: null }, { material: { $exists: false } }],
-    });
+    let cutoff = options && options.cutoff;
+    if (cutoff === undefined) {
+      const earliest = await MaterialModel.findOne().sort({ createdAt: 1 }).select('createdAt').lean();
+      if (!earliest || !earliest.createdAt) {
+        return 0;
+      }
+      cutoff = earliest.createdAt;
+    }
+
+    if (!cutoff) {
+      return 0;
+    }
+
+    const filter = buildUnlinkedReportsFilter(cutoff);
+    return await ReportModel.countDocuments(filter);
   } catch (err) {
     console.error('countUnlinkedReports error:', err);
     return 0;
@@ -772,4 +828,6 @@ module.exports = {
   buildBackfillMaps,
   resolveForBackfill,
   planRecountUpdates,
+  getUnlinkedCutoff,
+  buildUnlinkedReportsFilter,
 };
