@@ -532,3 +532,117 @@ test('Material Content - Quill 2 List Normalization & Sanitization', async (t) =
   });
 });
 
+test('Material Content - Attachment Display & Inline Picture Previews', async (t) => {
+  const ejs = require('ejs');
+  const path = require('path');
+
+  await t.test('views/materials/show.ejs renders attached files and displays image picture previews', async () => {
+    const showFile = path.resolve('views/materials/show.ejs');
+    const html = await ejs.renderFile(showFile, {
+      title: 'Math 101',
+      material: {
+        _id: '670000000000000000000001',
+        name: 'Math 101',
+        level: 'Primary',
+        usageCount: 3,
+        hasContent: true,
+      },
+      content: {
+        version: 1,
+        body: '<p>Study guide</p>',
+        resources: [
+          {
+            _id: '670000000000000000000010',
+            kind: 'file',
+            label: 'worksheet-diagram.png',
+            file: { format: 'png', bytes: 1048576, publicId: 'materials/1/diagram' },
+          },
+          {
+            _id: '670000000000000000000011',
+            kind: 'link',
+            label: 'Khan Academy',
+            url: 'https://khanacademy.org',
+          },
+        ],
+      },
+      userCanEdit: true,
+      userIsAdmin: true,
+      renderMaterialBody: s => s,
+      csrfToken: 'csrf-xyz',
+      user: { role: 'admin' },
+      path: '/materials/1',
+    });
+
+    assert.ok(html.includes('worksheet-diagram.png'), 'Shows file label');
+    assert.ok(html.includes('1 MB'), 'Formats byte size correctly');
+    // Direct picture preview <img> tag:
+    assert.ok(
+      html.includes('<img src="/materials/670000000000000000000001/resources/670000000000000000000010/open"'),
+      'Renders picture inline with open endpoint URL'
+    );
+    assert.ok(html.includes('Khan Academy'), 'Shows reference link');
+  });
+
+  await t.test('views/materials/history.ejs displays revision attachments and picture previews', async () => {
+    const histFile = path.resolve('views/materials/history.ejs');
+    const html = await ejs.renderFile(histFile, {
+      title: 'Revision History',
+      material: {
+        _id: '670000000000000000000001',
+        name: 'Math 101',
+        level: 'Primary',
+      },
+      revisions: [
+        {
+          version: 2,
+          editedByName: 'Admin Alice',
+          editedAt: new Date(),
+          note: 'Attached chapter photo',
+          body: '<p>Updated notes</p>',
+          resources: [
+            {
+              _id: '670000000000000000000020',
+              kind: 'file',
+              label: 'textbook-photo.jpg',
+              file: { format: 'jpg', bytes: 2097152, publicId: 'materials/1/photo' },
+            },
+            {
+              _id: '670000000000000000000021',
+              kind: 'link',
+              label: 'Online Practice',
+              url: 'https://example.com/quiz',
+            },
+          ],
+        },
+        {
+          version: 1,
+          editedByName: 'Teacher Bob',
+          editedAt: new Date(Date.now() - 3600000),
+          note: 'Initial version without files',
+          body: '<p>Initial guide</p>',
+          resources: [],
+        },
+      ],
+      currentVersion: 2,
+      renderMaterialBody: s => s,
+      safeJson: JSON.stringify,
+      csrfToken: 'csrf-xyz',
+      user: { role: 'admin' },
+      path: '/materials/1/history',
+    });
+
+    // Displays revision attachments summary
+    assert.ok(html.includes('1 attached file'), 'Shows attached files count on revision card');
+    assert.ok(html.includes('1 link'), 'Shows links count on revision card');
+    assert.ok(html.includes('textbook-photo.jpg'), 'Displays attached file name in history');
+    assert.ok(html.includes('2 MB'), 'Displays formatted file size in history');
+    // Picture preview inside history
+    assert.ok(
+      html.includes('/materials/670000000000000000000001/resources/670000000000000000000020/open'),
+      'Renders picture preview inside revision history'
+    );
+    assert.ok(html.includes('Online Practice'), 'Displays link in history');
+    assert.ok(html.includes('0 attached files'), 'Handles revisions with no attachments');
+  });
+});
+

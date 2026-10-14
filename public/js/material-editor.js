@@ -164,6 +164,18 @@
       badge.textContent = badgeText;
       leftCol.appendChild(badge);
 
+      if (isFile && ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(((res.file && res.file.format) || '').toLowerCase()) && res._id) {
+        const thumbWrap = document.createElement('div');
+        thumbWrap.className = 'w-8 h-8 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 flex-shrink-0';
+        const img = document.createElement('img');
+        img.src = `/materials/${materialId}/resources/${res._id}/open`;
+        img.alt = res.label || 'Image';
+        img.className = 'w-full h-full object-cover';
+        img.loading = 'lazy';
+        thumbWrap.appendChild(img);
+        leftCol.appendChild(thumbWrap);
+      }
+
       const title = document.createElement('span');
       title.className = 'font-semibold text-slate-800 truncate';
       title.textContent = res.label || (isFile ? res.file?.originalFilename : res.url);

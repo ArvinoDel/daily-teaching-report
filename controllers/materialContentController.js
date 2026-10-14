@@ -8,6 +8,7 @@
  */
 
 const cloudinary = require('cloudinary').v2;
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const Material = require('../models/Material');
 const MaterialContent = require('../models/MaterialContent');
@@ -918,11 +919,22 @@ exports.removeResource = async (req, res) => {
 exports.openResource = async (req, res) => {
   try {
     const content = await MaterialContent.findOne({ material: req.params.id }).lean();
-    if (!content) {
-      return res.status(404).render('error', { message: 'Material content not found.' });
+    let resource = content ? (content.resources || []).find(r => String(r._id) === req.params.rid) : null;
+
+    if (!resource) {
+      const ridQueries = [{ 'resources._id': req.params.rid }];
+      if (mongoose.Types.ObjectId.isValid(req.params.rid)) {
+        ridQueries.push({ 'resources._id': new mongoose.Types.ObjectId(req.params.rid) });
+      }
+      const rev = await MaterialContentRevision.findOne({
+        material: req.params.id,
+        $or: ridQueries,
+      }).lean();
+      if (rev && Array.isArray(rev.resources)) {
+        resource = rev.resources.find(r => String(r._id) === req.params.rid);
+      }
     }
 
-    const resource = (content.resources || []).find(r => String(r._id) === req.params.rid);
     if (!resource) {
       return res.status(404).render('error', { message: 'Resource not found.' });
     }
