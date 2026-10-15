@@ -21,6 +21,8 @@ const {
   escapeRegex,
   planRevisionRenumber,
   destroyAssets,
+  runDeleteWithCleanup,
+  CLEANUP_BUDGET_MS,
 } = require('../services/materialContentService');
 
 cloudinary.config({
@@ -633,21 +635,72 @@ exports.materialDelete = async (req, res) => {
       publicIdsToDelete = publicIdsToDelete.filter(pid => !referencedByOther.has(pid));
     }
 
-    // Best-effort and non-fatal: destroy Cloudinary assets of that material and sweep prefix
+    const deleteDb = async () => {
+      await Report.updateMany({ material: material._id }, { $set: { material: null } });
+      await MaterialAlias.deleteMany({ material: material._id });
+      await MaterialContent.deleteMany({ material: material._id });
+      await MaterialContentRevision.deleteMany({ material: material._id });
+      await material.deleteOne();
+      invalidateMaterialsCache();
+    };
+
     const deletedPerType = { image: 0, raw: 0, video: 0 };
-    try {
+    const unfinishedPublicIds = new Set();
+
+    const cleanup = async ({ isBudgetExceeded }) => {
+      let incomplete = false;
+
+      // 1. Destroy collected assets
       if (publicIdsToDelete.length > 0) {
-        const destroyed = await destroyAssets(publicIdsToDelete, resourceTypeHints);
-        deletedPerType.image += (destroyed.image || 0);
-        deletedPerType.raw   += (destroyed.raw || 0);
-        deletedPerType.video += (destroyed.video || 0);
+        if (isBudgetExceeded()) {
+          incomplete = true;
+          for (const pid of publicIdsToDelete) {
+            unfinishedPublicIds.add(pid);
+            console.error(`Material ${material._id}: cleanup unfinished for publicId ${pid} (budget exceeded)`);
+          }
+        } else {
+          try {
+            const destroyed = await destroyAssets(publicIdsToDelete, resourceTypeHints, { isBudgetExceeded });
+            deletedPerType.image += (destroyed.image || 0);
+            deletedPerType.raw   += (destroyed.raw || 0);
+            deletedPerType.video += (destroyed.video || 0);
+            if (Array.isArray(destroyed.unfinished) && destroyed.unfinished.length > 0) {
+              incomplete = true;
+              for (const pid of destroyed.unfinished) {
+                unfinishedPublicIds.add(pid);
+                console.error(`Material ${material._id}: cleanup unfinished for publicId ${pid}`);
+              }
+            }
+          } catch (cErr) {
+            incomplete = true;
+            console.error(`Material ${material._id}: error destroying assets:`, cErr.message || cErr);
+            for (const pid of publicIdsToDelete) {
+              if (!unfinishedPublicIds.has(pid)) {
+                unfinishedPublicIds.add(pid);
+                console.error(`Material ${material._id}: cleanup unfinished for publicId ${pid}`);
+              }
+            }
+          }
+        }
       }
 
+      // 2. Three prefix sweeps with 20-round limit
       const prefix = `materials/${material._id}/`;
       for (const rt of ['image', 'raw', 'video']) {
+        if (isBudgetExceeded()) {
+          incomplete = true;
+          console.error(`Material ${material._id}: cleanup unfinished for prefix ${prefix} (${rt}) (budget exceeded)`);
+          continue;
+        }
+
         let loops = 0;
         let partial = true;
         while (partial && loops < 20) {
+          if (isBudgetExceeded()) {
+            incomplete = true;
+            console.error(`Material ${material._id}: cleanup unfinished for prefix ${prefix} (${rt}) (budget exceeded)`);
+            break;
+          }
           loops++;
           try {
             const sweepRes = await cloudinary.api.delete_resources_by_prefix(prefix, {
@@ -660,43 +713,41 @@ exports.materialDelete = async (req, res) => {
             }
             partial = Boolean(sweepRes && sweepRes.partial);
           } catch (sweepErr) {
-            console.error(`Non-fatal error sweeping Cloudinary prefix ${prefix} for ${rt}:`, sweepErr.message || sweepErr);
+            incomplete = true;
+            console.error(`Material ${material._id}: cleanup unfinished for prefix ${prefix} (${rt}):`, sweepErr.message || sweepErr);
             break;
           }
         }
       }
-    } catch (cErr) {
-      console.error('Non-fatal error destroying Cloudinary assets for material:', cErr.message || cErr);
-    }
 
-    // Reports keep their subject text, set Report.material = null
-    await Report.updateMany({ material: material._id }, { $set: { material: null } });
+      return { cleanupIncomplete: incomplete || isBudgetExceeded() };
+    };
 
-    // Delete aliases pointing to it
-    await MaterialAlias.deleteMany({ material: material._id });
+    const { cleanupIncomplete } = await runDeleteWithCleanup({
+      deleteDb,
+      cleanup,
+      budgetMs: CLEANUP_BUDGET_MS,
+    });
 
-    // Delete content and revisions
-    await Promise.all([
-      MaterialContent.deleteMany({ material: material._id }),
-      MaterialContentRevision.deleteMany({ material: material._id }),
-    ]);
-
-    // Delete the material
-    await material.deleteOne();
-
-    invalidateMaterialsCache();
-
+    const unfinishedCount = unfinishedPublicIds.size;
     await logAudit(req, 'delete', material._id, label, {
       level,
       usageCount,
       deletedAssets: deletedPerType,
+      cleanupIncomplete: Boolean(cleanupIncomplete),
+      unfinishedCount,
+      unfinishedPublicIds: unfinishedCount,
     });
 
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
       return res.status(200).json({ ok: true });
     }
 
-    req.session.flash = `Material "${label}" deleted successfully!`;
+    let flashMsg = `Material "${label}" deleted successfully!`;
+    if (cleanupIncomplete) {
+      flashMsg += ' Some files could not be removed from cloud storage; they are listed in the server log.';
+    }
+    req.session.flash = flashMsg;
     res.redirect('/admin/materials');
   } catch (err) {
     console.error('adminMaterialController.materialDelete error:', err);

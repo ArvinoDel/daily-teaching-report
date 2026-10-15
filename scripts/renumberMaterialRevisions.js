@@ -22,9 +22,15 @@ const MaterialContent = require('../models/MaterialContent');
 const MaterialContentRevision = require('../models/MaterialContentRevision');
 
 const uriArg = process.argv.find(a => a.startsWith('--uri='));
-let MONGO_URI = uriArg ? uriArg.slice(6) : process.env.MONGO_URI;
-if (!MONGO_URI || MONGO_URI === '[SENSITIVE]' || (!MONGO_URI.startsWith('mongodb://') && !MONGO_URI.startsWith('mongodb+srv://'))) {
-  MONGO_URI = 'mongodb://localhost:27017/daily_teaching_report';
+const MONGO_URI = uriArg ? uriArg.slice(6) : process.env.MONGO_URI;
+
+if (!MONGO_URI || (!MONGO_URI.startsWith('mongodb://') && !MONGO_URI.startsWith('mongodb+srv://'))) {
+  console.error('\nError: Invalid or missing MongoDB URI.');
+  if (MONGO_URI === '[SENSITIVE]') {
+    console.error('MONGO_URI is set to placeholder "[SENSITIVE]". Please provide a real MongoDB connection string.');
+  }
+  console.error('MONGO_URI must be provided in .env or via --uri=<mongo uri> and must start with "mongodb://" or "mongodb+srv://".\n');
+  process.exit(1);
 }
 
 const APPLY = process.argv.includes('--apply');
@@ -39,7 +45,7 @@ async function main() {
   await mongoose.connect(MONGO_URI);
 
   const connHost = mongoose.connection.host;
-  const connDb   = mongoose.connection.db.databaseName;
+  const connDb   = mongoose.connection.db ? mongoose.connection.db.databaseName : mongoose.connection.name;
   console.log(`✓ Connected to MongoDB  host=${connHost}  db=${connDb}\n`);
 
   if (APPLY) {

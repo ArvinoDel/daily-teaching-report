@@ -17,6 +17,8 @@ const {
   deriveFileExtension,
   buildSignedFileUrl,
   destroyAssets,
+  runDeleteWithCleanup,
+  CLEANUP_BUDGET_MS,
   planRevisionRenumber,
   parseBaseVersion,
   escapeRegex,
@@ -903,4 +905,233 @@ test('Material Content - destroyAssets Helper', async (t) => {
     cloudinary.api.delete_resources = originalDeleteResources;
   }
 });
+
+test('Material Content - runDeleteWithCleanup Helper', async (t) => {
+  await t.test('DB step throws -> cleanup is never called and the error propagates', async () => {
+    let cleanupCalled = false;
+    const deleteDb = async () => {
+      throw new Error('Database delete failed');
+    };
+    const cleanup = async () => {
+      cleanupCalled = true;
+    };
+
+    await assert.rejects(
+      () => runDeleteWithCleanup({ deleteDb, cleanup }),
+      /Database delete failed/
+    );
+    assert.equal(cleanupCalled, false);
+  });
+
+  await t.test('DB ok + cleanup throws -> dbDeleted true and cleanupIncomplete true', async () => {
+    let dbDeleted = false;
+    let cleanupCalled = false;
+    const deleteDb = async () => {
+      dbDeleted = true;
+    };
+    const cleanup = async () => {
+      cleanupCalled = true;
+      throw new Error('Cloudinary API network failure');
+    };
+
+    const res = await runDeleteWithCleanup({ deleteDb, cleanup });
+    assert.deepEqual(res, { dbDeleted: true, cleanupIncomplete: true });
+    assert.equal(dbDeleted, true);
+    assert.equal(cleanupCalled, true);
+  });
+
+  await t.test('DB ok + budget exceeded -> cleanupIncomplete true', async () => {
+    let dbDeleted = false;
+    let cleanupCalled = false;
+    let currentTime = 1000;
+    const now = () => currentTime;
+    const deleteDb = async () => {
+      dbDeleted = true;
+    };
+    const cleanup = async ({ isBudgetExceeded }) => {
+      cleanupCalled = true;
+      assert.equal(isBudgetExceeded(), false);
+      currentTime += 45000; // Exceeds 40,000ms budget
+      assert.equal(isBudgetExceeded(), true);
+    };
+
+    const res = await runDeleteWithCleanup({
+      deleteDb,
+      cleanup,
+      budgetMs: 40000,
+      now,
+    });
+    assert.deepEqual(res, { dbDeleted: true, cleanupIncomplete: true });
+    assert.equal(dbDeleted, true);
+    assert.equal(cleanupCalled, true);
+  });
+
+  await t.test('all ok -> false (dbDeleted: true, cleanupIncomplete: false)', async () => {
+    let dbDeleted = false;
+    let cleanupCalled = false;
+    const deleteDb = async () => {
+      dbDeleted = true;
+    };
+    const cleanup = async () => {
+      cleanupCalled = true;
+    };
+
+    const res = await runDeleteWithCleanup({ deleteDb, cleanup });
+    assert.deepEqual(res, { dbDeleted: true, cleanupIncomplete: false });
+    assert.equal(dbDeleted, true);
+    assert.equal(cleanupCalled, true);
+  });
+});
+
+test('Material Content - Deleting Material with docx, pdf, mp3 Sequencing & Budget', async (t) => {
+  const cloudinary = require('cloudinary').v2;
+  const originalDeleteResources = cloudinary.api.delete_resources;
+  const originalDeletePrefix = cloudinary.api.delete_resources_by_prefix;
+
+  await t.test('Success: DB records gone first, Cloudinary folder empty afterwards', async () => {
+    const cloudStorage = new Set([
+      'materials/mat123/report.docx',
+      'materials/mat123/slides.pdf',
+      'materials/mat123/audio.mp3',
+    ]);
+    const deleteCallsOrder = [];
+
+    cloudinary.api.delete_resources = async (chunk, opts) => {
+      deleteCallsOrder.push('cloudinary.delete_resources');
+      const deleted = {};
+      for (const id of chunk) {
+        cloudStorage.delete(id);
+        deleted[id] = 'deleted';
+      }
+      return { deleted };
+    };
+    cloudinary.api.delete_resources_by_prefix = async (prefix, opts) => {
+      deleteCallsOrder.push(`cloudinary.delete_prefix:${opts.resource_type}`);
+      return { deleted: {}, partial: false };
+    };
+
+    let dbRecordsDeleted = false;
+    const deleteDb = async () => {
+      deleteCallsOrder.push('db.delete');
+      dbRecordsDeleted = true;
+    };
+
+    const candidateIds = [
+      'materials/mat123/report.docx',
+      'materials/mat123/slides.pdf',
+      'materials/mat123/audio.mp3',
+    ];
+    const hints = {
+      'materials/mat123/report.docx': 'raw',
+      'materials/mat123/slides.pdf': 'image',
+      'materials/mat123/audio.mp3': 'video',
+    };
+
+    const cleanup = async ({ isBudgetExceeded }) => {
+      await destroyAssets(candidateIds, hints, { isBudgetExceeded });
+      for (const rt of ['image', 'raw', 'video']) {
+        await cloudinary.api.delete_resources_by_prefix('materials/mat123/', {
+          type: 'authenticated',
+          resource_type: rt,
+        });
+      }
+    };
+
+    try {
+      const res = await runDeleteWithCleanup({ deleteDb, cleanup });
+      assert.deepEqual(res, { dbDeleted: true, cleanupIncomplete: false });
+      assert.equal(dbRecordsDeleted, true);
+      assert.equal(cloudStorage.size, 0); // all files destroyed
+      // DB was called before any Cloudinary calls
+      assert.equal(deleteCallsOrder[0], 'db.delete');
+      assert.ok(deleteCallsOrder.slice(1).every(c => c.startsWith('cloudinary')));
+    } finally {
+      cloudinary.api.delete_resources = originalDeleteResources;
+      cloudinary.api.delete_resources_by_prefix = originalDeletePrefix;
+    }
+  });
+
+  await t.test('Failing DB delete leaves Cloudinary files completely untouched', async () => {
+    const cloudStorage = new Set([
+      'materials/mat123/report.docx',
+      'materials/mat123/slides.pdf',
+      'materials/mat123/audio.mp3',
+    ]);
+    let cloudinaryTouched = false;
+
+    cloudinary.api.delete_resources = async () => {
+      cloudinaryTouched = true;
+      return { deleted: {} };
+    };
+    cloudinary.api.delete_resources_by_prefix = async () => {
+      cloudinaryTouched = true;
+      return { deleted: {}, partial: false };
+    };
+
+    const deleteDb = async () => {
+      throw new Error('Database transaction abort / network error');
+    };
+
+    const cleanup = async () => {
+      cloudinaryTouched = true;
+    };
+
+    try {
+      await assert.rejects(
+        () => runDeleteWithCleanup({ deleteDb, cleanup }),
+        /Database transaction abort/
+      );
+      assert.equal(cloudinaryTouched, false);
+      assert.equal(cloudStorage.size, 3); // untouched
+    } finally {
+      cloudinary.api.delete_resources = originalDeleteResources;
+      cloudinary.api.delete_resources_by_prefix = originalDeletePrefix;
+    }
+  });
+
+  await t.test('Cleanup exceeding budget still deletes DB and flags cleanupIncomplete', async () => {
+    let dbDeleted = false;
+    let clock = 0;
+    const now = () => clock;
+
+    const deleteDb = async () => {
+      dbDeleted = true;
+    };
+
+    const unfinishedPublicIds = new Set();
+    const candidateIds = ['materials/mat123/large.docx'];
+    const hints = { 'materials/mat123/large.docx': 'raw' };
+
+    const cleanup = async ({ isBudgetExceeded }) => {
+      clock += 45000; // Exceeds 40s budget
+      if (isBudgetExceeded()) {
+        for (const id of candidateIds) unfinishedPublicIds.add(id);
+        return { cleanupIncomplete: true };
+      }
+    };
+
+    const res = await runDeleteWithCleanup({
+      deleteDb,
+      cleanup,
+      budgetMs: 40000,
+      now,
+    });
+
+    assert.equal(res.dbDeleted, true);
+    assert.equal(res.cleanupIncomplete, true);
+    assert.equal(dbDeleted, true);
+    assert.equal(unfinishedPublicIds.size, 1);
+
+    // Verify flash message formatted with extra sentence
+    let flash = 'Material "Test Material" deleted successfully!';
+    if (res.cleanupIncomplete) {
+      flash += ' Some files could not be removed from cloud storage; they are listed in the server log.';
+    }
+    assert.equal(
+      flash,
+      'Material "Test Material" deleted successfully! Some files could not be removed from cloud storage; they are listed in the server log.'
+    );
+  });
+});
+
 

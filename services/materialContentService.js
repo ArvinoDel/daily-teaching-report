@@ -373,10 +373,16 @@ function buildSignedFileUrl(file = {}, { download = false } = {}) {
   return cloudinary.url(file.publicId, options);
 }
 
-async function destroyAssets(publicIds = [], resourceTypeHints = {}) {
+const CLEANUP_BUDGET_MS = 40000;
+
+async function destroyAssets(publicIds = [], resourceTypeHints = {}, options = {}) {
+  const isBudgetExceeded = typeof options?.isBudgetExceeded === 'function'
+    ? options.isBudgetExceeded
+    : () => false;
+
   const uniqueIds = Array.from(new Set(publicIds)).filter(Boolean);
   if (uniqueIds.length === 0) {
-    return { image: 0, raw: 0, video: 0 };
+    return { image: 0, raw: 0, video: 0, unfinished: [] };
   }
   const groups = { image: [], raw: [], video: [] };
   for (const pid of uniqueIds) {
@@ -387,16 +393,26 @@ async function destroyAssets(publicIds = [], resourceTypeHints = {}) {
     groups[hint].push(pid);
   }
   const deletedCounts = { image: 0, raw: 0, video: 0 };
+  const successfulPids = new Set();
+
   for (const type of ['image', 'raw', 'video']) {
     const list = groups[type];
     for (let i = 0; i < list.length; i += 100) {
       const chunk = list.slice(i, i + 100);
+      if (isBudgetExceeded()) {
+        break;
+      }
       try {
         const res = await cloudinary.api.delete_resources(chunk, {
           type: 'authenticated',
           resource_type: type,
         });
         if (res && res.deleted) {
+          for (const [pid, status] of Object.entries(res.deleted)) {
+            if (status === 'deleted' || status === 'not_found') {
+              successfulPids.add(pid);
+            }
+          }
           const count = Object.values(res.deleted).filter(v => v === 'deleted').length;
           deletedCounts[type] += count;
         }
@@ -404,8 +420,46 @@ async function destroyAssets(publicIds = [], resourceTypeHints = {}) {
         console.error('Failed to delete Cloudinary assets batch:', chunk, err.message || err);
       }
     }
+    if (isBudgetExceeded()) {
+      break;
+    }
   }
+
+  deletedCounts.unfinished = uniqueIds.filter(pid => !successfulPids.has(pid));
   return deletedCounts;
+}
+
+async function runDeleteWithCleanup({
+  deleteDb,
+  cleanup,
+  budgetMs = CLEANUP_BUDGET_MS,
+  now = Date.now,
+} = {}) {
+  if (typeof deleteDb !== 'function') {
+    throw new TypeError('deleteDb must be a function');
+  }
+
+  // 1. Database first: runs deleteDb first. If it throws, error propagates; cleanup is never called.
+  await deleteDb();
+  const dbDeleted = true;
+  let cleanupIncomplete = false;
+
+  // 2. Cloudinary cleanup after: runs only if DB deletion succeeded. Cleanup is non-fatal.
+  if (typeof cleanup === 'function') {
+    const startTime = now();
+    const isBudgetExceeded = () => (now() - startTime) >= budgetMs;
+
+    try {
+      const cleanupRes = await cleanup({ isBudgetExceeded, startTime, budgetMs });
+      if (isBudgetExceeded() || (cleanupRes && cleanupRes.cleanupIncomplete)) {
+        cleanupIncomplete = true;
+      }
+    } catch (err) {
+      cleanupIncomplete = true;
+    }
+  }
+
+  return { dbDeleted, cleanupIncomplete };
 }
 
 function planRevisionRenumber(targetMaxVersion = 0, sourceRevisions = []) {
@@ -446,6 +500,7 @@ module.exports = {
   DEFAULT_ALLOWED_EXTENSIONS,
   MAX_BODY_BYTES,
   MAX_RESOURCES,
+  CLEANUP_BUDGET_MS,
   getAllowedExtensions,
   getMaxFileBytes,
   sanitizeMaterialHtml,
@@ -461,6 +516,7 @@ module.exports = {
   deriveFileExtension,
   buildSignedFileUrl,
   destroyAssets,
+  runDeleteWithCleanup,
   planRevisionRenumber,
   parseBaseVersion,
   escapeRegex,
