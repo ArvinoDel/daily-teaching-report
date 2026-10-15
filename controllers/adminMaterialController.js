@@ -16,7 +16,12 @@ const {
   parseCheckbox,
   countUnlinkedReports,
 } = require('../services/materialService');
-const { computeHasContent } = require('../services/materialContentService');
+const {
+  computeHasContent,
+  escapeRegex,
+  planRevisionRenumber,
+  destroyAssets,
+} = require('../services/materialContentService');
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -66,7 +71,7 @@ exports.materialsList = async (req, res) => {
     }
 
     if (q && q.trim()) {
-      filter.name = { $regex: q.trim(), $options: 'i' };
+      filter.name = { $regex: escapeRegex(q.trim()), $options: 'i' };
     }
 
     if (noContent === '1') {
@@ -112,6 +117,7 @@ exports.materialsList = async (req, res) => {
       MaterialContentRevision.find()
         .sort({ editedAt: -1 })
         .limit(20)
+        .select('material version note editedByName editedAt')
         .populate('material', 'name level')
         .lean(),
     ]);
@@ -310,6 +316,11 @@ exports.materialMerge = async (req, res) => {
       return res.redirect('/admin/materials');
     }
 
+    if (!mongoose.isValidObjectId(sourceId) || !mongoose.isValidObjectId(targetId)) {
+      req.session.flashError = 'Invalid material ID.';
+      return res.redirect('/admin/materials');
+    }
+
     const [source, target] = await Promise.all([
       Material.findById(sourceId),
       Material.findById(targetId),
@@ -389,16 +400,36 @@ exports.materialMerge = async (req, res) => {
       if (sourceHas) {
         if (!targetHas) {
           // Target has no content -> move source's content and revisions to target
+          const targetMaxRev = await MaterialContentRevision.findOne({ material: target._id }, null, opts)
+            .sort({ version: -1 })
+            .select('version')
+            .lean();
+          const targetMaxVersion = targetMaxRev ? targetMaxRev.version : 0;
+
+          const sourceRevisions = await MaterialContentRevision.find({ material: source._id }, null, opts).lean();
+          const renumberPlan = planRevisionRenumber(targetMaxVersion, sourceRevisions);
+
+          if (renumberPlan.length > 0) {
+            const bulkOps = renumberPlan.map(item => ({
+              updateOne: {
+                filter: { _id: item._id },
+                update: { $set: { material: target._id, version: item.version } },
+              },
+            }));
+            await MaterialContentRevision.bulkWrite(bulkOps, opts);
+          }
+
+          const newHighestVersion = renumberPlan.length > 0
+            ? renumberPlan[renumberPlan.length - 1].version
+            : Math.max(targetMaxVersion, 1);
+
           if (targetContent) {
             await MaterialContent.deleteOne({ _id: targetContent._id }, opts);
           }
           sourceContent.material = target._id;
+          sourceContent.version = newHighestVersion;
           await sourceContent.save(opts);
-          await MaterialContentRevision.updateMany(
-            { material: source._id },
-            { $set: { material: target._id } },
-            opts
-          );
+
           await Material.updateOne(
             { _id: target._id },
             { $set: { hasContent: true, contentUpdatedAt: sourceContent.updatedAt || new Date() } },
@@ -406,13 +437,16 @@ exports.materialMerge = async (req, res) => {
           );
         } else {
           // Both have content -> KEEP target's content and store source's content as revision of target
-          const nextVersion = (targetContent.version || 1) + 1;
-          targetContent.version = nextVersion;
-          await targetContent.save(opts);
+          const targetMaxRev = await MaterialContentRevision.findOne({ material: target._id }, null, opts)
+            .sort({ version: -1 })
+            .select('version')
+            .lean();
+          const targetCurrentMax = Math.max(targetMaxRev ? targetMaxRev.version : 0, targetContent.version || 1);
+          const snapshotVersion = targetCurrentMax + 1;
 
           await MaterialContentRevision.create([{
             material: target._id,
-            version: nextVersion,
+            version: snapshotVersion,
             body: sourceContent.body,
             resources: sourceContent.resources || [],
             note: `Merged from ${sourceName}`,
@@ -421,16 +455,31 @@ exports.materialMerge = async (req, res) => {
             editedAt: new Date(),
           }], opts);
 
-          await MaterialContentRevision.updateMany(
-            { material: source._id },
-            { $set: { material: target._id } },
-            opts
-          );
+          const sourceRevisions = await MaterialContentRevision.find({ material: source._id }, null, opts).lean();
+          const renumberPlan = planRevisionRenumber(snapshotVersion, sourceRevisions);
+
+          if (renumberPlan.length > 0) {
+            const bulkOps = renumberPlan.map(item => ({
+              updateOne: {
+                filter: { _id: item._id },
+                update: { $set: { material: target._id, version: item.version } },
+              },
+            }));
+            await MaterialContentRevision.bulkWrite(bulkOps, opts);
+          }
+
+          const newHighestVersion = renumberPlan.length > 0
+            ? renumberPlan[renumberPlan.length - 1].version
+            : snapshotVersion;
+
+          targetContent.version = newHighestVersion;
+          await targetContent.save(opts);
 
           await MaterialContent.deleteOne({ _id: sourceContent._id }, opts);
         }
       } else if (sourceContent) {
         await MaterialContent.deleteOne({ _id: sourceContent._id }, opts);
+        await MaterialContentRevision.deleteMany({ material: source._id }, opts);
       }
 
       // Delete source
@@ -495,6 +544,14 @@ exports.materialMerge = async (req, res) => {
    ═══════════════════════════════════════════════════════════════ */
 exports.materialDelete = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
+        return res.status(404).json({ error: 'Material not found.' });
+      }
+      req.session.flashError = 'Material not found.';
+      return res.redirect('/admin/materials');
+    }
+
     const material = await Material.findById(req.params.id);
     if (!material) {
       if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
@@ -508,6 +565,110 @@ exports.materialDelete = async (req, res) => {
     const level      = material.level;
     const usageCount = material.usageCount;
 
+    // Before deleting DB records, collect every file publicId from MaterialContent AND all revisions
+    const [contentDoc, revDocs] = await Promise.all([
+      MaterialContent.findOne({ material: material._id }).lean(),
+      MaterialContentRevision.find({ material: material._id }).lean(),
+    ]);
+
+    const candidatePublicIds = new Set();
+    const resourceTypeHints = {};
+
+    function collectFileResources(resList) {
+      if (!Array.isArray(resList)) return;
+      for (const r of resList) {
+        if (r && r.kind === 'file') {
+          const pid = r.file?.publicId || r.publicId;
+          if (pid && typeof pid === 'string') {
+            candidatePublicIds.add(pid);
+            const rType = r.file?.resourceType || r.resourceType;
+            if (rType && !resourceTypeHints[pid]) {
+              resourceTypeHints[pid] = rType;
+            }
+          }
+        }
+      }
+    }
+
+    if (contentDoc) collectFileResources(contentDoc.resources);
+    if (revDocs) {
+      for (const rev of revDocs) {
+        collectFileResources(rev.resources);
+      }
+    }
+
+    // Filter out any publicId still referenced by ANOTHER material's content or revisions
+    let publicIdsToDelete = Array.from(candidatePublicIds);
+    if (publicIdsToDelete.length > 0) {
+      const [otherContents, otherRevs] = await Promise.all([
+        MaterialContent.find({
+          material: { $ne: material._id },
+          $or: [
+            { 'resources.file.publicId': { $in: publicIdsToDelete } },
+            { 'resources.publicId': { $in: publicIdsToDelete } },
+          ],
+        }).select('resources').lean(),
+        MaterialContentRevision.find({
+          material: { $ne: material._id },
+          $or: [
+            { 'resources.file.publicId': { $in: publicIdsToDelete } },
+            { 'resources.publicId': { $in: publicIdsToDelete } },
+          ],
+        }).select('resources').lean(),
+      ]);
+
+      const referencedByOther = new Set();
+      function markOtherRefs(resList) {
+        if (!Array.isArray(resList)) return;
+        for (const r of resList) {
+          if (r && r.kind === 'file') {
+            const pid = r.file?.publicId || r.publicId;
+            if (pid) referencedByOther.add(pid);
+          }
+        }
+      }
+      for (const c of otherContents) markOtherRefs(c.resources);
+      for (const r of otherRevs) markOtherRefs(r.resources);
+
+      publicIdsToDelete = publicIdsToDelete.filter(pid => !referencedByOther.has(pid));
+    }
+
+    // Best-effort and non-fatal: destroy Cloudinary assets of that material and sweep prefix
+    const deletedPerType = { image: 0, raw: 0, video: 0 };
+    try {
+      if (publicIdsToDelete.length > 0) {
+        const destroyed = await destroyAssets(publicIdsToDelete, resourceTypeHints);
+        deletedPerType.image += (destroyed.image || 0);
+        deletedPerType.raw   += (destroyed.raw || 0);
+        deletedPerType.video += (destroyed.video || 0);
+      }
+
+      const prefix = `materials/${material._id}/`;
+      for (const rt of ['image', 'raw', 'video']) {
+        let loops = 0;
+        let partial = true;
+        while (partial && loops < 20) {
+          loops++;
+          try {
+            const sweepRes = await cloudinary.api.delete_resources_by_prefix(prefix, {
+              type: 'authenticated',
+              resource_type: rt,
+            });
+            if (sweepRes && sweepRes.deleted) {
+              const count = Object.values(sweepRes.deleted).filter(v => v === 'deleted').length;
+              deletedPerType[rt] += count;
+            }
+            partial = Boolean(sweepRes && sweepRes.partial);
+          } catch (sweepErr) {
+            console.error(`Non-fatal error sweeping Cloudinary prefix ${prefix} for ${rt}:`, sweepErr.message || sweepErr);
+            break;
+          }
+        }
+      }
+    } catch (cErr) {
+      console.error('Non-fatal error destroying Cloudinary assets for material:', cErr.message || cErr);
+    }
+
     // Reports keep their subject text, set Report.material = null
     await Report.updateMany({ material: material._id }, { $set: { material: null } });
 
@@ -520,23 +681,16 @@ exports.materialDelete = async (req, res) => {
       MaterialContentRevision.deleteMany({ material: material._id }),
     ]);
 
-    // Best-effort and non-fatal: destroy Cloudinary assets of that material
-    try {
-      const cloudRes = await cloudinary.api.delete_resources_by_prefix(`materials/${material._id}/`, {
-        type: 'authenticated',
-      });
-      const delCount = cloudRes && cloudRes.deleted ? Object.keys(cloudRes.deleted).length : 0;
-      console.log(`Destroyed ${delCount} Cloudinary assets for material ${material._id}`);
-    } catch (cErr) {
-      console.error('Non-fatal error destroying Cloudinary assets for material:', cErr.message);
-    }
-
     // Delete the material
     await material.deleteOne();
 
     invalidateMaterialsCache();
 
-    await logAudit(req, 'delete', material._id, label, { level, usageCount });
+    await logAudit(req, 'delete', material._id, label, {
+      level,
+      usageCount,
+      deletedAssets: deletedPerType,
+    });
 
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
       return res.status(200).json({ ok: true });

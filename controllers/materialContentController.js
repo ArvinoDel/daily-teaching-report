@@ -26,6 +26,10 @@ const {
   validateLink,
   canEdit,
   checkVersionConflict,
+  deriveFileExtension,
+  buildSignedFileUrl,
+  parseBaseVersion,
+  escapeRegex,
   MAX_RESOURCES,
   MAX_BODY_BYTES,
 } = require('../services/materialContentService');
@@ -52,7 +56,7 @@ exports.materialsLibrary = async (req, res) => {
 
     const filter = { hasContent: true };
     if (q && q.trim()) {
-      filter.name = { $regex: q.trim(), $options: 'i' };
+      filter.name = { $regex: escapeRegex(q.trim()), $options: 'i' };
     }
     if (level && level.trim()) {
       filter.level = level.trim().toUpperCase();
@@ -112,6 +116,10 @@ exports.materialsLibrary = async (req, res) => {
  * ───────────────────────────────────────────────────────────────────── */
 exports.showMaterial = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).render('error', { message: 'Material not found.' });
+    }
+
     const material = await Material.findById(req.params.id).lean();
     if (!material) {
       return res.status(404).render('error', { message: 'Material not found.' });
@@ -143,6 +151,10 @@ exports.showMaterial = async (req, res) => {
  * ───────────────────────────────────────────────────────────────────── */
 exports.editMaterial = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).render('error', { message: 'Material not found.' });
+    }
+
     const material = await Material.findById(req.params.id).lean();
     if (!material) {
       return res.status(404).render('error', { message: 'Material not found.' });
@@ -177,8 +189,15 @@ exports.editMaterial = async (req, res) => {
  * ───────────────────────────────────────────────────────────────────── */
 exports.saveMaterial = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ error: 'Material not found.' });
+    }
+
     const { body, resources, note } = req.body;
-    let baseVersion = req.body?.baseVersion;
+    const baseVersion = parseBaseVersion(req.body?.baseVersion);
+    if (baseVersion === null) {
+      return res.status(400).json({ error: 'baseVersion is required.' });
+    }
 
     // Body size validation: do not truncate, return 422
     if (body && typeof body === 'string' && Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) {
@@ -195,10 +214,6 @@ exports.saveMaterial = async (req, res) => {
 
     if (!canEdit(user, content)) {
       return res.status(403).json({ error: 'This material is locked for editing.' });
-    }
-
-    if (baseVersion === undefined || baseVersion === null || baseVersion === '') {
-      baseVersion = content ? (content.version || 1) : 1;
     }
 
     // Sanitize body
@@ -354,6 +369,13 @@ exports.saveMaterial = async (req, res) => {
  * ───────────────────────────────────────────────────────────────────── */
 exports.toggleLock = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      if (req.xhr || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+        return res.status(404).json({ error: 'Material not found.' });
+      }
+      return res.status(404).render('error', { message: 'Material not found.' });
+    }
+
     if (!isAdminUser(req)) {
       return res.status(403).json({ error: 'Admin permission required.' });
     }
@@ -402,6 +424,10 @@ exports.toggleLock = async (req, res) => {
  * ───────────────────────────────────────────────────────────────────── */
 exports.getHistory = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).render('error', { message: 'Material not found.' });
+    }
+
     if (!isAdminUser(req)) {
       req.session.flashError = 'Admin permission required.';
       return res.redirect(`/materials/${req.params.id}`);
@@ -435,6 +461,13 @@ exports.getHistory = async (req, res) => {
 
 exports.restoreRevision = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      if (req.xhr || (req.headers.accept && req.headers.accept.includes('application/json'))) {
+        return res.status(404).json({ error: 'Material not found.' });
+      }
+      return res.status(404).render('error', { message: 'Material not found.' });
+    }
+
     if (!isAdminUser(req)) {
       return res.status(403).json({ error: 'Admin permission required.' });
     }
@@ -448,7 +481,7 @@ exports.restoreRevision = async (req, res) => {
     const revision = await MaterialContentRevision.findOne({
       material: material._id,
       version: targetVer,
-    }).lean();
+    }).sort({ version: -1 }).lean();
 
     if (!revision) {
       return res.status(404).json({ error: 'Revision not found.' });
@@ -563,6 +596,10 @@ exports.restoreRevision = async (req, res) => {
  * ───────────────────────────────────────────────────────────────────── */
 exports.signUpload = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ error: 'Material not found.' });
+    }
+
     const material = await Material.findById(req.params.id);
     if (!material) {
       return res.status(404).json({ error: 'Material not found.' });
@@ -571,6 +608,10 @@ exports.signUpload = async (req, res) => {
     const content = await MaterialContent.findOne({ material: material._id });
     if (!canEdit(req.session.user, content)) {
       return res.status(403).json({ error: 'Editing is not permitted.' });
+    }
+
+    if (content && Array.isArray(content.resources) && content.resources.length >= MAX_RESOURCES) {
+      return res.status(422).json({ error: `Maximum ${MAX_RESOURCES} resources reached.` });
     }
 
     const { filename, size } = req.body;
@@ -595,8 +636,10 @@ exports.signUpload = async (req, res) => {
     const timestamp = Math.round(Date.now() / 1000);
     const folder = `materials/${material._id}`;
     const type = 'authenticated';
+    const allowedFormatsStr = allowed.join(',');
 
     const paramsToSign = {
+      allowed_formats: allowedFormatsStr,
       folder,
       timestamp,
       type,
@@ -614,6 +657,7 @@ exports.signUpload = async (req, res) => {
       signature,
       folder,
       type,
+      allowed_formats: allowedFormatsStr,
     });
   } catch (err) {
     console.error('signUpload error:', err);
@@ -626,6 +670,10 @@ exports.signUpload = async (req, res) => {
  * ───────────────────────────────────────────────────────────────────── */
 exports.addResource = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ error: 'Material not found.' });
+    }
+
     const material = await Material.findById(req.params.id);
     if (!material) {
       return res.status(404).json({ error: 'Material not found.' });
@@ -641,9 +689,11 @@ exports.addResource = async (req, res) => {
       return res.status(422).json({ error: `Maximum ${MAX_RESOURCES} resources reached.` });
     }
 
-    let baseVersion = req.body?.baseVersion !== undefined ? req.body.baseVersion : req.query.baseVersion;
-    if (baseVersion === undefined || baseVersion === null || baseVersion === '') {
-      baseVersion = content ? (content.version || 1) : 1;
+    const baseVersion = parseBaseVersion(
+      req.body?.baseVersion !== undefined ? req.body.baseVersion : req.query.baseVersion
+    );
+    if (baseVersion === null) {
+      return res.status(400).json({ error: 'baseVersion is required.' });
     }
 
     const { kind, label, publicId, resourceType, deliveryType, url } = req.body;
@@ -654,31 +704,50 @@ exports.addResource = async (req, res) => {
         return res.status(422).json({ error: 'File publicId is required.' });
       }
 
-      // Verify asset exists in Cloudinary Admin API
-      let asset;
-      try {
-        asset = await cloudinary.api.resource(publicId, {
-          type: deliveryType || 'authenticated',
-          resource_type: resourceType || 'auto',
+      // If the same publicId is already attached to this material, reject with 422
+      if (content && Array.isArray(content.resources)) {
+        const isDuplicate = content.resources.some(r => {
+          if (r.kind !== 'file') return false;
+          const existingPid = r.file?.publicId || r.publicId;
+          return existingPid === publicId;
         });
-      } catch (cloudErr) {
-        // Try raw if auto was used
+        if (isDuplicate) {
+          return res.status(422).json({ error: 'This file is already attached to this material.' });
+        }
+      }
+
+      // Verify asset exists in Cloudinary Admin API:
+      // Call the Admin API with a real resource type: if client sends image/raw/video use it,
+      // otherwise try image, then video, then raw; never send 'auto' to the Admin API.
+      let asset;
+      const initialDeliveryType = deliveryType || 'authenticated';
+      const validResourceTypes = ['image', 'raw', 'video'];
+      if (validResourceTypes.includes(resourceType)) {
         try {
           asset = await cloudinary.api.resource(publicId, {
-            type: deliveryType || 'authenticated',
-            resource_type: 'raw',
+            type: initialDeliveryType,
+            resource_type: resourceType,
           });
-        } catch (_) {
-          return res.status(422).json({ error: 'File verification with Cloudinary failed.' });
+        } catch (_) {}
+      } else {
+        const fallbackOrder = ['image', 'video', 'raw'];
+        for (const rt of fallbackOrder) {
+          try {
+            asset = await cloudinary.api.resource(publicId, {
+              type: initialDeliveryType,
+              resource_type: rt,
+            });
+            if (asset) break;
+          } catch (_) {}
         }
       }
 
       if (!asset) {
-        return res.status(422).json({ error: 'Asset not found on cloud storage.' });
+        return res.status(422).json({ error: 'File verification with Cloudinary failed.' });
       }
 
       const expectedPrefix = `materials/${material._id}/`;
-      if (!asset.public_id.startsWith(expectedPrefix)) {
+      if (!asset.public_id || !asset.public_id.startsWith(expectedPrefix)) {
         return res.status(422).json({ error: 'File public_id does not belong to this material.' });
       }
 
@@ -686,11 +755,25 @@ exports.addResource = async (req, res) => {
         return res.status(422).json({ error: 'File size exceeds maximum limit.' });
       }
 
-      const format = (asset.format || '').toLowerCase();
-      const ext = format || (asset.original_filename ? asset.original_filename.split('.').pop().toLowerCase() : '');
+      // Store resourceType and deliveryType from the asset returned by Cloudinary (asset.resource_type, asset.type)
+      const assetResourceType = asset.resource_type;
+      const assetDeliveryType = asset.type || initialDeliveryType;
+
+      const ext = deriveFileExtension({
+        publicId: asset.public_id,
+        format: asset.format,
+        originalFilename: asset.original_filename,
+        resourceType: assetResourceType,
+      });
+
+      // If the extension cannot be determined for a raw file, reject with 422 "Cannot determine the file type."
+      if (assetResourceType === 'raw' && !ext) {
+        return res.status(422).json({ error: 'Cannot determine the file type.' });
+      }
+
       const allowed = getAllowedExtensions();
-      if (ext && !allowed.includes(ext)) {
-        return res.status(422).json({ error: `File format .${ext} is not allowed.` });
+      if (!ext || !allowed.includes(ext)) {
+        return res.status(422).json({ error: `File format .${ext || ''} is not allowed.` });
       }
 
       resourceToSave = {
@@ -698,9 +781,9 @@ exports.addResource = async (req, res) => {
         label: label ? String(label).trim().slice(0, 100) : (asset.original_filename || 'Attachment'),
         file: {
           publicId: asset.public_id,
-          resourceType: asset.resource_type || resourceType || 'auto',
-          deliveryType: deliveryType || 'authenticated',
-          format: asset.format || ext || '',
+          resourceType: assetResourceType,
+          deliveryType: assetDeliveryType,
+          format: ext,
           bytes: asset.bytes || 0,
           originalFilename: asset.original_filename || '',
         },
@@ -730,7 +813,7 @@ exports.addResource = async (req, res) => {
     let newVersion;
 
     if (content) {
-      const currentVersion = Number(baseVersion);
+      const currentVersion = baseVersion;
       newVersion = currentVersion + 1;
 
       const versionFilter = currentVersion === 1
@@ -825,6 +908,10 @@ exports.addResource = async (req, res) => {
  * ───────────────────────────────────────────────────────────────────── */
 exports.removeResource = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id) || !mongoose.isValidObjectId(req.params.rid)) {
+      return res.status(404).json({ error: 'Material not found.' });
+    }
+
     const material = await Material.findById(req.params.id);
     if (!material) {
       return res.status(404).json({ error: 'Material not found.' });
@@ -845,12 +932,14 @@ exports.removeResource = async (req, res) => {
       return res.status(404).json({ error: 'Resource not found.' });
     }
 
-    let baseVersion = req.body?.baseVersion !== undefined ? req.body.baseVersion : req.query.baseVersion;
-    if (baseVersion === undefined || baseVersion === null || baseVersion === '') {
-      baseVersion = content.version || 1;
+    const baseVersion = parseBaseVersion(
+      req.body?.baseVersion !== undefined ? req.body.baseVersion : req.query.baseVersion
+    );
+    if (baseVersion === null) {
+      return res.status(400).json({ error: 'baseVersion is required.' });
     }
 
-    const currentVersion = Number(baseVersion);
+    const currentVersion = baseVersion;
     const newVersion = currentVersion + 1;
     const now = new Date();
     const userName = user.displayName || user.name || user.username || 'User';
@@ -930,18 +1019,24 @@ exports.removeResource = async (req, res) => {
  * ───────────────────────────────────────────────────────────────────── */
 exports.openResource = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id) || !mongoose.isValidObjectId(req.params.rid)) {
+      return res.status(404).render('error', { message: 'Resource not found.' });
+    }
+
     const content = await MaterialContent.findOne({ material: req.params.id }).lean();
     let resource = content ? (content.resources || []).find(r => String(r._id) === req.params.rid) : null;
 
-    if (!resource) {
-      const ridQueries = [{ 'resources._id': req.params.rid }];
-      if (mongoose.Types.ObjectId.isValid(req.params.rid)) {
-        ridQueries.push({ 'resources._id': new mongoose.Types.ObjectId(req.params.rid) });
-      }
+    // Non-admin users may only open resources that exist in the CURRENT MaterialContent.
+    // Admins may also open resources found only in revisions (needed for the history page).
+    if (!resource && isAdminUser(req)) {
+      const ridQueries = [
+        { 'resources._id': req.params.rid },
+        { 'resources._id': new mongoose.Types.ObjectId(req.params.rid) },
+      ];
       const rev = await MaterialContentRevision.findOne({
         material: req.params.id,
         $or: ridQueries,
-      }).lean();
+      }).sort({ version: -1 }).lean();
       if (rev && Array.isArray(rev.resources)) {
         resource = rev.resources.find(r => String(r._id) === req.params.rid);
       }
@@ -952,20 +1047,15 @@ exports.openResource = async (req, res) => {
     }
 
     if (resource.kind === 'link') {
+      res.set('Cache-Control', 'no-store');
       return res.redirect(resource.url);
     }
 
     if (resource.kind === 'file') {
       const isDownload = req.query.download === '1';
-      const signedUrl = cloudinary.url(resource.file.publicId, {
-        type: resource.file.deliveryType || 'authenticated',
-        resource_type: resource.file.resourceType || 'auto',
-        format: resource.file.format,
-        sign_url: true,
-        secure: true,
-        attachment: isDownload,
-      });
-
+      // Note: Signed Cloudinary URLs do not expire unless token-based authentication is configured on the account.
+      const signedUrl = buildSignedFileUrl(resource.file, { download: isDownload });
+      res.set('Cache-Control', 'no-store');
       return res.redirect(302, signedUrl);
     }
 

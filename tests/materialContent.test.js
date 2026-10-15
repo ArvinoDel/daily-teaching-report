@@ -14,6 +14,12 @@ const {
   checkVersionConflict,
   planContentMerge,
   computeHasContent,
+  deriveFileExtension,
+  buildSignedFileUrl,
+  destroyAssets,
+  planRevisionRenumber,
+  parseBaseVersion,
+  escapeRegex,
   MAX_BODY_BYTES,
 } = require('../services/materialContentService');
 
@@ -644,5 +650,257 @@ test('Material Content - Attachment Display & Inline Picture Previews', async (t
     assert.ok(html.includes('Online Practice'), 'Displays link in history');
     assert.ok(html.includes('0 attached files'), 'Handles revisions with no attachments');
   });
+});
+
+test('Material Content - deriveFileExtension Helper', async (t) => {
+  await t.test('image with format', () => {
+    assert.equal(deriveFileExtension({ format: 'png' }), 'png');
+    assert.equal(deriveFileExtension({ format: 'JPG' }), 'jpg');
+    assert.equal(deriveFileExtension({ format: '  webp  ' }), 'webp');
+  });
+
+  await t.test('raw with extension in public_id', () => {
+    assert.equal(deriveFileExtension({ resourceType: 'raw', publicId: 'materials/123/file.docx' }), 'docx');
+    assert.equal(deriveFileExtension({ resourceType: 'raw', publicId: 'materials/123/sheet.XLSX' }), 'xlsx');
+    assert.equal(deriveFileExtension({ resourceType: 'raw', publicId: 'materials/123/slides.v1.pptx' }), 'pptx');
+  });
+
+  await t.test('raw without extension', () => {
+    assert.equal(deriveFileExtension({ resourceType: 'raw', publicId: 'materials/123/filenoext' }), '');
+  });
+
+  await t.test('filename without dot', () => {
+    assert.equal(deriveFileExtension({ originalFilename: 'nodotfilename' }), '');
+  });
+
+  await t.test('filename with dot fallback when format missing', () => {
+    assert.equal(deriveFileExtension({ originalFilename: 'presentation.pptx' }), 'pptx');
+  });
+
+  await t.test('empty or invalid input returns empty string', () => {
+    assert.equal(deriveFileExtension(null), '');
+    assert.equal(deriveFileExtension({}), '');
+  });
+});
+
+test('Material Content - buildSignedFileUrl & Cloudinary Config', async (t) => {
+  const cloudinary = require('cloudinary').v2;
+  cloudinary.config({
+    cloud_name: 'testcloud',
+    api_key: '1234567890',
+    api_secret: 'testsecret123456',
+  });
+
+  await t.test('raw docx URL ends with /file.docx exactly once (never .docx.docx)', () => {
+    const url = buildSignedFileUrl({
+      publicId: 'materials/1/file.docx',
+      resourceType: 'raw',
+      deliveryType: 'authenticated',
+      format: 'docx',
+    });
+    assert.ok(url.includes('/raw/authenticated/'), 'Must use raw resource type and authenticated delivery');
+    assert.ok(url.endsWith('/file.docx'), `Must end with /file.docx, got: ${url}`);
+    assert.ok(!url.includes('.docx.docx'), `Must not produce double extension: ${url}`);
+  });
+
+  await t.test('image pdf ends with .pdf', () => {
+    const url = buildSignedFileUrl({
+      publicId: 'materials/1/file',
+      resourceType: 'image',
+      format: 'pdf',
+      deliveryType: 'authenticated',
+    });
+    assert.ok(url.includes('/image/authenticated/'), 'Must use image resource type');
+    assert.ok(url.endsWith('.pdf'), `Must end with .pdf, got: ${url}`);
+  });
+
+  await t.test('video mp3 ends with .mp3', () => {
+    const url = buildSignedFileUrl({
+      publicId: 'materials/1/audio',
+      resourceType: 'video',
+      format: 'mp3',
+      deliveryType: 'authenticated',
+    });
+    assert.ok(url.includes('/video/authenticated/'), 'Must use video resource type');
+    assert.ok(url.endsWith('.mp3'), `Must end with .mp3, got: ${url}`);
+  });
+
+  await t.test('auto maps correctly by extension', () => {
+    // pdf -> image
+    const pdfUrl = buildSignedFileUrl({ publicId: 'materials/1/doc', resourceType: 'auto', format: 'pdf' });
+    assert.ok(pdfUrl.includes('/image/authenticated/'));
+
+    // jpg/png -> image
+    const jpgUrl = buildSignedFileUrl({ publicId: 'materials/1/photo', resourceType: 'auto', format: 'jpg' });
+    assert.ok(jpgUrl.includes('/image/authenticated/'));
+
+    // mp3/mp4/m4a/wav -> video
+    const mp3Url = buildSignedFileUrl({ publicId: 'materials/1/track', resourceType: 'auto', format: 'mp3' });
+    assert.ok(mp3Url.includes('/video/authenticated/'));
+
+    const mp4Url = buildSignedFileUrl({ publicId: 'materials/1/video', resourceType: 'auto', format: 'mp4' });
+    assert.ok(mp4Url.includes('/video/authenticated/'));
+
+    // docx/pptx/xlsx -> raw
+    const docxUrl = buildSignedFileUrl({ publicId: 'materials/1/doc.docx', resourceType: 'auto', format: 'docx' });
+    assert.ok(docxUrl.includes('/raw/authenticated/'));
+  });
+
+  await t.test('download flag controls attachment parameter passed to cloudinary.url', () => {
+    let capturedOptions;
+    const origUrl = cloudinary.url;
+    cloudinary.url = (publicId, opts) => {
+      capturedOptions = opts;
+      return origUrl.call(cloudinary, publicId, opts);
+    };
+    try {
+      buildSignedFileUrl({ publicId: 'materials/1/file.docx', resourceType: 'raw' }, { download: true });
+      assert.equal(capturedOptions.attachment, true, 'Should set attachment: true when download: true');
+
+      buildSignedFileUrl({ publicId: 'materials/1/file.docx', resourceType: 'raw' }, { download: false });
+      assert.equal(capturedOptions.attachment, undefined, 'Should not set attachment when download: false');
+    } finally {
+      cloudinary.url = origUrl;
+    }
+  });
+});
+
+test('Material Content - planRevisionRenumber Helper', async (t) => {
+  await t.test('empty sourceRevisions returns empty array', () => {
+    assert.deepEqual(planRevisionRenumber(5, []), []);
+    assert.deepEqual(planRevisionRenumber(0, null), []);
+  });
+
+  await t.test('offset continuation after targetMaxVersion', () => {
+    const sourceRevs = [
+      { _id: 'rev_1', version: 1 },
+      { _id: 'rev_2', version: 2 },
+    ];
+    const plan = planRevisionRenumber(10, sourceRevs);
+    assert.deepEqual(plan, [
+      { _id: 'rev_1', oldVersion: 1, version: 11 },
+      { _id: 'rev_2', oldVersion: 2, version: 12 },
+    ]);
+  });
+
+  await t.test('order preserved when sourceRevisions unordered', () => {
+    const sourceRevs = [
+      { _id: 'rev_3', version: 3 },
+      { _id: 'rev_1', version: 1 },
+      { _id: 'rev_2', version: 2 },
+    ];
+    const plan = planRevisionRenumber(0, sourceRevs);
+    assert.deepEqual(plan, [
+      { _id: 'rev_1', oldVersion: 1, version: 1 },
+      { _id: 'rev_2', oldVersion: 2, version: 2 },
+      { _id: 'rev_3', oldVersion: 3, version: 3 },
+    ]);
+  });
+
+  await t.test('ties by version broken deterministically by _id', () => {
+    const sourceRevs = [
+      { _id: 'b_rev', version: 1 },
+      { _id: 'a_rev', version: 1 },
+    ];
+    const plan = planRevisionRenumber(2, sourceRevs);
+    assert.deepEqual(plan, [
+      { _id: 'a_rev', oldVersion: 1, version: 3 },
+      { _id: 'b_rev', oldVersion: 1, version: 4 },
+    ]);
+  });
+});
+
+test('Material Content - parseBaseVersion Helper', () => {
+  assert.equal(parseBaseVersion(undefined), null);
+  assert.equal(parseBaseVersion(null), null);
+  assert.equal(parseBaseVersion(''), null);
+  assert.equal(parseBaseVersion('abc'), null);
+  assert.equal(parseBaseVersion(0), null);
+  assert.equal(parseBaseVersion(-1), null);
+  assert.equal(parseBaseVersion('3'), 3);
+  assert.equal(parseBaseVersion(3), 3);
+  assert.equal(parseBaseVersion(3.5), null);
+});
+
+test('Material Content - escapeRegex Helper', async (t) => {
+  const chars = ['(', 'a+b', '.*', '['];
+  for (const q of chars) {
+    await t.test(`q="${q}" does not throw and matches literally`, () => {
+      const escaped = escapeRegex(q);
+      let re;
+      assert.doesNotThrow(() => {
+        re = new RegExp(escaped, 'i');
+      });
+
+      assert.ok(re.test(`prefix_${q}_suffix`), `Must match string containing literal ${q}`);
+      if (q === '(') {
+        assert.ok(!re.test('prefix_suffix'));
+      }
+      if (q === 'a+b') {
+        assert.ok(!re.test('aaab'), 'Must not treat + as regex quantifier');
+      }
+      if (q === '.*') {
+        assert.ok(!re.test('hello'), 'Must not treat .* as regex wildcard');
+      }
+      if (q === '[') {
+        assert.ok(!re.test('hello'), 'Must not treat [ as character class');
+      }
+    });
+  }
+});
+
+test('Material Content - destroyAssets Helper', async (t) => {
+  const cloudinary = require('cloudinary').v2;
+  const originalDeleteResources = cloudinary.api.delete_resources;
+
+  const calls = [];
+  cloudinary.api.delete_resources = async (chunk, opts) => {
+    calls.push({ chunk, opts });
+    const deleted = {};
+    for (const id of chunk) {
+      deleted[id] = 'deleted';
+    }
+    return { deleted };
+  };
+
+  try {
+    const publicIds = [];
+    const hints = {};
+    for (let i = 0; i < 105; i++) {
+      const id = `materials/1/raw_${i}.docx`;
+      publicIds.push(id);
+      hints[id] = 'raw';
+    }
+    for (let i = 0; i < 3; i++) {
+      const id = `materials/1/img_${i}.png`;
+      publicIds.push(id);
+      hints[id] = 'image';
+    }
+    for (let i = 0; i < 2; i++) {
+      const id = `materials/1/vid_${i}.mp3`;
+      publicIds.push(id);
+      hints[id] = 'video';
+    }
+
+    const counts = await destroyAssets(publicIds, hints);
+    assert.equal(counts.raw, 105);
+    assert.equal(counts.image, 3);
+    assert.equal(counts.video, 2);
+
+    const rawCalls = calls.filter(c => c.opts.resource_type === 'raw');
+    assert.equal(rawCalls.length, 2);
+    assert.equal(rawCalls[0].chunk.length, 100);
+    assert.equal(rawCalls[1].chunk.length, 5);
+
+    const imageCalls = calls.filter(c => c.opts.resource_type === 'image');
+    assert.equal(imageCalls.length, 1);
+    assert.equal(imageCalls[0].chunk.length, 3);
+
+    const videoCalls = calls.filter(c => c.opts.resource_type === 'video');
+    assert.equal(videoCalls.length, 1);
+    assert.equal(videoCalls[0].chunk.length, 2);
+  } finally {
+    cloudinary.api.delete_resources = originalDeleteResources;
+  }
 });
 

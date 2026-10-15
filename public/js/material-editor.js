@@ -424,6 +424,9 @@
       formData.append('signature', signData.signature);
       formData.append('folder', signData.folder);
       formData.append('type', signData.type);
+      if (signData.allowed_formats) {
+        formData.append('allowed_formats', signData.allowed_formats);
+      }
 
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `https://api.cloudinary.com/v1_1/${signData.cloudName}/auto/upload`);

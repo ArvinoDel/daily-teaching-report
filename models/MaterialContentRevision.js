@@ -53,7 +53,8 @@ const materialContentRevisionSchema = new mongoose.Schema(
   }
 );
 
-materialContentRevisionSchema.index({ material: 1, version: -1 });
+materialContentRevisionSchema.index({ material: 1, version: 1 }, { unique: true });
+materialContentRevisionSchema.index({ editedAt: -1 });
 
 const MaterialContentRevision = mongoose.model('MaterialContentRevision', materialContentRevisionSchema);
 module.exports = MaterialContentRevision;

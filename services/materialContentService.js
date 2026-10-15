@@ -13,6 +13,7 @@
  */
 
 const xss = require('xss');
+const cloudinary = require('cloudinary').v2;
 
 const DEFAULT_ALLOWED_EXTENSIONS = [
   'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx',
@@ -314,6 +315,133 @@ function planContentMerge(sourceContent, targetContent, sourceName) {
   };
 }
 
+/* ─────────────────────────────────────────────────────────────────────
+ *  6. Pure Helpers for Files, Versions, Revisions, and Search
+ * ───────────────────────────────────────────────────────────────────── */
+function deriveFileExtension(file = {}) {
+  if (!file || typeof file !== 'object') return '';
+  const format = file.format;
+  if (format && typeof format === 'string' && format.trim()) {
+    return format.trim().toLowerCase();
+  }
+  const resourceType = (file.resourceType || '').toLowerCase();
+  const publicId = file.publicId || '';
+  if (resourceType === 'raw' && typeof publicId === 'string' && publicId.includes('.')) {
+    const parts = publicId.split('.');
+    if (parts.length > 1) {
+      const ext = parts.pop().trim().toLowerCase();
+      if (ext) return ext;
+    }
+  }
+  const originalFilename = file.originalFilename || '';
+  if (typeof originalFilename === 'string' && originalFilename.includes('.')) {
+    const parts = originalFilename.split('.');
+    if (parts.length > 1) {
+      const ext = parts.pop().trim().toLowerCase();
+      if (ext) return ext;
+    }
+  }
+  return '';
+}
+
+function buildSignedFileUrl(file = {}, { download = false } = {}) {
+  if (!file || typeof file !== 'object') return '';
+  let resolvedType = (file.resourceType || '').toLowerCase().trim();
+  if (!['image', 'video', 'raw'].includes(resolvedType)) {
+    const ext = (file.format || deriveFileExtension(file) || '').toLowerCase().trim();
+    if (['pdf', 'jpg', 'jpeg', 'png'].includes(ext)) {
+      resolvedType = 'image';
+    } else if (['mp3', 'm4a', 'wav', 'mp4'].includes(ext)) {
+      resolvedType = 'video';
+    } else {
+      resolvedType = 'raw';
+    }
+  }
+  const deliveryType = file.deliveryType || 'authenticated';
+  const options = {
+    type: deliveryType,
+    resource_type: resolvedType,
+    sign_url: true,
+    secure: true,
+  };
+  if (resolvedType !== 'raw' && file.format) {
+    options.format = file.format;
+  }
+  if (download === true) {
+    options.attachment = true;
+  }
+  return cloudinary.url(file.publicId, options);
+}
+
+async function destroyAssets(publicIds = [], resourceTypeHints = {}) {
+  const uniqueIds = Array.from(new Set(publicIds)).filter(Boolean);
+  if (uniqueIds.length === 0) {
+    return { image: 0, raw: 0, video: 0 };
+  }
+  const groups = { image: [], raw: [], video: [] };
+  for (const pid of uniqueIds) {
+    let hint = (resourceTypeHints[pid] || '').toLowerCase().trim();
+    if (!['image', 'video', 'raw'].includes(hint)) {
+      hint = 'raw';
+    }
+    groups[hint].push(pid);
+  }
+  const deletedCounts = { image: 0, raw: 0, video: 0 };
+  for (const type of ['image', 'raw', 'video']) {
+    const list = groups[type];
+    for (let i = 0; i < list.length; i += 100) {
+      const chunk = list.slice(i, i + 100);
+      try {
+        const res = await cloudinary.api.delete_resources(chunk, {
+          type: 'authenticated',
+          resource_type: type,
+        });
+        if (res && res.deleted) {
+          const count = Object.values(res.deleted).filter(v => v === 'deleted').length;
+          deletedCounts[type] += count;
+        }
+      } catch (err) {
+        console.error('Failed to delete Cloudinary assets batch:', chunk, err.message || err);
+      }
+    }
+  }
+  return deletedCounts;
+}
+
+function planRevisionRenumber(targetMaxVersion = 0, sourceRevisions = []) {
+  if (!Array.isArray(sourceRevisions) || sourceRevisions.length === 0) {
+    return [];
+  }
+  const sorted = [...sourceRevisions].sort((a, b) => {
+    const vA = Number(a.version || 0);
+    const vB = Number(b.version || 0);
+    if (vA !== vB) return vA - vB;
+    return String(a._id || '').localeCompare(String(b._id || ''));
+  });
+  let nextVersion = Number(targetMaxVersion || 0) + 1;
+  return sorted.map(rev => ({
+    _id: rev._id,
+    oldVersion: rev.version,
+    version: nextVersion++,
+  }));
+}
+
+function parseBaseVersion(value) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  const num = Number(value);
+  if (!Number.isInteger(num) || num <= 0) {
+    return null;
+  }
+  return num;
+}
+
+function escapeRegex(str) {
+  if (typeof str !== 'string') return '';
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 module.exports = {
   DEFAULT_ALLOWED_EXTENSIONS,
   MAX_BODY_BYTES,
@@ -330,4 +458,10 @@ module.exports = {
   checkVersionConflict,
   planContentMerge,
   normalizeQuillLists,
+  deriveFileExtension,
+  buildSignedFileUrl,
+  destroyAssets,
+  planRevisionRenumber,
+  parseBaseVersion,
+  escapeRegex,
 };
