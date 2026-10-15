@@ -397,13 +397,18 @@
         });
 
         if (!signResp.ok) {
-          const errJson = await signResp.json();
+          console.error('Sign upload failed with status:', signResp.status);
+          let errJson = {};
+          try {
+            errJson = await signResp.json();
+          } catch (_) {}
           showUploadError(errJson.error || 'Failed to sign upload.');
           fileInput.value = '';
           return;
         }
         signData = await signResp.json();
       } catch (err) {
+        console.error('Sign upload error:', err);
         showUploadError('Error connecting to upload service.');
         fileInput.value = '';
         return;
@@ -448,6 +453,7 @@
 
           if (!cloudRes || !cloudRes.public_id) {
             showUploadError('Failed to parse cloud response.');
+            if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
             return;
           }
 
@@ -477,9 +483,15 @@
               return;
             }
 
-            const regJson = await regResp.json();
+            let regJson = {};
+            try {
+              regJson = await regResp.json();
+            } catch (_) {}
+
             if (!regResp.ok) {
+              console.error('Attach resource failed with status:', regResp.status);
               showUploadError(regJson.error || 'Failed to attach file.');
+              if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
               return;
             }
 
@@ -493,18 +505,36 @@
             markDirty();
             renderResources();
           } catch (regErr) {
+            console.error('Attach resource error:', regErr);
             showUploadError('Error finalizing file attachment.');
+            if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
           }
         } else {
-          showUploadError('Cloud storage upload failed.');
+          let parsedBody = null;
+          try {
+            parsedBody = JSON.parse(xhr.responseText);
+          } catch (_) {}
+
+          console.error('Cloud storage upload error:', xhr.status, parsedBody);
+
+          const errorMessage =
+            (parsedBody && parsedBody.error && parsedBody.error.message) ||
+            (xhr.responseText ? xhr.responseText.trim().slice(0, 200) : '') ||
+            'Cloud storage upload failed.';
+
+          showUploadError(errorMessage);
           if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
         }
       };
 
-      xhr.onerror = function () {
-        showUploadError('Upload connection error.');
+      const handleNetworkError = function () {
+        console.error('Upload network error');
+        showUploadError('Network error while uploading.');
         if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
       };
+
+      xhr.onerror = handleNetworkError;
+      xhr.ontimeout = handleNetworkError;
 
       xhr.send(formData);
     });

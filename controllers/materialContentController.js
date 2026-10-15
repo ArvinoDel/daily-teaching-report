@@ -594,6 +594,22 @@ exports.restoreRevision = async (req, res) => {
 /* ─────────────────────────────────────────────────────────────────────
  *  7. Signed Upload Payload: POST /materials/:id/uploads/sign
  * ───────────────────────────────────────────────────────────────────── */
+function buildSignParams({ folder, timestamp, type, allowedFormats, includeAllowedFormats = false } = {}) {
+  const params = {
+    folder,
+    timestamp,
+    type,
+  };
+  const shouldInclude = includeAllowedFormats === true || includeAllowedFormats === '1';
+  if (shouldInclude && allowedFormats) {
+    params.allowed_formats = Array.isArray(allowedFormats)
+      ? allowedFormats.join(',')
+      : String(allowedFormats);
+  }
+  return params;
+}
+exports.buildSignParams = buildSignParams;
+
 exports.signUpload = async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
@@ -636,14 +652,15 @@ exports.signUpload = async (req, res) => {
     const timestamp = Math.round(Date.now() / 1000);
     const folder = `materials/${material._id}`;
     const type = 'authenticated';
-    const allowedFormatsStr = allowed.join(',');
+    const includeAllowedFormats = process.env.MATERIAL_SIGN_ALLOWED_FORMATS === '1';
 
-    const paramsToSign = {
-      allowed_formats: allowedFormatsStr,
+    const paramsToSign = buildSignParams({
       folder,
       timestamp,
       type,
-    };
+      allowedFormats: allowed,
+      includeAllowedFormats,
+    });
 
     const signature = cloudinary.utils.api_sign_request(
       paramsToSign,
@@ -653,11 +670,8 @@ exports.signUpload = async (req, res) => {
     return res.json({
       cloudName: process.env.CLOUDINARY_CLOUD_NAME,
       apiKey:    process.env.CLOUDINARY_API_KEY,
-      timestamp,
       signature,
-      folder,
-      type,
-      allowed_formats: allowedFormatsStr,
+      ...paramsToSign,
     });
   } catch (err) {
     console.error('signUpload error:', err);
@@ -685,7 +699,25 @@ exports.addResource = async (req, res) => {
       return res.status(403).json({ error: 'Editing is not permitted.' });
     }
 
+    const { kind, label, publicId, resourceType, deliveryType, url } = req.body;
+    let asset;
+    let ext;
+
+    const log422 = (reason) => {
+      console.error('addResource 422 rejection:', {
+        reason,
+        publicId: publicId || (asset && asset.public_id) || null,
+        resource_type: (asset && asset.resource_type) || null,
+        format: (asset && asset.format) || null,
+        derivedExtension: ext || null,
+        'asset.resource_type': (asset && asset.resource_type) || null,
+        'asset.format': (asset && asset.format) || null,
+        'derived extension': ext || null,
+      });
+    };
+
     if (content && content.resources.length >= MAX_RESOURCES) {
+      log422(`Maximum ${MAX_RESOURCES} resources reached.`);
       return res.status(422).json({ error: `Maximum ${MAX_RESOURCES} resources reached.` });
     }
 
@@ -696,11 +728,11 @@ exports.addResource = async (req, res) => {
       return res.status(400).json({ error: 'baseVersion is required.' });
     }
 
-    const { kind, label, publicId, resourceType, deliveryType, url } = req.body;
     let resourceToSave;
 
     if (kind === 'file') {
       if (!publicId || typeof publicId !== 'string') {
+        log422('File publicId is required.');
         return res.status(422).json({ error: 'File publicId is required.' });
       }
 
@@ -712,6 +744,7 @@ exports.addResource = async (req, res) => {
           return existingPid === publicId;
         });
         if (isDuplicate) {
+          log422('This file is already attached to this material.');
           return res.status(422).json({ error: 'This file is already attached to this material.' });
         }
       }
@@ -719,8 +752,7 @@ exports.addResource = async (req, res) => {
       // Verify asset exists in Cloudinary Admin API:
       // Call the Admin API with a real resource type: if client sends image/raw/video use it,
       // otherwise try image, then video, then raw; never send 'auto' to the Admin API.
-      let asset;
-      const initialDeliveryType = deliveryType || 'authenticated';
+      let initialDeliveryType = deliveryType || 'authenticated';
       const validResourceTypes = ['image', 'raw', 'video'];
       if (validResourceTypes.includes(resourceType)) {
         try {
@@ -743,15 +775,18 @@ exports.addResource = async (req, res) => {
       }
 
       if (!asset) {
+        log422('File verification with Cloudinary failed.');
         return res.status(422).json({ error: 'File verification with Cloudinary failed.' });
       }
 
       const expectedPrefix = `materials/${material._id}/`;
       if (!asset.public_id || !asset.public_id.startsWith(expectedPrefix)) {
+        log422('File public_id does not belong to this material.');
         return res.status(422).json({ error: 'File public_id does not belong to this material.' });
       }
 
       if (asset.bytes > getMaxFileBytes()) {
+        log422('File size exceeds maximum limit.');
         return res.status(422).json({ error: 'File size exceeds maximum limit.' });
       }
 
@@ -759,7 +794,7 @@ exports.addResource = async (req, res) => {
       const assetResourceType = asset.resource_type;
       const assetDeliveryType = asset.type || initialDeliveryType;
 
-      const ext = deriveFileExtension({
+      ext = deriveFileExtension({
         publicId: asset.public_id,
         format: asset.format,
         originalFilename: asset.original_filename,
@@ -768,11 +803,13 @@ exports.addResource = async (req, res) => {
 
       // If the extension cannot be determined for a raw file, reject with 422 "Cannot determine the file type."
       if (assetResourceType === 'raw' && !ext) {
+        log422('Cannot determine the file type.');
         return res.status(422).json({ error: 'Cannot determine the file type.' });
       }
 
       const allowed = getAllowedExtensions();
       if (!ext || !allowed.includes(ext)) {
+        log422(`File format .${ext || ''} is not allowed.`);
         return res.status(422).json({ error: `File format .${ext || ''} is not allowed.` });
       }
 
@@ -793,6 +830,7 @@ exports.addResource = async (req, res) => {
     } else if (kind === 'link') {
       const linkCheck = validateLink(url);
       if (!linkCheck.valid) {
+        log422(linkCheck.error);
         return res.status(422).json({ error: linkCheck.error });
       }
 
@@ -804,6 +842,7 @@ exports.addResource = async (req, res) => {
         addedAt: new Date(),
       };
     } else {
+      log422('Invalid resource kind.');
       return res.status(422).json({ error: 'Invalid resource kind.' });
     }
 

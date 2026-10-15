@@ -1134,4 +1134,348 @@ test('Material Content - Deleting Material with docx, pdf, mp3 Sequencing & Budg
   });
 });
 
+test('Material Content - buildSignParams Unit Tests & Opt-in Modes', async (t) => {
+  const { buildSignParams } = require('../controllers/materialContentController');
+  const allowed = ['pdf', 'png', 'jpg', 'jpeg', 'docx', 'xlsx', 'pptx', 'mp3', 'm4a', 'wav', 'mp4'];
+  const folder = 'materials/507f1f77bcf86cd799439011';
+  const timestamp = 1710000000;
+  const type = 'authenticated';
+
+  await t.test('Mode 1: Default / Opt-in off (includeAllowedFormats=false)', () => {
+    const paramsToSign = buildSignParams({
+      folder,
+      timestamp,
+      type,
+      allowedFormats: allowed,
+      includeAllowedFormats: false,
+    });
+
+    assert.equal(paramsToSign.allowed_formats, undefined);
+    assert.deepEqual(paramsToSign, {
+      folder,
+      timestamp,
+      type,
+    });
+
+    // Simulating response payload created by signUpload controller:
+    // res.json({ cloudName, apiKey, signature, ...paramsToSign })
+    const responsePayload = {
+      cloudName: 'test-cloud',
+      apiKey: 'test-key',
+      signature: 'dummy-sig-1',
+      ...paramsToSign,
+    };
+
+    assert.equal(responsePayload.allowed_formats, undefined);
+
+    // Extract upload params from responsePayload (excluding transport keys cloudName, apiKey, signature)
+    const { cloudName, apiKey, signature, ...returnedUploadParams } = responsePayload;
+    assert.deepEqual(paramsToSign, returnedUploadParams);
+  });
+
+  await t.test('Mode 1: Default when includeAllowedFormats omitted or undefined', () => {
+    const paramsToSign = buildSignParams({
+      folder,
+      timestamp,
+      type,
+      allowedFormats: allowed,
+    });
+
+    assert.equal(paramsToSign.allowed_formats, undefined);
+    assert.deepEqual(paramsToSign, {
+      folder,
+      timestamp,
+      type,
+    });
+
+    const responsePayload = {
+      cloudName: 'test-cloud',
+      apiKey: 'test-key',
+      signature: 'dummy-sig-default',
+      ...paramsToSign,
+    };
+
+    const { cloudName, apiKey, signature, ...returnedUploadParams } = responsePayload;
+    assert.deepEqual(paramsToSign, returnedUploadParams);
+  });
+
+  await t.test('Mode 2: Opt-in on (includeAllowedFormats=true / "1")', () => {
+    const paramsToSignTrue = buildSignParams({
+      folder,
+      timestamp,
+      type,
+      allowedFormats: allowed,
+      includeAllowedFormats: true,
+    });
+
+    assert.equal(paramsToSignTrue.allowed_formats, allowed.join(','));
+    assert.deepEqual(paramsToSignTrue, {
+      folder,
+      timestamp,
+      type,
+      allowed_formats: allowed.join(','),
+    });
+
+    const responsePayload = {
+      cloudName: 'test-cloud',
+      apiKey: 'test-key',
+      signature: 'dummy-sig-2',
+      ...paramsToSignTrue,
+    };
+
+    assert.equal(responsePayload.allowed_formats, allowed.join(','));
+    const { cloudName, apiKey, signature, ...returnedUploadParams } = responsePayload;
+    assert.deepEqual(paramsToSignTrue, returnedUploadParams);
+
+    const paramsToSignStr = buildSignParams({
+      folder,
+      timestamp,
+      type,
+      allowedFormats: allowed,
+      includeAllowedFormats: '1',
+    });
+    assert.deepEqual(paramsToSignStr, paramsToSignTrue);
+  });
+
+  await t.test('Handles string allowedFormats', () => {
+    const strParams = buildSignParams({
+      folder,
+      timestamp,
+      type,
+      allowedFormats: 'png,pdf,docx,mp3',
+      includeAllowedFormats: true,
+    });
+    assert.equal(strParams.allowed_formats, 'png,pdf,docx,mp3');
+  });
+});
+
+test('Material Content - signUpload Controller & File Types (png, pdf, docx, mp3)', async (t) => {
+  const { signUpload } = require('../controllers/materialContentController');
+  const Material = require('../models/Material');
+  const MaterialContent = require('../models/MaterialContent');
+  const cloudinary = require('cloudinary').v2;
+
+  const originalFindMaterial = Material.findById;
+  const originalFindContent = MaterialContent.findOne;
+  const originalEnv = process.env.MATERIAL_SIGN_ALLOWED_FORMATS;
+  const originalSecret = process.env.CLOUDINARY_API_SECRET;
+  process.env.CLOUDINARY_API_SECRET = 'test_secret_for_upload_signature';
+  process.env.CLOUDINARY_CLOUD_NAME = 'test_cloud';
+  process.env.CLOUDINARY_API_KEY = 'test_key';
+
+  const fakeMaterialId = '507f1f77bcf86cd799439011';
+  Material.findById = async () => ({ _id: fakeMaterialId, name: 'Sample Material' });
+  MaterialContent.findOne = async () => ({ material: fakeMaterialId, resources: [] });
+
+  try {
+    const testFiles = [
+      { filename: 'graphic.png', size: 1024 * 50 },
+      { filename: 'handout.pdf', size: 1024 * 100 },
+      { filename: 'notes.docx', size: 1024 * 80 },
+      { filename: 'audio.mp3', size: 1024 * 500 },
+    ];
+
+    await t.test('Flag OFF by default: sign response has NO allowed_formats for png, pdf, docx, mp3', async () => {
+      delete process.env.MATERIAL_SIGN_ALLOWED_FORMATS;
+
+      for (const file of testFiles) {
+        let statusCode = 200;
+        let responseJson = null;
+
+        const req = {
+          params: { id: fakeMaterialId },
+          body: { filename: file.filename, size: file.size },
+          session: { user: { role: 'admin' } },
+        };
+        const res = {
+          status(code) { statusCode = code; return this; },
+          json(data) { responseJson = data; return this; },
+        };
+
+        await signUpload(req, res);
+
+        assert.equal(statusCode, 200, `Sign upload failed for ${file.filename}`);
+        assert.ok(responseJson, `Response JSON missing for ${file.filename}`);
+        assert.equal(responseJson.allowed_formats, undefined, `allowed_formats should not be present in response for ${file.filename}`);
+        assert.equal(responseJson.folder, `materials/${fakeMaterialId}`);
+        assert.equal(responseJson.type, 'authenticated');
+        assert.ok(responseJson.timestamp);
+        assert.ok(responseJson.signature);
+
+        // Verify signature matches signed params without allowed_formats
+        const expectedSig = cloudinary.utils.api_sign_request(
+          {
+            folder: `materials/${fakeMaterialId}`,
+            timestamp: responseJson.timestamp,
+            type: 'authenticated',
+          },
+          process.env.CLOUDINARY_API_SECRET
+        );
+        assert.equal(responseJson.signature, expectedSig, `Signature mismatch for ${file.filename}`);
+      }
+    });
+
+    await t.test('Flag ON (MATERIAL_SIGN_ALLOWED_FORMATS=1): sign response includes allowed_formats', async () => {
+      process.env.MATERIAL_SIGN_ALLOWED_FORMATS = '1';
+
+      for (const file of testFiles) {
+        let statusCode = 200;
+        let responseJson = null;
+
+        const req = {
+          params: { id: fakeMaterialId },
+          body: { filename: file.filename, size: file.size },
+          session: { user: { role: 'admin' } },
+        };
+        const res = {
+          status(code) { statusCode = code; return this; },
+          json(data) { responseJson = data; return this; },
+        };
+
+        await signUpload(req, res);
+
+        assert.equal(statusCode, 200);
+        assert.ok(responseJson.allowed_formats);
+        assert.ok(responseJson.allowed_formats.includes('pdf'));
+        assert.ok(responseJson.allowed_formats.includes('docx'));
+        assert.ok(responseJson.allowed_formats.includes('mp3'));
+        assert.ok(responseJson.allowed_formats.includes('png'));
+
+        const expectedSig = cloudinary.utils.api_sign_request(
+          {
+            allowed_formats: responseJson.allowed_formats,
+            folder: `materials/${fakeMaterialId}`,
+            timestamp: responseJson.timestamp,
+            type: 'authenticated',
+          },
+          process.env.CLOUDINARY_API_SECRET
+        );
+        assert.equal(responseJson.signature, expectedSig);
+      }
+    });
+  } finally {
+    Material.findById = originalFindMaterial;
+    MaterialContent.findOne = originalFindContent;
+    if (originalEnv !== undefined) {
+      process.env.MATERIAL_SIGN_ALLOWED_FORMATS = originalEnv;
+    } else {
+      delete process.env.MATERIAL_SIGN_ALLOWED_FORMATS;
+    }
+    process.env.CLOUDINARY_API_SECRET = originalSecret;
+  }
+});
+
+test('Material Content - addResource 422 Server-side Diagnostics Logging', async (t) => {
+  const { addResource } = require('../controllers/materialContentController');
+  const Material = require('../models/Material');
+  const MaterialContent = require('../models/MaterialContent');
+  const cloudinary = require('cloudinary').v2;
+
+  const originalFindMaterial = Material.findById;
+  const originalFindContent = MaterialContent.findOne;
+  const originalResource = cloudinary.api.resource;
+  const originalConsoleError = console.error;
+
+  const fakeMaterialId = '507f1f77bcf86cd799439011';
+  Material.findById = async () => ({ _id: fakeMaterialId, name: 'Sample Material' });
+  MaterialContent.findOne = async () => ({
+    _id: '607f1f77bcf86cd799439022',
+    material: fakeMaterialId,
+    resources: [],
+    version: 1,
+  });
+
+  try {
+    const errorLogs = [];
+    console.error = (...args) => {
+      errorLogs.push(args);
+    };
+
+    await t.test('Logs diagnostics when asset verification fails (asset not found in Cloudinary)', async () => {
+      cloudinary.api.resource = async () => {
+        throw new Error('Not found');
+      };
+
+      let statusCode = 0;
+      let resJson = null;
+      const req = {
+        params: { id: fakeMaterialId },
+        body: {
+          kind: 'file',
+          publicId: `materials/${fakeMaterialId}/missing-asset`,
+          baseVersion: 1,
+        },
+        session: { user: { role: 'admin' } },
+      };
+      const res = {
+        status(code) { statusCode = code; return this; },
+        json(data) { resJson = data; return this; },
+      };
+
+      await addResource(req, res);
+
+      assert.equal(statusCode, 422);
+      assert.equal(resJson.error, 'File verification with Cloudinary failed.');
+
+      const lastLog = errorLogs.find(args => args[0] === 'addResource 422 rejection:');
+      assert.ok(lastLog, 'console.error addResource 422 rejection should have been called');
+      const logData = lastLog[1];
+      assert.equal(logData.reason, 'File verification with Cloudinary failed.');
+      assert.equal(logData.publicId, `materials/${fakeMaterialId}/missing-asset`);
+      assert.equal(logData.resource_type, null);
+      assert.equal(logData.format, null);
+      assert.equal(logData.derivedExtension, null);
+      // Ensure no secrets or signatures are logged
+      assert.equal(logData.api_secret, undefined);
+      assert.equal(logData.signature, undefined);
+    });
+
+    await t.test('Logs diagnostics when file extension is disallowed', async () => {
+      cloudinary.api.resource = async () => ({
+        public_id: `materials/${fakeMaterialId}/danger.exe`,
+        resource_type: 'raw',
+        format: '',
+        bytes: 1024,
+      });
+
+      let statusCode = 0;
+      let resJson = null;
+      const req = {
+        params: { id: fakeMaterialId },
+        body: {
+          kind: 'file',
+          publicId: `materials/${fakeMaterialId}/danger.exe`,
+          baseVersion: 1,
+        },
+        session: { user: { role: 'admin' } },
+      };
+      const res = {
+        status(code) { statusCode = code; return this; },
+        json(data) { resJson = data; return this; },
+      };
+
+      await addResource(req, res);
+
+      assert.equal(statusCode, 422);
+      assert.ok(resJson.error.includes('not allowed'));
+
+      const matchingLogs = errorLogs.filter(args => args[0] === 'addResource 422 rejection:');
+      const lastLog = matchingLogs[matchingLogs.length - 1];
+      assert.ok(lastLog, 'console.error addResource 422 rejection should have been called');
+      const logData = lastLog[1];
+      assert.ok(logData.reason.includes('not allowed'));
+      assert.equal(logData.publicId, `materials/${fakeMaterialId}/danger.exe`);
+      assert.equal(logData.resource_type, 'raw');
+      assert.equal(logData.derivedExtension, 'exe');
+      assert.equal(logData.api_secret, undefined);
+      assert.equal(logData.signature, undefined);
+    });
+  } finally {
+    Material.findById = originalFindMaterial;
+    MaterialContent.findOne = originalFindContent;
+    cloudinary.api.resource = originalResource;
+    console.error = originalConsoleError;
+  }
+});
+
 
