@@ -1593,6 +1593,84 @@ test('Material Content - Teacher Can Edit First Content', async (t) => {
     assert.ok(scriptContent.includes('handleFilesUpload'), 'Script must have handleFilesUpload');
     assert.ok(scriptContent.includes('uploadSingleFile'), 'Script must have uploadSingleFile');
   });
+
+  await t.test('views/materials/show.ejs and edit.ejs support interactive slide carousel and fullscreen presentation', async () => {
+    const ejs = require('ejs');
+    const fs = require('fs');
+    const path = require('path');
+    const showFile = path.resolve('views/materials/show.ejs');
+    const editFile = path.resolve('views/materials/edit.ejs');
+    const modalFile = path.resolve('views/materials/_slide-viewer-modal.ejs');
+    const scriptFile = path.resolve('public/js/material-editor.js');
+
+    // 1. Verify modal partial content
+    const modalContent = fs.readFileSync(modalFile, 'utf8');
+    assert.ok(modalContent.includes('id="slide-viewer-modal"'), 'Modal should have id="slide-viewer-modal"');
+    assert.ok(modalContent.includes('openSlideViewer'), 'Modal must define openSlideViewer');
+    assert.ok(modalContent.includes('closeSlideViewer'), 'Modal must define closeSlideViewer');
+    assert.ok(modalContent.includes('nextSlide'), 'Modal must support next slide');
+    assert.ok(modalContent.includes('prevSlide'), 'Modal must support prev slide');
+    assert.ok(modalContent.includes('sv-counter'), 'Modal should have slide counter');
+    assert.ok(modalContent.includes('sv-thumbnails'), 'Modal should contain thumbnail strip');
+    assert.ok(modalContent.includes('ArrowRight'), 'Modal should support keyboard arrow navigation');
+
+    // 2. Verify show.ejs rendering with files
+    const htmlShow = await ejs.renderFile(showFile, {
+      title: 'Biology 101',
+      material: {
+        _id: '670000000000000000000001',
+        name: 'Biology 101',
+        level: 'Secondary',
+        usageCount: 4,
+        hasContent: true,
+      },
+      content: {
+        version: 1,
+        body: '<p>Cell anatomy</p>',
+        resources: [
+          {
+            _id: '670000000000000000000001',
+            kind: 'file',
+            label: 'Slide 1 - Plant Cell.png',
+            file: { format: 'png', bytes: 1048576, publicId: 'materials/1/plant' },
+          },
+          {
+            _id: '670000000000000000000002',
+            kind: 'file',
+            label: 'Slide 2 - Animal Cell.jpg',
+            file: { format: 'jpg', bytes: 2097152, publicId: 'materials/1/animal' },
+          },
+          {
+            _id: '670000000000000000000003',
+            kind: 'file',
+            label: 'Notes.pdf',
+            file: { format: 'pdf', bytes: 524288, publicId: 'materials/1/notes' },
+          },
+        ],
+      },
+      userCanEdit: true,
+      userIsAdmin: false,
+      renderMaterialBody: s => s,
+      csrfToken: 'test-token',
+      user: teacherUser,
+      path: '/materials/1',
+    });
+
+    assert.ok(htmlShow.includes('Present Slides'), 'show.ejs must have Present Slides button');
+    assert.ok(htmlShow.includes('id="file-slides-view"'), 'show.ejs must have file-slides-view');
+    assert.ok(htmlShow.includes('id="file-list-view"'), 'show.ejs must have file-list-view toggle');
+    assert.ok(htmlShow.includes('slide-viewer-modal'), 'show.ejs must include the slide viewer modal');
+
+    // 3. Verify edit.ejs includes slide viewer modal and preview button
+    const editContent = fs.readFileSync(editFile, 'utf8');
+    assert.ok(editContent.includes('id="btn-preview-slides"'), 'edit.ejs must have Slides preview button');
+    assert.ok(editContent.includes('_slide-viewer-modal'), 'edit.ejs must include _slide-viewer-modal');
+
+    // 4. Verify material-editor.js initializes slide viewer
+    const scriptContent = fs.readFileSync(scriptFile, 'utf8');
+    assert.ok(scriptContent.includes('initSlideViewer'), 'material-editor.js must call initSlideViewer');
+    assert.ok(scriptContent.includes('openSlideViewer'), 'material-editor.js must support openSlideViewer');
+  });
 });
 
 

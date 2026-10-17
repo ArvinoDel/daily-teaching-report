@@ -116,12 +116,12 @@
               <div class="flex items-center gap-2 mb-3 overflow-x-auto pb-1">
                 <% revImages.forEach(function(imgRes) { %>
                   <a href="/materials/<%= material._id %>/resources/<%= imgRes._id %>/open" target="_blank" rel="noopener noreferrer"
-                    class="block w-14 h-14 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex-shrink-0 hover:ring-2 hover:ring-brand-500 transition shadow-xs group"
+                    class="flex items-center justify-center w-14 h-14 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex-shrink-0 hover:ring-2 hover:ring-brand-500 transition shadow-xs group p-0.5"
                     title="<%= imgRes.label %>">
                     <img src="/materials/<%= material._id %>/resources/<%= imgRes._id %>/open"
                       alt="<%= imgRes.label %>"
                       loading="lazy"
-                      class="w-full h-full object-cover group-hover:scale-105 transition" />
+                      class="w-full h-full object-contain group-hover:scale-105 transition" />
                   </a>
                 <% }); %>
               </div>

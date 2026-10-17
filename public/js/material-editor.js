@@ -137,6 +137,27 @@
       resourceCountEl.textContent = resources.length;
     }
 
+    const fileResources = resources.filter(function (r) { return r.kind === 'file'; });
+    const btnPreviewSlides = document.getElementById('btn-preview-slides');
+    const slideCountEl = document.getElementById('slide-count');
+    if (btnPreviewSlides) {
+      if (fileResources.length > 0) {
+        btnPreviewSlides.classList.remove('hidden');
+        if (slideCountEl) slideCountEl.textContent = fileResources.length;
+      } else {
+        btnPreviewSlides.classList.add('hidden');
+      }
+    }
+    if (typeof window.initSlideViewer === 'function') {
+      window.initSlideViewer(materialId, fileResources);
+    }
+
+    window.openEditorSlides = function () {
+      if (typeof window.openSlideViewer === 'function') {
+        window.openSlideViewer(0);
+      }
+    };
+
     if (btnShowAddFile) btnShowAddFile.disabled = resources.length >= 20;
     if (btnShowAddLink) btnShowAddLink.disabled = resources.length >= 20;
 
@@ -168,13 +189,21 @@
 
       if (isFile && ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(((res.file && res.file.format) || '').toLowerCase()) && res._id) {
         const thumbWrap = document.createElement('div');
-        thumbWrap.className = 'w-8 h-8 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 flex-shrink-0';
+        thumbWrap.className = 'w-9 h-9 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-indigo-400 transition p-0.5 flex items-center justify-center';
+        thumbWrap.title = 'Click to preview slide';
         const img = document.createElement('img');
         img.src = `/materials/${materialId}/resources/${res._id}/open`;
         img.alt = res.label || 'Image';
-        img.className = 'w-full h-full object-cover';
+        img.className = 'w-full h-full object-contain';
         img.loading = 'lazy';
         thumbWrap.appendChild(img);
+        thumbWrap.onclick = function (e) {
+          e.stopPropagation();
+          const fileIdx = fileResources.findIndex(function (fr) { return fr._id === res._id; });
+          if (typeof window.openSlideViewer === 'function') {
+            window.openSlideViewer(fileIdx >= 0 ? fileIdx : 0);
+          }
+        };
         leftCol.appendChild(thumbWrap);
       }
 

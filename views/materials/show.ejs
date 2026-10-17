@@ -97,6 +97,15 @@
 
       <!-- Action buttons -->
       <div class="flex items-center gap-2 flex-wrap">
+        <% if (fileResources.length > 0) { %>
+          <button type="button" onclick="openSlideViewer(0)"
+            class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition active:scale-95"
+            title="Present attached files as slides">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/></svg>
+            Present Slides (<%= fileResources.length %>)
+          </button>
+        <% } %>
+
         <% if (userCanEdit) { %>
           <a href="/materials/<%= mat._id %>/edit"
             class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white shadow-sm transition active:scale-95">
@@ -175,25 +184,132 @@
     <!-- Right 1 Col: Resources, Files, Links & Metadata -->
     <div class="space-y-6">
 
-      <!-- Files Panel -->
+      <!-- Files Panel with Slides & List Views -->
       <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
         <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
-          <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13"/>
-            </svg>
-            Attached Files (<%= fileResources.length %>)
-          </h3>
-          <% if (userCanEdit) { %>
-            <a href="/materials/<%= mat._id %>/edit" class="text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition">
-              Manage
-            </a>
-          <% } %>
+          <div class="flex items-center gap-2">
+            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13"/>
+              </svg>
+              Files (<%= fileResources.length %>)
+            </h3>
+
+            <% if (fileResources.length > 0) { %>
+              <div class="inline-flex rounded-lg bg-slate-100 p-0.5 text-[10px] font-semibold">
+                <button type="button" id="btn-view-slides" onclick="setFileViewMode('slides')"
+                  class="px-2 py-0.5 rounded-md transition bg-white text-indigo-600 shadow-xs">
+                  Slides
+                </button>
+                <button type="button" id="btn-view-list" onclick="setFileViewMode('list')"
+                  class="px-2 py-0.5 rounded-md transition text-slate-500 hover:text-slate-800">
+                  List
+                </button>
+              </div>
+            <% } %>
+          </div>
+
+          <div class="flex items-center gap-1.5">
+            <% if (fileResources.length > 0) { %>
+              <button type="button" onclick="openSlideViewer(window._inlineSlideIndex || 0)"
+                class="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition"
+                title="Present slides fullscreen">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" /></svg>
+                Present
+              </button>
+            <% } %>
+
+            <% if (userCanEdit) { %>
+              <a href="/materials/<%= mat._id %>/edit" class="text-xs font-semibold text-slate-400 hover:text-slate-600 transition">
+                Manage
+              </a>
+            <% } %>
+          </div>
         </div>
 
         <% if (fileResources.length > 0) { %>
-          <div class="space-y-2.5">
-            <% fileResources.forEach(function(res) { %>
+          <!-- Slide Carousel View (Default) -->
+          <div id="file-slides-view" class="space-y-3">
+            <!-- Slide Stage -->
+            <div class="relative bg-slate-900 rounded-2xl overflow-hidden border border-slate-200/80 group">
+              <!-- Top bar over slide preview -->
+              <div class="absolute top-0 inset-x-0 p-2.5 bg-gradient-to-b from-black/60 to-transparent z-10 flex items-center justify-between text-white text-xs">
+                <span id="inline-slide-counter" class="font-mono text-[11px] font-bold px-2 py-0.5 rounded-full bg-black/40 backdrop-blur-xs">
+                  1 / <%= fileResources.length %>
+                </span>
+                <button type="button" onclick="openSlideViewer(window._inlineSlideIndex || 0)"
+                  class="p-1 rounded-lg bg-black/40 hover:bg-black/70 text-white/90 hover:text-white transition"
+                  title="Expand to Fullscreen Presentation">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                  </svg>
+                </button>
+              </div>
+
+              <!-- Slide content (Image or non-image) -->
+              <div class="w-full min-h-[280px] sm:min-h-[360px] max-h-[520px] flex items-center justify-center p-2 sm:p-3 cursor-pointer bg-slate-950/90"
+                onclick="openSlideViewer(window._inlineSlideIndex || 0)"
+                title="Click to view full slide">
+                <img id="inline-slide-img" src="" alt="Slide preview" class="max-w-full max-h-[480px] w-auto h-auto object-contain mx-auto transition-transform duration-200 group-hover:scale-[1.01]" />
+                <div id="inline-slide-fallback" class="hidden flex flex-col items-center justify-center text-center p-6 text-white">
+                  <div class="w-14 h-14 rounded-2xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                    </svg>
+                  </div>
+                  <p id="inline-slide-fallback-name" class="text-xs font-bold truncate max-w-[200px] mb-1">Document</p>
+                  <p id="inline-slide-fallback-type" class="text-[10px] text-white/60 font-mono">PDF</p>
+                </div>
+              </div>
+
+              <!-- Inline Previous / Next Buttons -->
+              <% if (fileResources.length > 1) { %>
+                <button type="button" onclick="event.stopPropagation(); inlineSlidePrev();"
+                  class="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-black/50 hover:bg-black/80 text-white/90 hover:text-white backdrop-blur-xs transition active:scale-95 shadow-md"
+                  title="Previous slide (&larr;)">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                  </svg>
+                </button>
+                <button type="button" onclick="event.stopPropagation(); inlineSlideNext();"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-black/50 hover:bg-black/80 text-white/90 hover:text-white backdrop-blur-xs transition active:scale-95 shadow-md"
+                  title="Next slide (&rarr;)">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                  </svg>
+                </button>
+              <% } %>
+            </div>
+
+            <!-- Current Slide Details Bar -->
+            <div class="flex items-center justify-between text-xs px-1">
+              <div class="min-w-0 flex-1 mr-2">
+                <p id="inline-slide-title" class="font-bold text-slate-800 truncate" title=""></p>
+                <p id="inline-slide-meta" class="text-[11px] text-slate-400"></p>
+              </div>
+              <div class="flex items-center gap-1.5 flex-shrink-0">
+                <a id="inline-slide-open" href="#" target="_blank" rel="noopener noreferrer"
+                  class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition" title="Open original file">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
+                </a>
+                <a id="inline-slide-download" href="#"
+                  class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition" title="Download file">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                </a>
+              </div>
+            </div>
+
+            <!-- Mini Thumbnails Row -->
+            <% if (fileResources.length > 1) { %>
+              <div id="inline-thumbnails" class="flex items-center gap-2 overflow-x-auto pb-1.5 pt-0.5 scrollbar-thin">
+                <!-- generated dynamically via JS -->
+              </div>
+            <% } %>
+          </div>
+
+          <!-- Compact List View -->
+          <div id="file-list-view" class="hidden space-y-2.5">
+            <% fileResources.forEach(function(res, idx) { %>
               <%
                 const f = res.file || {};
                 const fmt = (f.format || '').toLowerCase();
@@ -220,6 +336,11 @@
                   </div>
 
                   <div class="flex items-center gap-1.5 flex-shrink-0">
+                    <button type="button" data-slide-index="<%= idx %>" onclick="openSlideViewer(Number(this.dataset.slideIndex))"
+                      class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition"
+                      title="View in Slide Presentation">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" /></svg>
+                    </button>
                     <a href="/materials/<%= mat._id %>/resources/<%= res._id %>/open"
                       target="_blank" rel="noopener noreferrer"
                       class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition"
@@ -235,12 +356,12 @@
                 </div>
 
                 <% if (isImage) { %>
-                  <div class="overflow-hidden rounded-xl border border-slate-200/80 bg-white">
-                    <a href="/materials/<%= mat._id %>/resources/<%= res._id %>/open" target="_blank" rel="noopener noreferrer" title="Click to view full image">
+                  <div class="overflow-hidden rounded-xl border border-slate-200/80 bg-slate-50 flex items-center justify-center p-1">
+                    <a href="/materials/<%= mat._id %>/resources/<%= res._id %>/open" target="_blank" rel="noopener noreferrer" title="Click to view full image" class="block w-full text-center">
                       <img src="/materials/<%= mat._id %>/resources/<%= res._id %>/open"
                         alt="<%= res.label %>"
                         loading="lazy"
-                        class="w-full h-auto max-h-72 object-contain mx-auto bg-slate-50 hover:opacity-95 transition" />
+                        class="max-w-full w-auto h-auto max-h-[520px] object-contain mx-auto rounded-lg hover:opacity-95 transition" />
                     </a>
                   </div>
                 <% } %>
@@ -309,5 +430,203 @@
     </div>
   </div>
 </div>
+
+<!-- Slide Presentation Modal -->
+<%- include('./_slide-viewer-modal', { materialId: mat._id }) %>
+
+<!-- Data Pass to Slide Viewer Script -->
+<script type="application/json" id="show-material-data">
+  <%- JSON.stringify({
+    materialId: String(mat._id),
+    fileResources: fileResources.map(function(r) {
+      return {
+        _id: String(r._id),
+        label: r.label || '',
+        kind: r.kind,
+        file: {
+          publicId: r.file ? r.file.publicId : null,
+          format: r.file ? r.file.format : null,
+          bytes: r.file ? r.file.bytes : 0,
+          originalFilename: r.file ? r.file.originalFilename : ''
+        }
+      };
+    })
+  }) %>
+</script>
+
+<script>
+  (function () {
+    let materialData = { materialId: '', fileResources: [] };
+    try {
+      const dataEl = document.getElementById('show-material-data');
+      if (dataEl && dataEl.textContent) {
+        materialData = JSON.parse(dataEl.textContent);
+      }
+    } catch (e) {
+      console.error('Failed to parse show material data', e);
+    }
+
+    const materialId = materialData.materialId || '';
+    const fileResources = materialData.fileResources || [];
+
+    window.initSlideViewer(materialId, fileResources);
+
+    let activeIndex = 0;
+    window._inlineSlideIndex = 0;
+
+    function formatBytes(bytes) {
+      if (!bytes || bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    const IMAGE_FORMATS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'];
+
+    window.updateInlineSlideCarousel = function (index) {
+      if (!fileResources || fileResources.length === 0) return;
+      if (index < 0 || index >= fileResources.length) index = 0;
+      activeIndex = index;
+      window._inlineSlideIndex = index;
+
+      const res = fileResources[index];
+      const fmt = (res.file && res.file.format ? res.file.format : '').toLowerCase();
+      const isImg = IMAGE_FORMATS.includes(fmt);
+      const openUrl = '/materials/' + encodeURIComponent(materialId) + '/resources/' + encodeURIComponent(res._id) + '/open';
+      const dlUrl = openUrl + '?download=1';
+
+      const counter = document.getElementById('inline-slide-counter');
+      if (counter) counter.textContent = `${index + 1} / ${fileResources.length}`;
+
+      const title = document.getElementById('inline-slide-title');
+      if (title) {
+        title.textContent = res.label || (res.file && res.file.originalFilename) || 'Attachment';
+        title.title = title.textContent;
+      }
+
+      const meta = document.getElementById('inline-slide-meta');
+      if (meta) {
+        meta.textContent = `${(fmt || 'FILE').toUpperCase()} · ${formatBytes(res.file ? res.file.bytes : 0)}`;
+      }
+
+      const openLink = document.getElementById('inline-slide-open');
+      if (openLink) openLink.href = openUrl;
+
+      const dlLink = document.getElementById('inline-slide-download');
+      if (dlLink) dlLink.href = dlUrl;
+
+      const imgEl = document.getElementById('inline-slide-img');
+      const fallbackEl = document.getElementById('inline-slide-fallback');
+
+      if (isImg) {
+        if (imgEl) {
+          imgEl.src = openUrl;
+          imgEl.alt = res.label || 'Slide';
+          imgEl.classList.remove('hidden');
+        }
+        if (fallbackEl) fallbackEl.classList.add('hidden');
+      } else {
+        if (imgEl) imgEl.classList.add('hidden');
+        if (fallbackEl) {
+          fallbackEl.classList.remove('hidden');
+          const fbName = document.getElementById('inline-slide-fallback-name');
+          if (fbName) fbName.textContent = res.label || 'Document';
+          const fbType = document.getElementById('inline-slide-fallback-type');
+          if (fbType) fbType.textContent = `${(fmt || 'FILE').toUpperCase()} file`;
+        }
+      }
+
+      // Update mini thumbnails highlight
+      const miniThumbs = document.querySelectorAll('.inline-mini-thumb');
+      miniThumbs.forEach((el, idx) => {
+        if (idx === index) {
+          el.classList.add('ring-2', 'ring-indigo-500', 'border-indigo-500', 'scale-105');
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        } else {
+          el.classList.remove('ring-2', 'ring-indigo-500', 'border-indigo-500', 'scale-105');
+        }
+      });
+    };
+
+    window.inlineSlideNext = function () {
+      if (!fileResources || fileResources.length === 0) return;
+      const next = (activeIndex + 1) % fileResources.length;
+      updateInlineSlideCarousel(next);
+    };
+
+    window.inlineSlidePrev = function () {
+      if (!fileResources || fileResources.length === 0) return;
+      const prev = activeIndex === 0 ? fileResources.length - 1 : activeIndex - 1;
+      updateInlineSlideCarousel(prev);
+    };
+
+    window.setFileViewMode = function (mode) {
+      const slidesView = document.getElementById('file-slides-view');
+      const listView = document.getElementById('file-list-view');
+      const btnSlides = document.getElementById('btn-view-slides');
+      const btnList = document.getElementById('btn-view-list');
+
+      if (mode === 'list') {
+        if (slidesView) slidesView.classList.add('hidden');
+        if (listView) listView.classList.remove('hidden');
+        if (btnSlides) {
+          btnSlides.classList.remove('bg-white', 'text-indigo-600', 'shadow-xs');
+          btnSlides.classList.add('text-slate-500');
+        }
+        if (btnList) {
+          btnList.classList.add('bg-white', 'text-indigo-600', 'shadow-xs');
+          btnList.classList.remove('text-slate-500');
+        }
+      } else {
+        if (slidesView) slidesView.classList.remove('hidden');
+        if (listView) listView.classList.add('hidden');
+        if (btnSlides) {
+          btnSlides.classList.add('bg-white', 'text-indigo-600', 'shadow-xs');
+          btnSlides.classList.remove('text-slate-500');
+        }
+        if (btnList) {
+          btnList.classList.remove('bg-white', 'text-indigo-600', 'shadow-xs');
+          btnList.classList.add('text-slate-500');
+        }
+      }
+    };
+
+    // Render mini thumbnails
+    const miniThumbsWrap = document.getElementById('inline-thumbnails');
+    if (miniThumbsWrap && fileResources.length > 1) {
+      fileResources.forEach((res, idx) => {
+        const fmt = (res.file && res.file.format ? res.file.format : '').toLowerCase();
+        const isImg = IMAGE_FORMATS.includes(fmt);
+        const openUrl = '/materials/' + encodeURIComponent(materialId) + '/resources/' + encodeURIComponent(res._id) + '/open';
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'inline-mini-thumb flex-shrink-0 w-12 h-10 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 hover:border-indigo-400 transition-all cursor-pointer relative flex items-center justify-center';
+        btn.title = `Slide ${idx + 1}: ${res.label || 'File'}`;
+
+        if (isImg) {
+          btn.innerHTML = `<img src="${openUrl}" alt="" class="w-full h-full object-contain p-0.5 pointer-events-none" loading="lazy">` +
+            `<span class="absolute bottom-0.5 right-0.5 text-[8px] font-mono px-1 rounded bg-black/70 text-white font-bold">${idx + 1}</span>`;
+        } else {
+          btn.innerHTML = `<div class="w-full h-full flex flex-col items-center justify-center pointer-events-none">` +
+            `<span class="text-[8px] font-mono font-bold uppercase text-indigo-600">${fmt || 'FILE'}</span>` +
+            `<span class="text-[7px] font-mono text-slate-500">${idx + 1}</span>` +
+            `</div>`;
+        }
+
+        btn.onclick = function () {
+          updateInlineSlideCarousel(idx);
+        };
+        miniThumbsWrap.appendChild(btn);
+      });
+    }
+
+    // Initialize first slide
+    if (fileResources.length > 0) {
+      updateInlineSlideCarousel(0);
+    }
+  })();
+</script>
 
 <%- include('../partials/footer') %>
