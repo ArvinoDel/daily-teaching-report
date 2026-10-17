@@ -60,6 +60,8 @@
   const uploadPercent = document.getElementById('upload-percent');
   const uploadFilename = document.getElementById('upload-filename');
   const uploadError = document.getElementById('upload-error');
+  const dropzoneActiveState = document.getElementById('dropzone-active-state');
+  const resourcesCard = document.getElementById('resources-card');
 
   // Link Elements
   const btnShowAddLink = document.getElementById('btn-show-add-link');
@@ -346,7 +348,7 @@
     }
   }
 
-  // 5. File Panel Toggle & Direct Cloudinary Upload
+  // 5. File Panel Toggle & Direct Cloudinary Upload with Drag & Drop
   if (btnShowAddFile && uploadPanel) {
     btnShowAddFile.addEventListener('click', function () {
       uploadPanel.classList.toggle('hidden');
@@ -355,84 +357,87 @@
     });
   }
 
-  if (btnBrowseFile && fileInput) {
-    btnBrowseFile.addEventListener('click', function () {
-      fileInput.click();
-    });
+  function showUploadError(msg) {
+    if (uploadError) {
+      uploadError.textContent = msg;
+      uploadError.classList.remove('hidden');
+    }
+    if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
   }
 
-  if (fileInput) {
-    fileInput.addEventListener('change', async function () {
-      const file = fileInput.files[0];
-      if (!file) return;
+  async function uploadSingleFile(file) {
+    if (!file) return;
 
-      if (uploadError) uploadError.classList.add('hidden');
+    if (uploadError) uploadError.classList.add('hidden');
 
-      // Client validate ext
-      const ext = file.name.split('.').pop().toLowerCase();
-      if (!allowedExtensions.includes(ext)) {
-        showUploadError(`File type .${ext} is not supported.`);
-        fileInput.value = '';
+    // Client validate ext
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!allowedExtensions.includes(ext)) {
+      showUploadError(`File type .${ext} is not supported.`);
+      return;
+    }
+
+    // Client validate size
+    if (file.size > maxFileMb * 1024 * 1024) {
+      showUploadError(`File "${file.name}" exceeds ${maxFileMb} MB.`);
+      return;
+    }
+
+    // Client validate max resource count
+    if (resources.length >= 20) {
+      showUploadError('Maximum limit of 20 resources reached.');
+      return;
+    }
+
+    // Step A: Request signature from our server
+    let signData;
+    try {
+      const signResp = await fetch(`/materials/${materialId}/uploads/sign`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ filename: file.name, size: file.size })
+      });
+
+      if (!signResp.ok) {
+        console.error('Sign upload failed with status:', signResp.status);
+        let errJson = {};
+        try {
+          errJson = await signResp.json();
+        } catch (_) {}
+        showUploadError(errJson.error || 'Failed to sign upload.');
         return;
       }
+      signData = await signResp.json();
+    } catch (err) {
+      console.error('Sign upload error:', err);
+      showUploadError('Error connecting to upload service.');
+      return;
+    }
 
-      // Client validate size
-      if (file.size > maxFileMb * 1024 * 1024) {
-        showUploadError(`File size exceeds ${maxFileMb} MB.`);
-        fileInput.value = '';
-        return;
-      }
+    // Step B: Upload directly to Cloudinary using XMLHttpRequest with progress
+    if (uploadProgressWrap) {
+      uploadProgressWrap.classList.remove('hidden');
+      if (uploadFilename) uploadFilename.textContent = file.name;
+      if (uploadProgressBar) uploadProgressBar.style.width = '0%';
+      if (uploadPercent) uploadPercent.textContent = '0%';
+    }
 
-      // Step A: Request signature from our server
-      let signData;
-      try {
-        const signResp = await fetch(`/materials/${materialId}/uploads/sign`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken,
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({ filename: file.name, size: file.size })
-        });
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('api_key', signData.apiKey);
+    formData.append('timestamp', signData.timestamp);
+    formData.append('signature', signData.signature);
+    formData.append('folder', signData.folder);
+    formData.append('type', signData.type);
+    if (signData.allowed_formats) {
+      formData.append('allowed_formats', signData.allowed_formats);
+    }
 
-        if (!signResp.ok) {
-          console.error('Sign upload failed with status:', signResp.status);
-          let errJson = {};
-          try {
-            errJson = await signResp.json();
-          } catch (_) {}
-          showUploadError(errJson.error || 'Failed to sign upload.');
-          fileInput.value = '';
-          return;
-        }
-        signData = await signResp.json();
-      } catch (err) {
-        console.error('Sign upload error:', err);
-        showUploadError('Error connecting to upload service.');
-        fileInput.value = '';
-        return;
-      }
-
-      // Step B: Upload directly to Cloudinary using XMLHttpRequest with progress
-      if (uploadProgressWrap) {
-        uploadProgressWrap.classList.remove('hidden');
-        if (uploadFilename) uploadFilename.textContent = file.name;
-        if (uploadProgressBar) uploadProgressBar.style.width = '0%';
-        if (uploadPercent) uploadPercent.textContent = '0%';
-      }
-
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('api_key', signData.apiKey);
-      formData.append('timestamp', signData.timestamp);
-      formData.append('signature', signData.signature);
-      formData.append('folder', signData.folder);
-      formData.append('type', signData.type);
-      if (signData.allowed_formats) {
-        formData.append('allowed_formats', signData.allowed_formats);
-      }
-
+    await new Promise(function (resolve) {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `https://api.cloudinary.com/v1_1/${signData.cloudName}/auto/upload`);
 
@@ -454,6 +459,7 @@
           if (!cloudRes || !cloudRes.public_id) {
             showUploadError('Failed to parse cloud response.');
             if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
+            resolve();
             return;
           }
 
@@ -480,6 +486,7 @@
             if (regResp.status === 409) {
               if (conflictModal) conflictModal.classList.remove('hidden');
               if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
+              resolve();
               return;
             }
 
@@ -492,6 +499,7 @@
               console.error('Attach resource failed with status:', regResp.status);
               showUploadError(regJson.error || 'Failed to attach file.');
               if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
+              resolve();
               return;
             }
 
@@ -499,15 +507,15 @@
               currentVersion = regJson.version;
             }
             resources.push(regJson.resource);
-            uploadPanel.classList.add('hidden');
             if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
-            fileInput.value = '';
             markDirty();
             renderResources();
+            resolve();
           } catch (regErr) {
             console.error('Attach resource error:', regErr);
             showUploadError('Error finalizing file attachment.');
             if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
+            resolve();
           }
         } else {
           let parsedBody = null;
@@ -524,6 +532,7 @@
 
           showUploadError(errorMessage);
           if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
+          resolve();
         }
       };
 
@@ -531,6 +540,7 @@
         console.error('Upload network error');
         showUploadError('Network error while uploading.');
         if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
+        resolve();
       };
 
       xhr.onerror = handleNetworkError;
@@ -540,12 +550,105 @@
     });
   }
 
-  function showUploadError(msg) {
-    if (uploadError) {
-      uploadError.textContent = msg;
-      uploadError.classList.remove('hidden');
+  async function handleFilesUpload(fileList) {
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+    for (const file of files) {
+      await uploadSingleFile(file);
     }
-    if (uploadProgressWrap) uploadProgressWrap.classList.add('hidden');
+    if (fileInput) fileInput.value = '';
+  }
+
+  if (fileInput) {
+    fileInput.addEventListener('click', function (e) {
+      e.stopPropagation();
+    });
+    fileInput.addEventListener('change', function () {
+      if (fileInput.files && fileInput.files.length > 0) {
+        handleFilesUpload(fileInput.files);
+      }
+    });
+  }
+
+  if (btnBrowseFile) {
+    btnBrowseFile.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (fileInput) fileInput.click();
+    });
+  }
+
+  // Drag and drop events on the dropzone panel
+  if (uploadPanel) {
+    let dragCounter = 0;
+
+    function showDragOverlay() {
+      if (dropzoneActiveState) dropzoneActiveState.classList.remove('hidden');
+      uploadPanel.classList.add('border-indigo-500', 'bg-indigo-100/60', 'ring-4', 'ring-indigo-200/50');
+    }
+
+    function hideDragOverlay() {
+      if (dropzoneActiveState) dropzoneActiveState.classList.add('hidden');
+      uploadPanel.classList.remove('border-indigo-500', 'bg-indigo-100/60', 'ring-4', 'ring-indigo-200/50');
+    }
+
+    uploadPanel.addEventListener('click', function () {
+      if (uploadProgressWrap && !uploadProgressWrap.classList.contains('hidden')) {
+        return;
+      }
+      if (fileInput) fileInput.click();
+    });
+
+    uploadPanel.addEventListener('dragenter', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter++;
+      if (e.dataTransfer && e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files')) {
+        showDragOverlay();
+      }
+    });
+
+    uploadPanel.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+      showDragOverlay();
+    });
+
+    uploadPanel.addEventListener('dragleave', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        hideDragOverlay();
+      }
+    });
+
+    uploadPanel.addEventListener('drop', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter = 0;
+      hideDragOverlay();
+
+      const dt = e.dataTransfer;
+      if (dt && dt.files && dt.files.length > 0) {
+        handleFilesUpload(dt.files);
+      }
+    });
+  }
+
+  // Auto-reveal upload panel when dragging files anywhere over the resources panel
+  if (resourcesCard && uploadPanel) {
+    resourcesCard.addEventListener('dragenter', function (e) {
+      if (e.dataTransfer && e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files')) {
+        if (uploadPanel.classList.contains('hidden')) {
+          uploadPanel.classList.remove('hidden');
+          if (linkPanel) linkPanel.classList.add('hidden');
+        }
+      }
+    });
   }
 
   // 6. Save Content (Quill HTML + Resources + Note)

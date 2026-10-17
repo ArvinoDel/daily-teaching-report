@@ -7,6 +7,7 @@
       reports: day.reports.map(function (r) {
         return {
           _id:                   String(r._id),
+          createdAt:             r.createdAt ? r.createdAt : null,
           subject:               r.subject,
           materialId:            (r.material && (r.material._id || r.material)) ? String(r.material._id || r.material) : null,
           materialHasContent:    Boolean(r.material && r.material.hasContent),
@@ -54,7 +55,17 @@
 
     document.getElementById('detail-date-label').textContent = day.dateLabel;
 
-    document.getElementById('detail-tbody').innerHTML = day.reports.map(function (r) {
+    var reports = (day.reports || []).slice();
+    // Ensure chronological order so the first class is on top
+    reports.sort(function (a, b) {
+      if (a.createdAt && b.createdAt) {
+        var diff = new Date(a.createdAt) - new Date(b.createdAt);
+        if (diff !== 0) return diff;
+      }
+      return String(a._id).localeCompare(String(b._id));
+    });
+
+    document.getElementById('detail-tbody').innerHTML = reports.map(function (r, index) {
       var badge    = badgeMap[r.teaching_type] || '';
       var reportId = escHtml(r._id);
 
@@ -91,16 +102,26 @@
         }
       }
 
+      var orderNum = index + 1;
+      var numBadge = r.session_mode === 'online'
+        ? 'bg-white text-blue-700 border border-blue-200/60'
+        : 'bg-slate-100 text-slate-600';
+
       return '<tr class="' + rowCls + '">' +
-        '<td class="px-4 sm:px-6 py-4 font-semibold text-slate-800">' +
+        '<td class="w-10 sm:w-12 px-2 sm:px-3 py-3.5 text-center whitespace-nowrap">' +
+          '<span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold font-mono ' + numBadge + '">' +
+            orderNum +
+          '</span>' +
+        '</td>' +
+        '<td class="px-3 sm:px-5 py-3.5 font-semibold text-slate-800">' +
           '<span class="inline-flex items-center gap-0.5">' +
             escHtml(r.class_name) + modePip + privatePip +
           '</span>' +
         '</td>' +
-        '<td class="px-4 sm:px-6 py-4 text-slate-600 hidden sm:table-cell">'  + subjectHtml + '</td>' +
-        '<td class="px-4 sm:px-6 py-4 hidden sm:table-cell"><span class="' + badge + ' text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap">' + escHtml(r.teaching_type) + '</span></td>' +
-        '<td class="px-4 sm:px-6 py-4 font-mono text-xs text-slate-500 hidden md:table-cell whitespace-nowrap">' + escHtml(r.durationFormatted) + '</td>' +
-        '<td class="px-4 sm:px-6 py-4">' +
+        '<td class="px-3 sm:px-5 py-3.5 text-slate-600 hidden sm:table-cell">'  + subjectHtml + '</td>' +
+        '<td class="px-3 sm:px-5 py-3.5 hidden sm:table-cell"><span class="' + badge + ' text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap">' + escHtml(r.teaching_type) + '</span></td>' +
+        '<td class="px-3 sm:px-5 py-3.5 font-mono text-xs text-slate-500 hidden md:table-cell whitespace-nowrap">' + escHtml(r.durationFormatted) + '</td>' +
+        '<td class="px-3 sm:px-5 py-3.5 w-20 whitespace-nowrap">' +
           '<div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition">' +
             /* View */
             '<a href="/reports/' + reportId + '" class="text-slate-400 hover:text-brand-600 transition" title="Detail">' +

@@ -212,7 +212,7 @@ exports.index = async (req, res) => {
       Report.find({
         teacher: req.session.user._id,
         date: { $gte: monthStart, $lte: monthEnd },
-      }).populate('material', 'hasContent').sort({ date: 1 }),
+      }).populate('material', 'hasContent').sort({ date: 1, createdAt: 1, _id: 1 }),
       // Full list (with optional type/mode filters) for the report table
       Report.find(listFilter).sort({ date: -1 }),
     ]);
@@ -239,6 +239,14 @@ exports.index = async (req, res) => {
       if (dailyMap[key].counts[r.teaching_type] !== undefined) dailyMap[key].counts[r.teaching_type]++;
     }
     const dailySummary = Object.values(dailyMap).sort((a, b) => new Date(b.date) - new Date(a.date));
+    dailySummary.forEach(day => {
+      day.reports.sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : (a._id ? a._id.getTimestamp().getTime() : 0);
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : (b._id ? b._id.getTimestamp().getTime() : 0);
+        if (timeA !== timeB) return timeA - timeB;
+        return String(a._id).localeCompare(String(b._id));
+      });
+    });
 
     // ⚡ Perf fix: reuse currentUser from res.locals instead of a second User.findById
     let comm = res.locals.currentUser?.commission;

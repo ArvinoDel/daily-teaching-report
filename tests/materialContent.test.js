@@ -1568,6 +1568,31 @@ test('Material Content - Teacher Can Edit First Content', async (t) => {
     assert.ok(html.includes('Add First Content'), 'Should show Add First Content button');
     assert.ok(html.includes('+ Add Written Notes'), 'Should show Add Written Notes button');
   });
+
+  await t.test('views/materials/edit.ejs and material-editor.js support drag and drop file uploads', async () => {
+    const fs = require('fs');
+    const path = require('path');
+    const editFile = path.resolve('views/materials/edit.ejs');
+    const scriptFile = path.resolve('public/js/material-editor.js');
+
+    const editContent = fs.readFileSync(editFile, 'utf8');
+    const scriptContent = fs.readFileSync(scriptFile, 'utf8');
+
+    // Markup assertions
+    assert.ok(editContent.includes('id="upload-panel"'), 'upload-panel must exist');
+    assert.ok(editContent.includes('id="dropzone-active-state"'), 'dropzone-active-state overlay must exist');
+    assert.ok(editContent.includes('id="resources-card"'), 'resources-card must exist for drag-over detection');
+    assert.ok(editContent.includes('Drag & drop files here'), 'Must display drag and drop user prompt');
+    assert.ok(editContent.includes('multiple'), 'file input must support multiple files');
+
+    // Client script assertions
+    assert.ok(scriptContent.includes('dragenter'), 'Script must handle dragenter');
+    assert.ok(scriptContent.includes('dragover'), 'Script must handle dragover');
+    assert.ok(scriptContent.includes('dragleave'), 'Script must handle dragleave');
+    assert.ok(scriptContent.includes('drop'), 'Script must handle drop event');
+    assert.ok(scriptContent.includes('handleFilesUpload'), 'Script must have handleFilesUpload');
+    assert.ok(scriptContent.includes('uploadSingleFile'), 'Script must have uploadSingleFile');
+  });
 });
 
 
