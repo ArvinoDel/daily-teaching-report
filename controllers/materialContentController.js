@@ -50,26 +50,44 @@ function isAdminUser(req) {
  * ───────────────────────────────────────────────────────────────────── */
 exports.materialsLibrary = async (req, res) => {
   try {
-    const { q, level } = req.query;
+    const { q, level, status } = req.query;
     const page  = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = 12;
 
-    const filter = { hasContent: true };
+    const baseFilter = {};
     if (q && q.trim()) {
-      filter.name = { $regex: escapeRegex(q.trim()), $options: 'i' };
+      baseFilter.name = { $regex: escapeRegex(q.trim()), $options: 'i' };
     }
     if (level && level.trim()) {
-      filter.level = level.trim().toUpperCase();
+      baseFilter.level = level.trim().toUpperCase();
     }
 
-    const [totalMatching, materials, distinctLevels] = await Promise.all([
+    const currentStatus = (status || 'all').toLowerCase().trim();
+    const filter = { ...baseFilter };
+    if (currentStatus === 'has_content' || currentStatus === 'with_content') {
+      filter.hasContent = true;
+    } else if (currentStatus === 'no_content' || currentStatus === 'needs_content') {
+      filter.hasContent = { $ne: true };
+    }
+
+    const [
+      totalMatching,
+      materials,
+      distinctLevels,
+      countAll,
+      countWithContent,
+      countNoContent,
+    ] = await Promise.all([
       Material.countDocuments(filter),
       Material.find(filter)
         .sort({ name: 1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
-      Material.distinct('level', { hasContent: true }),
+      Material.distinct('level'),
+      Material.countDocuments(baseFilter),
+      Material.countDocuments({ ...baseFilter, hasContent: true }),
+      Material.countDocuments({ ...baseFilter, hasContent: { $ne: true } }),
     ]);
 
     const totalPages = Math.max(1, Math.ceil(totalMatching / limit));
@@ -101,6 +119,10 @@ exports.materialsLibrary = async (req, res) => {
       availableLevels,
       selectedLevel: level || '',
       searchQuery:   q || '',
+      status:        currentStatus,
+      countAll,
+      countWithContent,
+      countNoContent,
       userIsAdmin:   isAdminUser(req),
       renderMaterialBody,
       safeJson,

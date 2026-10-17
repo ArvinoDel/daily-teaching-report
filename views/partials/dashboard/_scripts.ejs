@@ -77,11 +77,18 @@
         : '';
 
       var subjectHtml = escHtml(r.subject || '—');
-      if (r.materialId && r.materialHasContent) {
-        subjectHtml = '<a href="/materials/' + encodeURIComponent(r.materialId) + '" class="text-brand-600 hover:text-brand-700 hover:underline font-medium inline-flex items-center gap-1" title="View material content">' +
-          subjectHtml +
-          '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>' +
-        '</a>';
+      if (r.materialId) {
+        if (r.materialHasContent) {
+          subjectHtml = '<a href="/materials/' + encodeURIComponent(r.materialId) + '" class="text-brand-600 hover:text-brand-700 hover:underline font-medium inline-flex items-center gap-1" title="View material content">' +
+            subjectHtml +
+            '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>' +
+          '</a>';
+        } else {
+          subjectHtml = '<a href="/materials/' + encodeURIComponent(r.materialId) + '" class="text-slate-700 hover:text-brand-600 hover:underline font-medium inline-flex items-center gap-1.5" title="Material has no content yet — click to view or add content">' +
+            subjectHtml +
+            '<span class="text-[10px] font-semibold text-brand-600 bg-brand-50 hover:bg-brand-100 border border-brand-200/60 px-1.5 py-0.2 rounded-md transition">+ Add</span>' +
+          '</a>';
+        }
       }
 
       return '<tr class="' + rowCls + '">' +

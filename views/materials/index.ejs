@@ -23,9 +23,32 @@
     </div>
   </div>
 
+  <!-- Status Tabs -->
+  <div class="flex items-center gap-2 mb-4 overflow-x-auto pb-1 scrollbar-none">
+    <a href="/materials?q=<%= encodeURIComponent(searchQuery) %>&level=<%= encodeURIComponent(selectedLevel) %>&status=all"
+      class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition <%= (!status || status === 'all') ? 'bg-brand-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50' %>">
+      <span>All Materials</span>
+      <span class="inline-flex items-center justify-center px-1.5 py-0.2 rounded-md text-[10px] <%= (!status || status === 'all') ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600' %>"><%= countAll || 0 %></span>
+    </a>
+    <a href="/materials?q=<%= encodeURIComponent(searchQuery) %>&level=<%= encodeURIComponent(selectedLevel) %>&status=has_content"
+      class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition <%= (status === 'has_content') ? 'bg-brand-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50' %>">
+      <span>With Content</span>
+      <span class="inline-flex items-center justify-center px-1.5 py-0.2 rounded-md text-[10px] <%= (status === 'has_content') ? 'bg-white/20 text-white' : 'bg-emerald-50 text-emerald-700' %>"><%= countWithContent || 0 %></span>
+    </a>
+    <a href="/materials?q=<%= encodeURIComponent(searchQuery) %>&level=<%= encodeURIComponent(selectedLevel) %>&status=no_content"
+      class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition <%= (status === 'no_content') ? 'bg-brand-600 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50' %>">
+      <span>Needs Content</span>
+      <span class="inline-flex items-center justify-center px-1.5 py-0.2 rounded-md text-[10px] <%= (status === 'no_content') ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-700' %>"><%= countNoContent || 0 %></span>
+    </a>
+  </div>
+
   <!-- Filter & Search Bar -->
   <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 mb-6">
     <form method="GET" action="/materials" class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+      <% if (status && status !== 'all') { %>
+        <input type="hidden" name="status" value="<%= status %>">
+      <% } %>
+
       <!-- Search input -->
       <div class="relative flex-1">
         <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -58,7 +81,7 @@
         </div>
 
         <button type="submit" class="px-4 py-2 text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm transition active:scale-95">Filter</button>
-        <% if (searchQuery || selectedLevel) { %>
+        <% if (searchQuery || selectedLevel || (status && status !== 'all')) { %>
           <a href="/materials" class="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 transition">Clear</a>
         <% } %>
       </div>
@@ -67,7 +90,14 @@
 
   <!-- Count summary -->
   <div class="flex items-center justify-between text-xs text-slate-500 mb-4 px-1">
-    <span>Showing <strong><%= totalMatching %></strong> material<%= totalMatching === 1 ? '' : 's' %> with content</span>
+    <span>
+      Showing <strong><%= totalMatching %></strong> material<%= totalMatching === 1 ? '' : 's' %>
+      <% if (status === 'has_content') { %>
+        with content
+      <% } else if (status === 'no_content') { %>
+        needing content
+      <% } %>
+    </span>
   </div>
 
   <!-- Cards Grid -->
@@ -78,20 +108,29 @@
           const cInfo = (contentMap && contentMap[String(mat._id)]) || { fileCount: 0, updatedAt: mat.contentUpdatedAt };
           const fileCount = cInfo.fileCount || 0;
           const updatedDate = cInfo.updatedAt || mat.contentUpdatedAt || mat.updatedAt;
+          const hasContent = Boolean(mat.hasContent);
         %>
         <div class="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-brand-200 transition-all flex flex-col justify-between p-5 group">
           <div>
             <!-- Top badge row -->
             <div class="flex items-center justify-between gap-2 mb-3">
-              <% if (mat.level) { %>
-                <span class="inline-flex items-center text-xs font-bold px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
-                  <%= mat.level %>
-                </span>
-              <% } else { %>
-                <span class="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
-                  General
-                </span>
-              <% } %>
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <% if (mat.level) { %>
+                  <span class="inline-flex items-center text-xs font-bold px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
+                    <%= mat.level %>
+                  </span>
+                <% } else { %>
+                  <span class="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                    General
+                  </span>
+                <% } %>
+
+                <% if (!hasContent) { %>
+                  <span class="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200/60">
+                    No Content
+                  </span>
+                <% } %>
+              </div>
 
               <% if (fileCount > 0) { %>
                 <span class="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
@@ -110,11 +149,15 @@
               </a>
             </h2>
 
-            <!-- Updated date -->
-            <% if (updatedDate) { %>
+            <!-- Updated date / status note -->
+            <% if (hasContent && updatedDate) { %>
               <p class="text-xs text-slate-400 mt-2 flex items-center gap-1">
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
                 Updated <%= new Date(updatedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) %>
+              </p>
+            <% } else { %>
+              <p class="text-xs text-slate-400 mt-2 flex items-center gap-1">
+                <span class="text-slate-400 italic">No notes or files added yet</span>
               </p>
             <% } %>
           </div>
@@ -122,18 +165,27 @@
           <!-- Bottom Action Buttons -->
           <div class="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-2">
             <a href="/materials/<%= mat._id %>"
-              class="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-3.5 py-1.5 rounded-xl transition">
+              class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-3.5 py-1.5 rounded-xl transition">
               Open Material
               <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
             </a>
 
             <div class="flex items-center gap-1">
-              <a href="/materials/<%= mat._id %>/edit"
-                class="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 px-2.5 py-1.5 rounded-lg transition"
-                title="Edit material">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125"/></svg>
-                Edit
-              </a>
+              <% if (hasContent) { %>
+                <a href="/materials/<%= mat._id %>/edit"
+                  class="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 px-2.5 py-1.5 rounded-lg transition"
+                  title="Edit material">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125"/></svg>
+                  Edit
+                </a>
+              <% } else { %>
+                <a href="/materials/<%= mat._id %>/edit"
+                  class="inline-flex items-center gap-1 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 px-3 py-1.5 rounded-xl shadow-sm transition active:scale-95"
+                  title="Add first content to this material">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                  + Add Content
+                </a>
+              <% } %>
             </div>
           </div>
         </div>
@@ -148,11 +200,11 @@
         </div>
         <div class="flex items-center gap-2">
           <% if (page > 1) { %>
-            <a href="/materials?q=<%= encodeURIComponent(searchQuery) %>&level=<%= encodeURIComponent(selectedLevel) %>&page=<%= page - 1 %>"
+            <a href="/materials?q=<%= encodeURIComponent(searchQuery) %>&level=<%= encodeURIComponent(selectedLevel) %>&status=<%= encodeURIComponent(status || 'all') %>&page=<%= page - 1 %>"
               class="px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 font-medium text-slate-700 transition">Previous</a>
           <% } %>
           <% if (page < totalPages) { %>
-            <a href="/materials?q=<%= encodeURIComponent(searchQuery) %>&level=<%= encodeURIComponent(selectedLevel) %>&page=<%= page + 1 %>"
+            <a href="/materials?q=<%= encodeURIComponent(searchQuery) %>&level=<%= encodeURIComponent(selectedLevel) %>&status=<%= encodeURIComponent(status || 'all') %>&page=<%= page + 1 %>"
               class="px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 font-medium text-slate-700 transition">Next</a>
           <% } %>
         </div>
@@ -167,15 +219,23 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
         </svg>
       </div>
-      <h3 class="text-base font-bold text-slate-800 mb-1">No Materials Found</h3>
+      <h3 class="text-base font-bold text-slate-800 mb-1">
+        <% if (status === 'no_content') { %>
+          All Materials Have Content
+        <% } else { %>
+          No Materials Found
+        <% } %>
+      </h3>
       <p class="text-xs text-slate-500 mb-6 leading-relaxed">
-        <% if (searchQuery || selectedLevel) { %>
+        <% if (status === 'no_content') { %>
+          Great news! Every material in the system currently has lesson notes or attachments.
+        <% } else if (searchQuery || selectedLevel) { %>
           No materials match your current search or level filters. Try clearing filters.
         <% } else { %>
-          No materials have written content or attachments yet. You can attach content from the admin materials list or click Edit on any material.
+          No materials are recorded yet in the system.
         <% } %>
       </p>
-      <% if (searchQuery || selectedLevel) { %>
+      <% if (searchQuery || selectedLevel || (status && status !== 'all')) { %>
         <a href="/materials" class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition">
           Clear Filters
         </a>

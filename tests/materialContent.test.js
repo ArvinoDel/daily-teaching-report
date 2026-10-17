@@ -1478,4 +1478,97 @@ test('Material Content - addResource 422 Server-side Diagnostics Logging', async
   }
 });
 
+test('Material Content - Teacher Can Edit First Content', async (t) => {
+  const teacherUser = { _id: '670000000000000000000005', role: 'teacher', username: 'teacher1' };
+
+  await t.test('canEdit returns true for teacher when content is null/undefined (first content)', () => {
+    assert.equal(canEdit(teacherUser, null), true);
+    assert.equal(canEdit(teacherUser, undefined), true);
+  });
+
+  await t.test('canEdit returns true for teacher when content has locked: false', () => {
+    assert.equal(canEdit(teacherUser, { locked: false, version: 1 }), true);
+  });
+
+  await t.test('views/materials/index.ejs renders + Add Content button and No Content badge for materials without content', async () => {
+    const ejs = require('ejs');
+    const path = require('path');
+    const indexFile = path.resolve('views/materials/index.ejs');
+
+    const html = await ejs.renderFile(indexFile, {
+      title: 'Materials Library',
+      materials: [
+        {
+          _id: '670000000000000000000001',
+          name: 'English Grammar 1',
+          level: 'Primary',
+          hasContent: false,
+        },
+        {
+          _id: '670000000000000000000002',
+          name: 'English Reading 2',
+          level: 'Secondary',
+          hasContent: true,
+          contentUpdatedAt: new Date(),
+        },
+      ],
+      contentMap: {
+        '670000000000000000000002': { fileCount: 2, updatedAt: new Date() },
+      },
+      page: 1,
+      totalPages: 1,
+      totalMatching: 2,
+      availableLevels: ['PRIMARY', 'SECONDARY'],
+      selectedLevel: '',
+      searchQuery: '',
+      status: 'all',
+      countAll: 2,
+      countWithContent: 1,
+      countNoContent: 1,
+      userIsAdmin: false,
+      renderMaterialBody: s => s,
+      safeJson: o => JSON.stringify(o),
+      user: teacherUser,
+    });
+
+    assert.ok(html.includes('All Materials'), 'Should include All Materials tab');
+    assert.ok(html.includes('With Content'), 'Should include With Content tab');
+    assert.ok(html.includes('Needs Content'), 'Should include Needs Content tab');
+    assert.ok(html.includes('No Content'), 'Should display No Content badge for empty material');
+    assert.ok(html.includes('+ Add Content'), 'Should display + Add Content button for empty material');
+    assert.ok(html.includes('/materials/670000000000000000000001/edit'), 'Link to edit first content');
+  });
+
+  await t.test('views/materials/show.ejs displays Add First Content when content is empty', async () => {
+    const ejs = require('ejs');
+    const path = require('path');
+    const showFile = path.resolve('views/materials/show.ejs');
+
+    const html = await ejs.renderFile(showFile, {
+      title: 'English Grammar 1',
+      material: {
+        _id: '670000000000000000000001',
+        name: 'English Grammar 1',
+        level: 'Primary',
+        hasContent: false,
+      },
+      content: {
+        version: 1,
+        body: '',
+        resources: [],
+        locked: false,
+      },
+      userCanEdit: true,
+      userIsAdmin: false,
+      renderMaterialBody: s => s,
+      csrfToken: 'test-token',
+      user: teacherUser,
+    });
+
+    assert.ok(html.includes('Add First Content'), 'Should show Add First Content button');
+    assert.ok(html.includes('+ Add Written Notes'), 'Should show Add Written Notes button');
+  });
+});
+
+
 
