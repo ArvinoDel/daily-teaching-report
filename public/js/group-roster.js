@@ -21,6 +21,7 @@
   let TARGET_GROUPS = [];
   let CSRF_TOKEN = '';
 
+  let activeEditStudent = null;
   let activeMoveStudent = null;
   let activeRemoveStudent = null;
   let searchDebounceTimer = null;
@@ -78,6 +79,7 @@
     // 4. Attach event listeners
     initSearchAutocomplete();
     initBulkAdd();
+    initEditModal();
     initMoveModal();
     initRemoveModal();
     initDeleteGroupButton();
@@ -173,6 +175,16 @@
             <div class="inline-flex items-center gap-1.5">
               ${studentId ? `
                 <button type="button"
+                  class="btn-edit-student inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition shadow-sm"
+                  data-student-id="${escHtml(studentId)}"
+                  data-student-name="${escHtml(name)}"
+                  data-student-code="${escHtml(code)}">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                  </svg>
+                  Edit
+                </button>
+                <button type="button"
                   class="btn-move-student inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition shadow-sm"
                   data-student-id="${escHtml(studentId)}"
                   data-student-name="${escHtml(name)}"
@@ -193,6 +205,11 @@
                   Remove
                 </button>
               ` : `
+                <button type="button" disabled
+                  title="Repair roster first to link this student"
+                  class="opacity-50 cursor-not-allowed inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-50 border border-slate-200 text-slate-400">
+                  Edit
+                </button>
                 <button type="button" disabled
                   title="Repair roster first to link this student"
                   class="opacity-50 cursor-not-allowed inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-50 border border-slate-200 text-slate-400">
@@ -229,6 +246,16 @@
     `;
 
     // Attach row action listeners
+    container.querySelectorAll('.btn-edit-student').forEach(btn => {
+      btn.addEventListener('click', () => {
+        openEditModal({
+          studentId: btn.dataset.studentId,
+          name: btn.dataset.studentName,
+          studentCode: btn.dataset.studentCode,
+        });
+      });
+    });
+
     container.querySelectorAll('.btn-move-student').forEach(btn => {
       btn.addEventListener('click', () => {
         openMoveModal({
@@ -528,6 +555,190 @@
         text: 'Failed to communicate with the server.',
         confirmButtonColor: '#ef4444',
       });
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     EDIT STUDENT MODAL
+  ════════════════════════════════════════════════════════════════ */
+  function initEditModal() {
+    const modal = document.getElementById('modal-edit-student');
+    const cancelBtn = document.getElementById('btn-cancel-edit-student');
+    const confirmBtn = document.getElementById('btn-confirm-edit-student');
+    const nameInput = document.getElementById('edit-student-name-input');
+    const errorBox = document.getElementById('edit-student-error');
+
+    if (!modal) return;
+
+    function closeModal() {
+      modal.classList.add('hidden');
+      activeEditStudent = null;
+      if (errorBox) {
+        errorBox.classList.add('hidden');
+        errorBox.textContent = '';
+      }
+    }
+
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', closeModal);
+    }
+
+    // Close on click outside backdrop
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+        closeModal();
+      }
+    });
+
+    if (nameInput) {
+      nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (confirmBtn) confirmBtn.click();
+        }
+      });
+      nameInput.addEventListener('input', () => {
+        if (errorBox) errorBox.classList.add('hidden');
+      });
+    }
+
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', async () => {
+        if (!activeEditStudent) return;
+        const newName = nameInput ? nameInput.value.trim() : '';
+        if (!newName) {
+          if (errorBox) {
+            errorBox.textContent = 'Please enter a student name.';
+            errorBox.classList.remove('hidden');
+          } else {
+            Toast.fire({ icon: 'warning', title: 'Please enter a student name.' });
+          }
+          if (nameInput) nameInput.focus();
+          return;
+        }
+
+        if (newName === activeEditStudent.name) {
+          closeModal();
+          Toast.fire({ icon: 'info', title: 'Student name unchanged.' });
+          return;
+        }
+
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Saving…';
+        if (errorBox) errorBox.classList.add('hidden');
+
+        try {
+          const res = await fetch(`/admin/groups/${GROUP_ID}/students/${activeEditStudent.studentId}/rename`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-csrf-token': CSRF_TOKEN,
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({ newName }),
+          });
+
+          const data = await res.json().catch(() => ({}));
+
+          if (res.status === 409) {
+            if (data.needsRepair) {
+              const banner = document.getElementById('roster-inconsistent-banner');
+              if (banner) banner.classList.remove('hidden');
+              Toast.fire({ icon: 'warning', title: data.message || "Repair this group's roster first." });
+              closeModal();
+              return;
+            }
+
+            if (errorBox) {
+              errorBox.textContent = data.message || 'Name conflict detected.';
+              errorBox.classList.remove('hidden');
+            } else {
+              Toast.fire({ icon: 'warning', title: data.message || 'Name conflict detected.' });
+            }
+            return;
+          }
+
+          if (!res.ok || !data.ok) {
+            if (errorBox) {
+              errorBox.textContent = data.message || 'Failed to update student name.';
+              errorBox.classList.remove('hidden');
+            } else {
+              Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: data.message || 'Failed to update student name.',
+                confirmButtonColor: '#ef4444',
+              });
+            }
+            return;
+          }
+
+          // Update local ROSTER
+          const target = ROSTER.find(r => r.studentId === activeEditStudent.studentId);
+          const oldName = activeEditStudent.name;
+          if (target) {
+            target.name = data.name;
+          }
+          renderRoster();
+          closeModal();
+
+          Toast.fire({
+            icon: 'success',
+            title: `Updated "${oldName}" to "${data.name}".`,
+          });
+
+        } catch (err) {
+          console.error(err);
+          if (errorBox) {
+            errorBox.textContent = 'Network error. Could not reach server.';
+            errorBox.classList.remove('hidden');
+          } else {
+            Swal.fire({
+              icon: 'error',
+              title: 'Network Error',
+              text: 'Failed to communicate with the server.',
+              confirmButtonColor: '#ef4444',
+            });
+          }
+        } finally {
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = 'Save Name';
+        }
+      });
+    }
+  }
+
+  function openEditModal(student) {
+    activeEditStudent = student;
+    const modal = document.getElementById('modal-edit-student');
+    if (!modal) return;
+
+    const codeEl = document.getElementById('edit-student-code');
+    const currentNameEl = document.getElementById('edit-student-current-name');
+    const nameInput = document.getElementById('edit-student-name-input');
+    const errorBox = document.getElementById('edit-student-error');
+
+    if (codeEl) codeEl.textContent = student.studentCode && student.studentCode !== '—' ? student.studentCode : '—';
+    if (currentNameEl) currentNameEl.textContent = student.name || '—';
+    if (nameInput) {
+      nameInput.value = student.name || '';
+    }
+    if (errorBox) {
+      errorBox.classList.add('hidden');
+      errorBox.textContent = '';
+    }
+
+    modal.classList.remove('hidden');
+    if (nameInput) {
+      setTimeout(() => {
+        nameInput.focus();
+        nameInput.select();
+      }, 50);
     }
   }
 

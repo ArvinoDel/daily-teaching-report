@@ -12,7 +12,7 @@
 const mongoose = require('mongoose');
 const Student = require('../models/Student');
 const Group = require('../models/Group');
-const { normalizeName } = require('../models/Student');
+const { normalizeName, extractFullName, extractGradeSchool } = require('../models/Student');
 const studentService = require('./studentService');
 
 /* ═══════════════════════════════════════════════════════════════
@@ -147,6 +147,70 @@ function applyRosterMove(fromPairs, toPairs, { studentId, normKey, maxStudents =
     moved: item,
     fromRoster: pairsToRoster(newFromPairs),
     toRoster: pairsToRoster(newToPairs),
+  };
+}
+
+/**
+ * Pure helper: rename a student in currentPairs.
+ * Validates newName, checks for duplicates within currentPairs,
+ * updates name and norm while preserving id.
+ *
+ * @param {Array<{ name: string, norm: string, id: string|ObjectId|null }>} currentPairs
+ * @param {Object} options
+ * @param {string|ObjectId} [options.studentId]
+ * @param {string} [options.normKey]
+ * @param {string} options.newName
+ * @returns {{ pairs: Array, renamed: Object, oldName: string, students: string[], student_ids: Array }}
+ */
+function applyRosterRename(currentPairs, { studentId, normKey, newName }) {
+  if (!newName || typeof newName !== 'string' || !newName.trim()) {
+    throw new Error('Student name is required.');
+  }
+  const trimmed = newName.trim();
+  if (trimmed.length > 100) {
+    throw new Error('Student name max 100 characters.');
+  }
+  const newNorm = normalizeName(trimmed);
+  if (!newNorm) {
+    throw new Error('Invalid student name.');
+  }
+
+  const safePairs = [...(currentPairs || [])];
+  const targetIdStr = studentId ? String(studentId) : null;
+
+  const idx = safePairs.findIndex(p => {
+    if (targetIdStr && p.id && String(p.id) === targetIdStr) return true;
+    if (normKey && p.norm === normKey) return true;
+    return false;
+  });
+
+  if (idx === -1) {
+    throw new Error('Student not found in this group.');
+  }
+
+  // Check if newNorm collides with another student in this group
+  const duplicate = safePairs.find((p, i) => i !== idx && p.norm === newNorm);
+  if (duplicate) {
+    throw new Error(`A student with this name already exists in this group ("${duplicate.name}").`);
+  }
+
+  const target = safePairs[idx];
+  const oldName = target.name;
+  const updatedPair = {
+    ...target,
+    name: trimmed,
+    norm: newNorm,
+  };
+
+  const newPairs = safePairs.map((p, i) => (i === idx ? updatedPair : p));
+  const roster = pairsToRoster(newPairs);
+
+  return {
+    pairs: newPairs,
+    renamed: updatedPair,
+    oldName,
+    students: roster.students,
+    student_ids: roster.student_ids,
   };
 }
 
@@ -469,6 +533,172 @@ async function moveStudent(fromGroup, toGroup, studentId) {
 }
 
 /**
+ * Rename a student in a group.
+ * Resolves current group names to pairs, identifies the target by studentId,
+ * checks for unlinked names (needs repair) and global normalized_name collisions,
+ * calls pure helper applyRosterRename, and updates group, Student doc, other groups, and past reports.
+ *
+ * @param {Object} group - Loaded Mongoose Group doc
+ * @param {string|ObjectId} studentId - Student ObjectId
+ * @param {string} newName - New raw name string
+ * @returns {Promise<{ ok: true, name: string, oldName: string, studentId: string, student: Object }>}
+ */
+async function renameStudentInGroup(group, studentId, newName) {
+  const currentPairs = await resolveGroupPairs(group);
+
+  const unlinked = currentPairs.find(p => !p.id);
+  if (unlinked) {
+    const err = new Error("Repair this group's roster first.");
+    err.needsRepair = true;
+    err.groupId = group._id ? String(group._id) : '';
+    err.groupName = group.group_name || '';
+    throw err;
+  }
+
+  const sDoc = await Student.findById(studentId);
+  if (!sDoc) {
+    throw new Error('Student not found.');
+  }
+
+  const trimmed = (newName || '').trim();
+  if (!trimmed) {
+    throw new Error('Student name is required.');
+  }
+  if (trimmed.length > 100) {
+    throw new Error('Student name max 100 characters.');
+  }
+  const newNorm = normalizeName(trimmed);
+  if (!newNorm) {
+    throw new Error('Invalid student name.');
+  }
+
+  // Check if another Student document in the database has this normalized name
+  const existingOther = await Student.findOne({
+    normalized_name: newNorm,
+    _id: { $ne: sDoc._id },
+  });
+  if (existingOther) {
+    const err = new Error(
+      `A student named "${existingOther.full_name || existingOther.raw_name}" (${existingOther.student_code || 'existing'}) already exists in the system.`
+    );
+    err.conflict = true;
+    throw err;
+  }
+
+  // Pure helper handles group-level duplicate and array mutation
+  const renameResult = applyRosterRename(currentPairs, {
+    studentId: String(studentId),
+    normKey: sDoc.normalized_name,
+    newName: trimmed,
+  });
+
+  const oldRawName = sDoc.raw_name;
+  const oldFullName = sDoc.full_name;
+
+  // Persist group roster
+  group.students = renameResult.students;
+  group.student_ids = renameResult.student_ids;
+  await group.save();
+
+  // Update Student document
+  sDoc.raw_name = trimmed;
+  sDoc.full_name = extractFullName(trimmed);
+  sDoc.normalized_name = newNorm;
+  sDoc.grade_school = extractGradeSchool(trimmed);
+  await sDoc.save();
+
+  // Keep other groups containing this student in sync
+  try {
+    const otherGroups = await Group.find({
+      _id: { $ne: group._id },
+      $or: [
+        { student_ids: sDoc._id },
+        { students: { $in: [oldRawName, oldFullName].filter(Boolean) } },
+      ],
+    });
+
+    for (const og of otherGroups) {
+      let changed = false;
+      if (Array.isArray(og.student_ids) && Array.isArray(og.students)) {
+        for (let i = 0; i < og.student_ids.length; i++) {
+          if (String(og.student_ids[i]) === String(sDoc._id)) {
+            if (og.students[i] !== trimmed) {
+              og.students[i] = trimmed;
+              changed = true;
+            }
+          }
+        }
+      }
+      if (Array.isArray(og.students)) {
+        for (let i = 0; i < og.students.length; i++) {
+          if (og.students[i] === oldRawName || (oldFullName && og.students[i] === oldFullName)) {
+            if (og.students[i] !== trimmed) {
+              og.students[i] = trimmed;
+              changed = true;
+            }
+          }
+        }
+      }
+      if (changed) {
+        await og.save();
+      }
+    }
+  } catch (syncErr) {
+    console.error('Error syncing renamed student across other groups:', syncErr);
+  }
+
+  // Update past reports so student AC achievements and logs remain consistent
+  try {
+    const Report = require('../models/Report');
+    if (oldRawName && oldRawName !== trimmed) {
+      await Report.updateMany(
+        { ac_students: oldRawName },
+        { $set: { 'ac_students.$[elem]': trimmed } },
+        { arrayFilters: [{ elem: oldRawName }] }
+      );
+      await Report.updateMany(
+        { ac_reduced_students: oldRawName },
+        { $set: { 'ac_reduced_students.$[elem]': trimmed } },
+        { arrayFilters: [{ elem: oldRawName }] }
+      );
+      await Report.updateMany(
+        { absent_students: oldRawName },
+        { $set: { 'absent_students.$[elem]': trimmed } },
+        { arrayFilters: [{ elem: oldRawName }] }
+      );
+    }
+    const newFullName = sDoc.full_name;
+    if (oldFullName && oldFullName !== newFullName && oldFullName !== oldRawName) {
+      await Report.updateMany(
+        { ac_students: oldFullName },
+        { $set: { 'ac_students.$[elem]': newFullName } },
+        { arrayFilters: [{ elem: oldFullName }] }
+      );
+      await Report.updateMany(
+        { ac_reduced_students: oldFullName },
+        { $set: { 'ac_reduced_students.$[elem]': newFullName } },
+        { arrayFilters: [{ elem: oldFullName }] }
+      );
+      await Report.updateMany(
+        { absent_students: oldFullName },
+        { $set: { 'absent_students.$[elem]': newFullName } },
+        { arrayFilters: [{ elem: oldFullName }] }
+      );
+    }
+  } catch (reportErr) {
+    console.error('Error updating student name in reports:', reportErr);
+  }
+
+  return {
+    ok: true,
+    name: trimmed,
+    oldName: renameResult.oldName || oldRawName,
+    studentId: String(sDoc._id),
+    student: sDoc,
+  };
+}
+
+/**
  * Sync entire roster from a list of names.
  * Used by groupCreate, groupUpdate, and the repair endpoint.
  * Returns { group, skipped: [{ name, reason }] }.
@@ -545,6 +775,7 @@ module.exports = {
   applyRosterAdd,
   applyRosterRemove,
   applyRosterMove,
+  applyRosterRename,
 
   // Name-first resolution helper
   resolveGroupPairs,
@@ -553,5 +784,6 @@ module.exports = {
   addStudentsToGroup,
   removeStudentFromGroup,
   moveStudent,
+  renameStudentInGroup,
   syncRosterFromNames,
 };

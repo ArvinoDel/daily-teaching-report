@@ -5,6 +5,7 @@ const {
   applyRosterAdd,
   applyRosterRemove,
   applyRosterMove,
+  applyRosterRename,
 } = require('../services/groupRosterService');
 const { normalizeName } = require('../models/Student');
 
@@ -201,6 +202,81 @@ test('Group Roster Service - Pure Helper Tests', async (t) => {
     assert.equal(result.students.length, 2);
     assert.equal(result.students.length, result.student_ids.length);
   });
+
+  await t.test('9b. applyRosterRename: successfully renames student and updates name and norm', () => {
+    const current = [
+      { name: 'Alice Smith', norm: 'alice smith', id: 'id-1' },
+      { name: 'Bob Jones', norm: 'bob jones', id: 'id-2' },
+    ];
+
+    const result = applyRosterRename(current, { studentId: 'id-1', newName: 'Alice Johnson 11 CS' });
+    assert.equal(result.pairs.length, 2);
+    assert.equal(result.renamed.name, 'Alice Johnson 11 CS');
+    assert.equal(result.renamed.norm, 'alice johnson');
+    assert.equal(result.renamed.id, 'id-1');
+    assert.equal(result.oldName, 'Alice Smith');
+    assert.deepEqual(result.students, ['Alice Johnson 11 CS', 'Bob Jones']);
+    assert.deepEqual(result.student_ids, ['id-1', 'id-2']);
+  });
+
+  await t.test('9c. applyRosterRename: rejects empty or whitespace name', () => {
+    const current = [
+      { name: 'Alice Smith', norm: 'alice smith', id: 'id-1' },
+    ];
+
+    assert.throws(
+      () => applyRosterRename(current, { studentId: 'id-1', newName: '   ' }),
+      /Student name is required/
+    );
+  });
+
+  await t.test('9d. applyRosterRename: rejects name longer than 100 characters', () => {
+    const current = [
+      { name: 'Alice Smith', norm: 'alice smith', id: 'id-1' },
+    ];
+
+    assert.throws(
+      () => applyRosterRename(current, { studentId: 'id-1', newName: 'A'.repeat(101) }),
+      /Student name max 100 characters/
+    );
+  });
+
+  await t.test('9e. applyRosterRename: rejects if studentId not found', () => {
+    const current = [
+      { name: 'Alice Smith', norm: 'alice smith', id: 'id-1' },
+    ];
+
+    assert.throws(
+      () => applyRosterRename(current, { studentId: 'id-unknown', newName: 'Alice New' }),
+      /Student not found in this group/
+    );
+  });
+
+  await t.test('9f. applyRosterRename: rejects if new name collides with another student in group', () => {
+    const current = [
+      { name: 'Alice Smith', norm: 'alice smith', id: 'id-1' },
+      { name: 'Bob Jones', norm: 'bob jones', id: 'id-2' },
+    ];
+
+    assert.throws(
+      () => applyRosterRename(current, { studentId: 'id-1', newName: 'Bob Jones 10 N1' }),
+      /A student with this name already exists in this group/
+    );
+  });
+
+  await t.test('9g. applyRosterRename: allows rename if new name has same norm as target student', () => {
+    const current = [
+      { name: 'Alice Smith', norm: 'alice smith', id: 'id-1' },
+      { name: 'Bob Jones', norm: 'bob jones', id: 'id-2' },
+    ];
+
+    // Same student, just adding a class annotation or fixing casing
+    const result = applyRosterRename(current, { studentId: 'id-1', newName: 'Alice Smith 12 SPB' });
+    assert.equal(result.renamed.name, 'Alice Smith 12 SPB');
+    assert.equal(result.renamed.norm, 'alice smith');
+    assert.equal(result.renamed.id, 'id-1');
+    assert.deepEqual(result.students, ['Alice Smith 12 SPB', 'Bob Jones']);
+  });
 });
 
 test('Group Roster Service - DB Wrapper & Atomicity Tests', async (t) => {
@@ -210,10 +286,12 @@ test('Group Roster Service - DB Wrapper & Atomicity Tests', async (t) => {
   const {
     removeStudentFromGroup,
     moveStudent,
+    renameStudentInGroup,
   } = require('../services/groupRosterService');
   const {
     getGroupEditData,
     formatGroupCreatedAt,
+    groupRenameStudent,
   } = require('../controllers/adminGroupController');
 
   function makeObjectId() {
@@ -973,5 +1051,139 @@ test('Group Roster Service - DB Wrapper & Atomicity Tests', async (t) => {
       Student.find = origStudentFind;
       Group.find = origGroupFind;
     }
+  });
+
+  await t.test('22. renameStudentInGroup: successfully updates group roster, Student document, other groups, and reports', async () => {
+    const studentId = makeObjectId();
+    const otherGroupId = makeObjectId();
+    let studentDoc = {
+      _id: studentId,
+      raw_name: 'Alice Smith',
+      full_name: 'Alice Smith',
+      normalized_name: 'alice smith',
+      grade_school: '',
+      student_code: 'STD-2026-0001',
+      barcode: 'AC12345678',
+      save: async function () { return this; },
+    };
+
+    let groupSaved = false;
+    const group = {
+      _id: makeObjectId(),
+      group_name: 'Class A',
+      students: ['Alice Smith', 'Bob Jones'],
+      student_ids: [studentId, makeObjectId()],
+      save: async function () { groupSaved = true; return this; },
+    };
+
+    let otherGroupSaved = false;
+    const otherGroup = {
+      _id: otherGroupId,
+      group_name: 'Class B',
+      students: ['Alice Smith'],
+      student_ids: [studentId],
+      save: async function () { otherGroupSaved = true; return this; },
+    };
+
+    const origFindById = Student.findById;
+    const origFindOne = Student.findOne;
+    const origStudentFind = Student.find;
+    const origGroupFind = Group.find;
+
+    Student.findById = async (id) => (String(id) === String(studentId) ? studentDoc : null);
+    Student.findOne = async () => null; // No duplicate in DB
+    Student.find = (query) => ({
+      lean: async () => [
+        { _id: studentId, normalized_name: 'alice smith', full_name: 'Alice Smith' },
+        { _id: group.student_ids[1], normalized_name: 'bob jones', full_name: 'Bob Jones' },
+      ],
+    });
+    Group.find = async () => [otherGroup];
+
+    try {
+      const res = await renameStudentInGroup(group, studentId, 'Alice Smith-Williams 10 A');
+      assert.equal(res.ok, true);
+      assert.equal(res.name, 'Alice Smith-Williams 10 A');
+      assert.equal(res.oldName, 'Alice Smith');
+      assert.equal(groupSaved, true);
+      assert.deepEqual(group.students, ['Alice Smith-Williams 10 A', 'Bob Jones']);
+      assert.equal(studentDoc.raw_name, 'Alice Smith-Williams 10 A');
+      assert.equal(studentDoc.full_name, 'Alice Smith-Williams');
+      assert.equal(studentDoc.normalized_name, 'alice smith-williams');
+      assert.equal(studentDoc.grade_school, '10 A');
+      assert.equal(otherGroupSaved, true);
+      assert.deepEqual(otherGroup.students, ['Alice Smith-Williams 10 A']);
+    } finally {
+      Student.findById = origFindById;
+      Student.findOne = origFindOne;
+      Student.find = origStudentFind;
+      Group.find = origGroupFind;
+    }
+  });
+
+  await t.test('23. renameStudentInGroup: throws conflict when new name collides with another student in DB', async () => {
+    const studentId = makeObjectId();
+    const otherStudentId = makeObjectId();
+    const studentDoc = {
+      _id: studentId,
+      raw_name: 'Alice Smith',
+      full_name: 'Alice Smith',
+      normalized_name: 'alice smith',
+      save: async function () { return this; },
+    };
+
+    const group = {
+      _id: makeObjectId(),
+      group_name: 'Class A',
+      students: ['Alice Smith'],
+      student_ids: [studentId],
+      save: async function () { return this; },
+    };
+
+    const origFindById = Student.findById;
+    const origFindOne = Student.findOne;
+    const origStudentFind = Student.find;
+
+    Student.findById = async () => studentDoc;
+    Student.find = () => ({
+      lean: async () => [{ _id: studentId, normalized_name: 'alice smith', full_name: 'Alice Smith' }],
+    });
+    Student.findOne = async () => ({
+      _id: otherStudentId,
+      full_name: 'Bob Jones',
+      student_code: 'STD-2026-0002',
+    });
+
+    try {
+      await assert.rejects(
+        async () => renameStudentInGroup(group, studentId, 'Bob Jones'),
+        /already exists in the system/
+      );
+    } finally {
+      Student.findById = origFindById;
+      Student.findOne = origFindOne;
+      Student.find = origStudentFind;
+    }
+  });
+
+  await t.test('24. groupRenameStudent controller: validates input and returns 400 on empty name', async () => {
+    const groupId = makeObjectId();
+    const studentId = makeObjectId();
+
+    const req = {
+      params: { id: String(groupId), studentId: String(studentId) },
+      body: { newName: '   ' },
+    };
+    let responseStatus = null;
+    let responseJson = null;
+    const res = {
+      status: (code) => { responseStatus = code; return res; },
+      json: (data) => { responseJson = data; return res; },
+    };
+
+    await groupRenameStudent(req, res);
+    assert.equal(responseStatus, 400);
+    assert.equal(responseJson.ok, false);
+    assert.match(responseJson.message, /Student name is required/);
   });
 });

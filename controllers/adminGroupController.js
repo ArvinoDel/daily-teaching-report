@@ -676,6 +676,75 @@ exports.groupMoveStudent = async (req, res) => {
 };
 
 /* ═══════════════════════════════════════════════════════════════
+   Rename Student   POST /admin/groups/:id/students/:studentId/rename
+═══════════════════════════════════════════════════════════════ */
+exports.groupRenameStudent = async (req, res) => {
+  try {
+    const { id, studentId } = req.params;
+    const { newName } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(studentId)) {
+      return res.status(400).json({ ok: false, message: 'Invalid group or student ID.' });
+    }
+
+    if (!newName || typeof newName !== 'string' || !newName.trim()) {
+      return res.status(400).json({ ok: false, message: 'Student name is required.' });
+    }
+
+    if (newName.trim().length > 100) {
+      return res.status(400).json({ ok: false, message: 'Student name max 100 characters.' });
+    }
+
+    const group = await Group.findById(id);
+    if (!group) {
+      return res.status(404).json({ ok: false, message: 'Group not found.' });
+    }
+
+    const result = await groupRosterService.renameStudentInGroup(group, studentId, newName);
+
+    await logAudit(req, 'group_student_rename', group._id, group.group_name, {
+      groupId: group._id,
+      studentId,
+      oldName: result.oldName,
+      newName: result.name,
+    });
+
+    return res.json({
+      ok: true,
+      studentId: String(studentId),
+      name: result.name,
+      oldName: result.oldName,
+      student_code: result.student.student_code || '',
+      barcode: result.student.barcode || '',
+    });
+  } catch (err) {
+    console.error('groupRenameStudent error:', err);
+    if (err.needsRepair) {
+      return res.status(409).json({
+        ok: false,
+        needsRepair: true,
+        groupId: err.groupId,
+        groupName: err.groupName,
+        message: err.message,
+      });
+    }
+    if (err.name === 'VersionError') {
+      return res.status(409).json({ ok: false, message: 'Group changed, refresh the page' });
+    }
+    if (err.conflict) {
+      return res.status(409).json({ ok: false, message: err.message });
+    }
+    const statusCode = err.message && (
+      err.message.includes('required') ||
+      err.message.includes('max 100') ||
+      err.message.includes('Invalid') ||
+      err.message.includes('already exists in this group')
+    ) ? 400 : 500;
+    return res.status(statusCode).json({ ok: false, message: err.message || 'Failed to rename student.' });
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════
    Repair Roster   POST /admin/groups/:id/repair
 ═══════════════════════════════════════════════════════════════ */
 exports.groupRepairRoster = async (req, res) => {
