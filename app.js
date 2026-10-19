@@ -92,6 +92,7 @@ app.use(helmet({
         ],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
+        mediaSrc: ["'self'", "https://res.cloudinary.com"],
         connectSrc: [
           "'self'",
           "blob:",

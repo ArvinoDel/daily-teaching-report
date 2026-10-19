@@ -1,7 +1,7 @@
-<%# Fullscreen Presentation & Slide Viewer Modal %>
+<%# Fullscreen Slideshow & Viewer Modal %>
 <style>
   #slide-viewer-modal {
-    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: inherit;
   }
   #sv-progress-bar {
     transition: width 0.3s ease;
@@ -10,64 +10,35 @@
     transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.2, 0, 0, 1);
     transform-origin: center center;
   }
-  #sv-fallback {
-    transition: opacity 0.2s ease;
-  }
-  .sv-dot {
-    width: 6px; height: 6px;
-    border-radius: 9999px;
-    background: #cbd5e1;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-  }
-  .sv-dot.active {
-    background: #4f46e5;
-    width: 20px;
-  }
-  .sv-dot:hover:not(.active) { background: #94a3b8; }
-  .sv-thumb-item { transition: all 0.15s ease; }
-
-  @keyframes sv-pulse-soft {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
-  .sv-pulse {
-    animation: sv-pulse-soft 1.8s infinite;
+  .sv-thumb-item {
+    transition: all 0.15s ease;
   }
 </style>
 
 <div id="slide-viewer-modal"
-  class="hidden fixed inset-0 z-50 flex flex-col select-none"
-  style="background:#f8fafc;"
-  role="dialog" aria-modal="true" aria-label="Material Slide Presentation">
+  class="hidden fixed inset-0 z-50 flex flex-col select-none bg-slate-950 text-white"
+  role="dialog" aria-modal="true" aria-label="Material Slideshow">
 
   <%# ── Top Bar ── %>
-  <div class="flex-shrink-0 flex items-center justify-between px-4 sm:px-6 h-13 border-b border-slate-200/80 bg-white"
-    style="box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.03);">
+  <div class="flex-shrink-0 flex items-center justify-between px-4 sm:px-6 h-14 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md">
 
     <%# Left: counter badge (clickable for grid) + title %>
     <div class="flex items-center gap-3 min-w-0">
       <button type="button" onclick="toggleSlideGrid()"
-        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 hover:text-indigo-600 transition flex-shrink-0"
+        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 hover:text-white transition flex-shrink-0 min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         title="View all slides in a grid (G)">
-        <svg class="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <svg class="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
         </svg>
-        <span id="sv-counter" class="tabular-nums font-mono text-[11px]">1 / 1</span>
+        <span id="sv-counter" class="tabular-nums font-mono text-xs">1 / 1</span>
       </button>
 
-      <span class="w-px h-4 bg-slate-200 rounded-full flex-shrink-0"></span>
+      <span class="w-px h-4 bg-slate-800 rounded-full flex-shrink-0"></span>
 
       <p id="sv-slide-title"
-        class="text-sm font-semibold text-slate-800 truncate max-w-[140px] sm:max-w-xs md:max-w-md lg:max-w-lg">
-        Loading…
+        class="text-sm font-medium text-slate-200 truncate max-w-[140px] sm:max-w-xs md:max-w-md lg:max-w-lg">
+        Slideshow
       </p>
-
-      <span id="sv-format-badge"
-        class="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 hidden sm:inline flex-shrink-0">
-        IMAGE
-      </span>
     </div>
 
     <%# Right: controls %>
@@ -75,12 +46,12 @@
 
       <%# Slideshow Play / Pause button %>
       <button type="button" id="sv-btn-play" onclick="toggleAutoPlay()"
-        class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200/90 transition shadow-2xs"
+        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-200 hover:text-white bg-slate-800 hover:bg-slate-700 transition min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         title="Start slideshow auto-play (P)">
-        <svg id="sv-icon-play" class="w-3.5 h-3.5 text-indigo-600" fill="currentColor" viewBox="0 0 24 24">
+        <svg id="sv-icon-play" class="w-3.5 h-3.5 text-brand-400" fill="currentColor" viewBox="0 0 24 24">
           <path d="M8 5v14l11-7z"/>
         </svg>
-        <svg id="sv-icon-pause" class="w-3.5 h-3.5 text-amber-600 hidden" fill="currentColor" viewBox="0 0 24 24">
+        <svg id="sv-icon-pause" class="w-3.5 h-3.5 text-amber-400 hidden" fill="currentColor" viewBox="0 0 24 24">
           <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
         </svg>
         <span id="sv-play-text" class="hidden md:inline">Play</span>
@@ -88,180 +59,138 @@
 
       <%# Open in new tab %>
       <a id="sv-open-link" href="#" target="_blank" rel="noopener noreferrer"
-        class="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition flex items-center gap-1"
-        title="Open file in new tab">
-        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        class="min-h-[44px] min-w-[44px] p-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition flex items-center justify-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+        title="Open full image in new tab">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
         </svg>
-        <span class="hidden lg:inline text-[11px]">Open</span>
+        <span class="sr-only">Open image</span>
       </a>
 
       <%# Download %>
       <a id="sv-download-link" href="#"
-        class="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition flex items-center gap-1"
-        title="Download file">
-        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        class="min-h-[44px] min-w-[44px] p-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition flex items-center justify-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+        title="Download image">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
         </svg>
-        <span class="hidden lg:inline text-[11px]">Download</span>
+        <span class="sr-only">Download image</span>
       </a>
-
-      <div class="w-px h-4 bg-slate-200 mx-1"></div>
-
-      <%# Toggle thumbnails %>
-      <button type="button" id="sv-btn-toggle-thumbs" onclick="toggleThumbnailsBar()"
-        class="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition"
-        title="Toggle thumbnail strip (T)">
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-        </svg>
-      </button>
 
       <%# Fullscreen %>
       <button type="button" id="sv-btn-native-fs" onclick="toggleNativeFullscreen()"
-        class="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition"
+        class="min-h-[44px] min-w-[44px] p-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         title="Toggle browser fullscreen (F)">
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
           <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
         </svg>
+        <span class="sr-only">Fullscreen</span>
       </button>
 
       <%# Keyboard shortcuts info %>
       <button type="button" onclick="toggleShortcutsHelp()"
-        class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+        class="min-h-[44px] min-w-[44px] p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         title="Keyboard shortcuts (?)">
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M12 18h.01" />
         </svg>
+        <span class="sr-only">Keyboard shortcuts</span>
       </button>
 
       <%# Close %>
       <button type="button" onclick="closeSlideViewer()"
-        class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition ml-1"
+        class="min-h-[44px] min-w-[44px] p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         title="Close presentation (Esc)">
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
         </svg>
+        <span class="sr-only">Close</span>
       </button>
     </div>
   </div>
 
-  <%# ── Progress bar (thin strip under top bar) ── %>
-  <div class="flex-shrink-0 h-0.5 bg-slate-100 relative overflow-hidden">
-    <div id="sv-progress-bar" class="absolute left-0 top-0 h-full bg-indigo-500" style="width:0%;"></div>
+  <%# ── Progress bar ── %>
+  <div class="flex-shrink-0 h-0.5 bg-slate-800 relative overflow-hidden">
+    <div id="sv-progress-bar" class="absolute left-0 top-0 h-full bg-brand-500" style="width:0%;"></div>
   </div>
 
   <%# ── Main Stage ── %>
   <div id="sv-stage"
-    class="relative flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden p-2 sm:p-4">
+    class="relative flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden p-2 sm:p-6">
 
     <%# Prev arrow %>
     <button type="button" id="sv-btn-prev" onclick="prevSlide()"
-      class="absolute left-3 sm:left-5 top-1/2 -translate-y-1/2 z-20 group flex items-center justify-center w-10 h-10 rounded-full bg-white/95 backdrop-blur-sm border border-slate-200/90 hover:border-indigo-300 hover:bg-indigo-50/50 shadow-sm transition-all duration-150 active:scale-90 disabled:opacity-30 disabled:pointer-events-none"
+      class="min-h-[44px] min-w-[44px] absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 z-20 group flex items-center justify-center w-11 h-11 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-slate-700 shadow-md transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
       title="Previous slide (←)">
-      <svg class="w-4 h-4 text-slate-600 group-hover:text-indigo-600 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <svg class="w-5 h-5 text-slate-300 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
       </svg>
+      <span class="sr-only">Previous slide</span>
     </button>
 
     <%# Slide display container %>
-    <div id="sv-slide-container"
-      class="relative w-full h-full flex items-center justify-center min-h-0 min-w-0">
-
-      <%# Image slide - 100% full uncropped display %>
+    <div id="sv-slide-container" class="relative w-full h-full flex items-center justify-center min-h-0 min-w-0">
       <img id="sv-image" src="" alt="Slide preview"
-        class="hidden transition-opacity duration-200"
+        class="transition-opacity duration-200"
         style="width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; margin: auto; display: block;" />
-
-      <%# Non-image fallback card %>
-      <div id="sv-fallback"
-        class="hidden flex-col items-center justify-center gap-5 p-8 sm:p-10 rounded-2xl text-center max-w-sm w-full bg-white border border-slate-200/90"
-        style="box-shadow: 0 10px 30px -4px rgba(0,0,0,0.06);">
-        <div id="sv-fallback-icon"
-          class="w-16 h-16 rounded-2xl flex items-center justify-center bg-indigo-50 text-indigo-600">
-          <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-          </svg>
-        </div>
-        <div>
-          <h4 id="sv-fallback-title" class="text-sm font-bold text-slate-800 mb-1">Document</h4>
-          <p id="sv-fallback-meta" class="text-xs text-slate-400 font-mono">PDF</p>
-        </div>
-        <div class="flex items-center gap-2.5">
-          <a id="sv-fallback-open" href="#" target="_blank" rel="noopener noreferrer"
-            class="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition shadow-xs">
-            Open File
-          </a>
-          <a id="sv-fallback-dl" href="#"
-            class="px-4 py-2 rounded-xl text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 transition">
-            Download
-          </a>
-        </div>
-      </div>
     </div>
 
-    <%# Floating Zoom Controls Pill (bottom right of stage) %>
+    <%# Floating Zoom Controls Pill %>
     <div id="sv-zoom-controls"
-      class="absolute right-4 bottom-4 z-20 inline-flex items-center rounded-xl bg-white/95 backdrop-blur-sm border border-slate-200 shadow-sm px-1 py-0.5 text-xs">
+      class="absolute right-4 bottom-4 z-20 inline-flex items-center rounded-xl bg-slate-900/90 border border-slate-800 shadow-md px-1.5 py-1 text-xs">
       <button type="button" onclick="zoomOut()"
-        class="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition"
+        class="min-h-[36px] min-w-[36px] p-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         title="Zoom out (-)">
         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12h-15" />
         </svg>
+        <span class="sr-only">Zoom out</span>
       </button>
       <button type="button" id="sv-zoom-level" onclick="resetZoom()"
-        class="px-2 py-1 text-[11px] font-mono font-semibold text-slate-700 hover:text-indigo-600 cursor-pointer"
-        title="Click to reset zoom (0)">
+        class="px-2.5 py-1 text-xs font-mono font-semibold text-slate-200 hover:text-brand-400 cursor-pointer"
+        title="Reset zoom (0)">
         100%
       </button>
       <button type="button" onclick="zoomIn()"
-        class="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition"
+        class="min-h-[36px] min-w-[36px] p-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
         title="Zoom in (+)">
         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
         </svg>
+        <span class="sr-only">Zoom in</span>
       </button>
     </div>
 
     <%# Next arrow %>
     <button type="button" id="sv-btn-next" onclick="nextSlide()"
-      class="absolute right-4 top-1/2 -translate-y-1/2 z-20 group flex items-center justify-center w-10 h-10 rounded-full bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 shadow-sm transition-all duration-150 active:scale-90 disabled:opacity-30 disabled:pointer-events-none"
+      class="min-h-[44px] min-w-[44px] absolute right-3 sm:right-6 top-1/2 -translate-y-1/2 z-20 group flex items-center justify-center w-11 h-11 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-slate-700 shadow-md transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
       title="Next slide (→)">
-      <svg class="w-4 h-4 text-slate-600 group-hover:text-indigo-600 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <svg class="w-5 h-5 text-slate-300 group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
       </svg>
+      <span class="sr-only">Next slide</span>
     </button>
   </div>
 
-  <%# ── Dot indicators + Thumbnail strip ── %>
-  <div id="sv-thumbnails-strip"
-    class="flex-shrink-0 border-t border-slate-200/80 bg-white"
-    style="box-shadow: 0 -1px 3px 0 rgba(0, 0, 0, 0.02);">
-
-    <%# Dot indicators row %>
-    <div id="sv-dots" class="flex items-center justify-center gap-1.5 pt-2 pb-0.5 px-4">
-      <%# Populated by JS %>
-    </div>
-
-    <%# Thumbnail strip %>
+  <%# ── Thumbnail strip ── %>
+  <div id="sv-thumbnails-strip" class="flex-shrink-0 border-t border-slate-800 bg-slate-900/90 py-2.5 px-4">
     <div id="sv-thumbnails"
-      class="flex items-end gap-1.5 overflow-x-auto px-4 pb-2 pt-0.5"
-      style="scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent;">
-      <%# Populated by JS %>
+      class="flex items-center justify-center gap-2 overflow-x-auto"
+      style="scrollbar-width: thin; scrollbar-color: #475569 transparent;">
+      <%# Built via DOM APIs %>
     </div>
   </div>
 
   <%# ── Slide Grid Overview Modal (Overlay) ── %>
   <div id="sv-grid-modal"
-    class="hidden absolute inset-0 z-40 bg-white/95 backdrop-blur-md flex flex-col p-6 overflow-hidden">
-    <div class="flex items-center justify-between pb-4 border-b border-slate-200">
+    class="hidden absolute inset-0 z-40 bg-slate-950/95 backdrop-blur-md flex flex-col p-6 overflow-hidden">
+    <div class="flex items-center justify-between pb-4 border-b border-slate-800">
       <div>
-        <h3 class="text-base font-bold text-slate-800">All Slides Overview</h3>
+        <h3 class="text-base font-bold text-slate-100">All Slides Overview</h3>
         <p class="text-xs text-slate-400">Click any slide to jump directly</p>
       </div>
       <button type="button" onclick="toggleSlideGrid()"
-        class="p-2 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition"
+        class="min-h-[44px] min-w-[44px] p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition flex items-center justify-center"
         title="Close grid (G or Esc)">
         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -269,64 +198,55 @@
       </button>
     </div>
     <div id="sv-grid-content"
-      class="flex-1 overflow-y-auto pt-6 pb-12 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-      <%# Populated dynamically via JS %>
+      class="flex-1 overflow-y-auto pt-6 pb-12 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      <%# Built purely via DOM APIs %>
     </div>
   </div>
 
   <%# ── Keyboard Shortcuts Helper Modal ── %>
   <div id="sv-shortcuts-modal"
-    class="hidden absolute inset-0 z-50 bg-slate-900/30 backdrop-blur-xs flex items-center justify-center p-4"
+    class="hidden absolute inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
     onclick="if(event.target === this) toggleShortcutsHelp();">
-    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 space-y-4">
-      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-        <h4 class="text-sm font-bold text-slate-800 flex items-center gap-2">
-          <svg class="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
-          </svg>
-          Keyboard Shortcuts
-        </h4>
-        <button type="button" onclick="toggleShortcutsHelp()" class="p-1 rounded-lg text-slate-400 hover:text-slate-700">
+    <div class="bg-slate-900 rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-800 space-y-4 text-white">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+        <h4 class="text-sm font-bold text-slate-100">Keyboard Shortcuts</h4>
+        <button type="button" onclick="toggleShortcutsHelp()" class="p-1 rounded-lg text-slate-400 hover:text-white">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
         </button>
       </div>
 
       <div class="space-y-2 text-xs">
         <div class="flex items-center justify-between py-1">
-          <span class="text-slate-600">Next Slide</span>
-          <span class="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-semibold">→ / Space</span>
+          <span class="text-slate-300">Next Slide</span>
+          <span class="font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-200">→ / Space</span>
         </div>
         <div class="flex items-center justify-between py-1">
-          <span class="text-slate-600">Previous Slide</span>
-          <span class="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-semibold">←</span>
+          <span class="text-slate-300">Previous Slide</span>
+          <span class="font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-200">←</span>
         </div>
         <div class="flex items-center justify-between py-1">
-          <span class="text-slate-600">Slideshow Play / Pause</span>
-          <span class="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-semibold">P</span>
+          <span class="text-slate-300">Slideshow Play / Pause</span>
+          <span class="font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-200">P</span>
         </div>
         <div class="flex items-center justify-between py-1">
-          <span class="text-slate-600">Zoom In / Out</span>
-          <span class="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-semibold">+ / -</span>
+          <span class="text-slate-300">Zoom In / Out</span>
+          <span class="font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-200">+ / -</span>
         </div>
         <div class="flex items-center justify-between py-1">
-          <span class="text-slate-600">Reset Zoom</span>
-          <span class="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-semibold">0</span>
+          <span class="text-slate-300">Reset Zoom</span>
+          <span class="font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-200">0</span>
         </div>
         <div class="flex items-center justify-between py-1">
-          <span class="text-slate-600">All Slides Grid</span>
-          <span class="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-semibold">G</span>
+          <span class="text-slate-300">All Slides Grid</span>
+          <span class="font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-200">G</span>
         </div>
         <div class="flex items-center justify-between py-1">
-          <span class="text-slate-600">Toggle Thumbnails</span>
-          <span class="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-semibold">T</span>
+          <span class="text-slate-300">Fullscreen</span>
+          <span class="font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-200">F</span>
         </div>
         <div class="flex items-center justify-between py-1">
-          <span class="text-slate-600">Fullscreen</span>
-          <span class="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-semibold">F</span>
-        </div>
-        <div class="flex items-center justify-between py-1">
-          <span class="text-slate-600">Close</span>
-          <span class="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-semibold">Esc</span>
+          <span class="text-slate-300">Close</span>
+          <span class="font-mono bg-slate-800 px-2 py-0.5 rounded text-slate-200">Esc</span>
         </div>
       </div>
     </div>
@@ -345,39 +265,40 @@
       autoPlayTimer: null,
     };
 
-    const modal           = document.getElementById('slide-viewer-modal');
-    const counterEl       = document.getElementById('sv-counter');
-    const formatBadge     = document.getElementById('sv-format-badge');
-    const titleEl         = document.getElementById('sv-slide-title');
-    const openLinkEl      = document.getElementById('sv-open-link');
-    const dlLinkEl        = document.getElementById('sv-download-link');
-    const imageEl         = document.getElementById('sv-image');
-    const fallbackEl      = document.getElementById('sv-fallback');
-    const fallbackTitleEl = document.getElementById('sv-fallback-title');
-    const fallbackMetaEl  = document.getElementById('sv-fallback-meta');
-    const fallbackOpenEl  = document.getElementById('sv-fallback-open');
-    const fallbackDlEl    = document.getElementById('sv-fallback-dl');
-    const thumbsEl        = document.getElementById('sv-thumbnails');
-    const dotsEl          = document.getElementById('sv-dots');
-    const progressBar     = document.getElementById('sv-progress-bar');
-    const stageEl         = document.getElementById('sv-stage');
-    const zoomTextEl      = document.getElementById('sv-zoom-level');
-    const zoomControlsEl  = document.getElementById('sv-zoom-controls');
-    const gridModal       = document.getElementById('sv-grid-modal');
-    const gridContentEl   = document.getElementById('sv-grid-content');
-    const shortcutsModal  = document.getElementById('sv-shortcuts-modal');
-    const iconPlay        = document.getElementById('sv-icon-play');
-    const iconPause       = document.getElementById('sv-icon-pause');
-    const playText        = document.getElementById('sv-play-text');
+    const modal          = document.getElementById('slide-viewer-modal');
+    const counterEl      = document.getElementById('sv-counter');
+    const titleEl        = document.getElementById('sv-slide-title');
+    const openLinkEl     = document.getElementById('sv-open-link');
+    const dlLinkEl       = document.getElementById('sv-download-link');
+    const imageEl        = document.getElementById('sv-image');
+    const thumbsEl       = document.getElementById('sv-thumbnails');
+    const progressBar    = document.getElementById('sv-progress-bar');
+    const stageEl        = document.getElementById('sv-stage');
+    const zoomTextEl     = document.getElementById('sv-zoom-level');
+    const gridModal      = document.getElementById('sv-grid-modal');
+    const gridContentEl  = document.getElementById('sv-grid-content');
+    const shortcutsModal = document.getElementById('sv-shortcuts-modal');
+    const iconPlay       = document.getElementById('sv-icon-play');
+    const iconPause      = document.getElementById('sv-icon-pause');
+    const playText       = document.getElementById('sv-play-text');
 
-    const IMAGE_FORMATS = ['jpg','jpeg','png','webp','gif','svg'];
+    const IMAGE_FORMATS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'];
 
     // ── Public API ──────────────────────────────────────────────────────────
 
     window.initSlideViewer = function (materialId, fileResources) {
       window._slideViewerState.materialId = materialId;
-      window._slideViewerState.slides = Array.isArray(fileResources) ? fileResources : [];
-      buildThumbnailsAndDots();
+      const rawList = Array.isArray(fileResources) ? fileResources : [];
+      // Keep only images for the slideshow
+      const imageSlides = rawList.filter(function (r) {
+        if (!r) return false;
+        if (r.kind && r.kind !== 'file') return false;
+        const fmt = ((r.file && r.file.format) || '').toLowerCase().trim();
+        return IMAGE_FORMATS.includes(fmt);
+      });
+      // Fallback: if caller passed list containing images, use them
+      window._slideViewerState.slides = imageSlides.length > 0 ? imageSlides : rawList;
+      buildThumbnails();
     };
 
     window.openSlideViewer = function (index) {
@@ -386,7 +307,7 @@
       s.currentIndex = (typeof index === 'number' && index >= 0 && index < s.slides.length) ? index : 0;
       s.isOpen = true;
       resetZoom();
-      modal.classList.remove('hidden');
+      if (modal) modal.classList.remove('hidden');
       document.body.classList.add('overflow-hidden');
       renderCurrentSlide(false);
     };
@@ -394,7 +315,7 @@
     window.closeSlideViewer = function () {
       stopAutoPlay();
       window._slideViewerState.isOpen = false;
-      modal.classList.add('hidden');
+      if (modal) modal.classList.add('hidden');
       if (gridModal) gridModal.classList.add('hidden');
       if (shortcutsModal) shortcutsModal.classList.add('hidden');
       document.body.classList.remove('overflow-hidden');
@@ -429,17 +350,12 @@
 
     window.toggleNativeFullscreen = function () {
       if (!document.fullscreenElement) {
-        if (modal.requestFullscreen) modal.requestFullscreen();
-        else if (modal.webkitRequestFullscreen) modal.webkitRequestFullscreen();
+        if (modal && modal.requestFullscreen) modal.requestFullscreen();
+        else if (modal && modal.webkitRequestFullscreen) modal.webkitRequestFullscreen();
       } else {
         if (document.exitFullscreen) document.exitFullscreen();
         else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
       }
-    };
-
-    window.toggleThumbnailsBar = function () {
-      const bar = document.getElementById('sv-thumbnails-strip');
-      if (bar) bar.classList.toggle('hidden');
     };
 
     // ── Zoom Feature ────────────────────────────────────────────────────────
@@ -526,109 +442,105 @@
       shortcutsModal.classList.toggle('hidden');
     };
 
+    // A2 FIX: Build grid cards purely with DOM APIs — NO user text into innerHTML
     function buildGridContent() {
       const s = window._slideViewerState;
       if (!gridContentEl) return;
-      gridContentEl.innerHTML = '';
+      gridContentEl.textContent = ''; // clear safely
 
       s.slides.forEach(function (slide, idx) {
-        const fmt = ((slide.file && slide.file.format) || '').toLowerCase();
-        const isImg = IMAGE_FORMATS.includes(fmt);
-        const openUrl = `/materials/${s.materialId}/resources/${slide._id}/open`;
+        const openUrl = '/materials/' + encodeURIComponent(s.materialId) + '/resources/' + encodeURIComponent(slide._id) + '/open';
+        const labelText = slide.label || (slide.file && slide.file.originalFilename) || 'Slide ' + (idx + 1);
 
         const card = document.createElement('button');
         card.type = 'button';
-        card.className = 'group flex flex-col rounded-xl overflow-hidden border transition text-left cursor-pointer p-2.5 bg-slate-50/70 hover:bg-white hover:border-indigo-400 hover:shadow-md';
+        card.className = 'group flex flex-col rounded-xl overflow-hidden border transition text-left cursor-pointer p-2.5 bg-slate-900/60 hover:bg-slate-800 hover:border-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500';
         if (idx === s.currentIndex) {
-          card.classList.add('ring-2', 'ring-indigo-500', 'border-indigo-500', 'bg-indigo-50/40');
+          card.classList.add('ring-2', 'ring-brand-500', 'border-brand-500', 'bg-slate-800');
         } else {
-          card.classList.add('border-slate-200');
+          card.classList.add('border-slate-800');
         }
 
-        let mediaHtml = '';
-        if (isImg) {
-          mediaHtml = `<div class="w-full h-32 flex items-center justify-center bg-white rounded-lg overflow-hidden border border-slate-100 mb-2">
-            <img src="${openUrl}" alt="" class="max-w-full max-h-full object-contain" loading="lazy">
-          </div>`;
-        } else {
-          mediaHtml = `<div class="w-full h-32 flex flex-col items-center justify-center bg-white rounded-lg border border-slate-100 mb-2 gap-1">
-            <span class="text-xs font-mono font-bold uppercase text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">${fmt || 'FILE'}</span>
-          </div>`;
-        }
+        const mediaBox = document.createElement('div');
+        mediaBox.className = 'w-full h-32 flex items-center justify-center bg-black/40 rounded-lg overflow-hidden border border-slate-800/80 mb-2';
 
-        card.innerHTML = `
-          ${mediaHtml}
-          <div class="flex items-center justify-between text-xs w-full">
-            <span class="font-mono font-bold text-slate-500">#${idx + 1}</span>
-            <span class="truncate max-w-[120px] font-medium text-slate-700">${slide.label || 'File'}</span>
-          </div>
-        `;
+        const img = document.createElement('img');
+        img.src = openUrl;
+        img.alt = labelText;
+        img.className = 'max-w-full max-h-full object-contain';
+        img.loading = 'lazy';
+        mediaBox.appendChild(img);
+
+        const footer = document.createElement('div');
+        footer.className = 'flex items-center justify-between text-xs w-full gap-2';
+
+        const numSpan = document.createElement('span');
+        numSpan.className = 'font-mono font-bold text-slate-400';
+        numSpan.textContent = '#' + (idx + 1);
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'truncate font-medium text-slate-200 flex-1 text-right';
+        titleSpan.textContent = labelText;
+
+        footer.appendChild(numSpan);
+        footer.appendChild(titleSpan);
+
+        card.appendChild(mediaBox);
+        card.appendChild(footer);
 
         card.onclick = function () { goToSlide(idx); };
         gridContentEl.appendChild(card);
       });
     }
 
-    // ── Build Thumbnails & Dots ─────────────────────────────────────────────
-
-    function buildThumbnailsAndDots() {
+    // A2 FIX: Build thumbnails purely with DOM APIs — NO user text into innerHTML
+    function buildThumbnails() {
       const s = window._slideViewerState;
-      if (thumbsEl) thumbsEl.innerHTML = '';
-      if (dotsEl) dotsEl.innerHTML = '';
+      if (!thumbsEl) return;
+      thumbsEl.textContent = ''; // safe clear
 
       const total = s.slides.length;
-      if (total === 0) return;
-
-      // Dots
-      const showDots = total <= 14;
-      if (dotsEl) {
-        if (showDots) {
-          s.slides.forEach(function (_, idx) {
-            const dot = document.createElement('button');
-            dot.type = 'button';
-            dot.className = 'sv-dot' + (idx === 0 ? ' active' : '');
-            dot.setAttribute('data-index', idx);
-            dot.title = `Slide ${idx + 1}`;
-            dot.onclick = function () { goToSlide(idx); };
-            dotsEl.appendChild(dot);
-          });
-        } else {
-          dotsEl.innerHTML = `<span class="text-[11px] text-slate-400 font-medium">${total} slides</span>`;
-        }
+      if (total <= 1) {
+        const strip = document.getElementById('sv-thumbnails-strip');
+        if (strip) strip.classList.add('hidden');
+        return;
       }
 
-      // Thumbnails (shown when > 1)
-      if (thumbsEl && total > 1) {
-        s.slides.forEach(function (slide, idx) {
-          const fmt = ((slide.file && slide.file.format) || '').toLowerCase();
-          const isImg = IMAGE_FORMATS.includes(fmt);
-          const openUrl = `/materials/${s.materialId}/resources/${slide._id}/open`;
+      const strip = document.getElementById('sv-thumbnails-strip');
+      if (strip) strip.classList.remove('hidden');
 
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'sv-thumb-item relative flex-shrink-0 rounded-lg overflow-hidden cursor-pointer flex items-center justify-center';
-          btn.style.cssText = 'width:56px;height:38px;border:1.5px solid #e2e8f0;background:#ffffff;';
-          btn.title = `${idx + 1}. ${slide.label || 'File'}`;
+      s.slides.forEach(function (slide, idx) {
+        const openUrl = '/materials/' + encodeURIComponent(s.materialId) + '/resources/' + encodeURIComponent(slide._id) + '/open';
+        const labelText = slide.label || (slide.file && slide.file.originalFilename) || 'Slide ' + (idx + 1);
 
-          if (isImg) {
-            btn.innerHTML =
-              `<img src="${openUrl}" alt="" style="width:100%;height:100%;object-fit:contain;padding:2px;" loading="lazy">` +
-              `<span style="position:absolute;bottom:2px;right:3px;font-size:8px;font-family:monospace;color:#64748b;font-weight:700;">${idx + 1}</span>`;
-          } else {
-            btn.innerHTML =
-              `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;width:100%;height:100%;">` +
-              `<span style="font-size:8px;font-family:monospace;font-weight:800;text-transform:uppercase;color:#4f46e5;">${fmt || 'FILE'}</span>` +
-              `<span style="font-size:7px;font-family:monospace;color:#94a3b8;">${idx + 1}</span>` +
-              `</div>`;
-          }
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'sv-thumb-item relative flex-shrink-0 rounded-lg overflow-hidden cursor-pointer flex items-center justify-center border-2 border-slate-800 hover:border-slate-600 bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500';
+        btn.style.width = '64px';
+        btn.style.height = '42px';
+        btn.title = (idx + 1) + '. ' + labelText;
 
-          btn.onclick = function () { goToSlide(idx); };
-          thumbsEl.appendChild(btn);
-        });
-      }
+        const img = document.createElement('img');
+        img.src = openUrl;
+        img.alt = labelText;
+        img.style.width = '100%';
+        img.style.height = '100%';
+        img.style.objectFit = 'contain';
+        img.style.padding = '2px';
+        img.loading = 'lazy';
+        btn.appendChild(img);
+
+        const idxBadge = document.createElement('span');
+        idxBadge.className = 'absolute bottom-0.5 right-1 text-[9px] font-mono font-bold text-white bg-black/60 px-1 rounded';
+        idxBadge.textContent = String(idx + 1);
+        btn.appendChild(idxBadge);
+
+        btn.onclick = function () { goToSlide(idx); };
+        thumbsEl.appendChild(btn);
+      });
     }
 
-    // ── Render Slide ────────────────────────────────────────────────────────
+    // ── Render Current Slide ─────────────────────────────────────────────────
 
     function renderCurrentSlide(withFade) {
       const s = window._slideViewerState;
@@ -636,104 +548,60 @@
       if (total === 0) return;
 
       const slide = s.slides[s.currentIndex];
-      const fmt = ((slide.file && slide.file.format) || '').toLowerCase();
-      const isImg = IMAGE_FORMATS.includes(fmt);
-      const openUrl = `/materials/${s.materialId}/resources/${slide._id}/open`;
-      const dlUrl   = openUrl + '?download=1';
+      const openUrl = '/materials/' + encodeURIComponent(s.materialId) + '/resources/' + encodeURIComponent(slide._id) + '/open';
+      const dlUrl = openUrl + '?download=1';
+      const labelText = slide.label || (slide.file && slide.file.originalFilename) || 'Slide ' + (s.currentIndex + 1);
 
-      // Header controls
-      if (counterEl) counterEl.textContent = `${s.currentIndex + 1} / ${total}`;
-      if (formatBadge) formatBadge.textContent = (fmt || 'FILE').toUpperCase();
-      if (titleEl) titleEl.textContent = slide.label || (slide.file && slide.file.originalFilename) || 'Attachment';
+      if (counterEl) counterEl.textContent = (s.currentIndex + 1) + ' / ' + total;
+      if (titleEl) titleEl.textContent = labelText;
       if (openLinkEl) openLinkEl.href = openUrl;
       if (dlLinkEl) dlLinkEl.href = dlUrl;
 
-      // Zoom pill visibility (only applicable for images)
-      if (zoomControlsEl) {
-        if (isImg) zoomControlsEl.classList.remove('hidden');
-        else zoomControlsEl.classList.add('hidden');
+      if (progressBar) {
+        progressBar.style.width = total > 1 ? `${((s.currentIndex + 1) / total) * 100}%` : '100%';
       }
 
-      // Progress bar
-      if (progressBar && total > 1) {
-        progressBar.style.width = `${((s.currentIndex + 1) / total) * 100}%`;
-      } else if (progressBar) {
-        progressBar.style.width = '100%';
-      }
-
-      // Fade transition
-      const doFade = withFade && !!(imageEl || fallbackEl);
+      const doFade = withFade && !!imageEl;
       if (doFade) {
-        if (imageEl) imageEl.style.opacity = '0';
-        if (fallbackEl && !fallbackEl.classList.contains('hidden')) fallbackEl.style.opacity = '0';
+        imageEl.style.opacity = '0';
       }
 
       const setContent = function () {
-        if (isImg) {
-          if (imageEl) {
-            imageEl.src = openUrl;
-            imageEl.alt = slide.label || 'Slide';
-            imageEl.classList.remove('hidden');
+        if (imageEl) {
+          imageEl.src = openUrl;
+          imageEl.alt = labelText;
+          if (doFade) {
+            requestAnimationFrame(function () {
+              imageEl.style.opacity = '1';
+            });
+          } else {
+            imageEl.style.opacity = '1';
           }
-          if (fallbackEl) { fallbackEl.classList.add('hidden'); fallbackEl.style.display = ''; }
-        } else {
-          if (imageEl) imageEl.classList.add('hidden');
-          if (fallbackEl) {
-            fallbackEl.classList.remove('hidden');
-            fallbackEl.style.display = 'flex';
-            if (fallbackTitleEl) fallbackTitleEl.textContent = slide.label || 'Document';
-            if (fallbackMetaEl) fallbackMetaEl.textContent = `${(fmt || 'FILE').toUpperCase()} file`;
-            if (fallbackOpenEl) fallbackOpenEl.href = openUrl;
-            if (fallbackDlEl) fallbackDlEl.href = dlUrl;
-          }
-        }
-
-        if (doFade) {
-          requestAnimationFrame(function () {
-            if (imageEl && isImg) imageEl.style.opacity = '1';
-            if (fallbackEl && !isImg) fallbackEl.style.opacity = '1';
-          });
         }
       };
 
       if (doFade) {
-        setTimeout(setContent, 160);
+        setTimeout(setContent, 150);
       } else {
         setContent();
-        if (imageEl) imageEl.style.opacity = '1';
-        if (fallbackEl) fallbackEl.style.opacity = '1';
       }
 
-      // Dots
-      if (dotsEl) {
-        dotsEl.querySelectorAll('.sv-dot').forEach(function (dot, idx) {
-          dot.classList.toggle('active', idx === s.currentIndex);
-        });
-      }
-
-      // Thumbnails
+      // Highlight active thumbnail
       if (thumbsEl) {
         thumbsEl.querySelectorAll('.sv-thumb-item').forEach(function (btn, idx) {
           if (idx === s.currentIndex) {
-            btn.style.borderColor = '#4f46e5';
-            btn.style.boxShadow = '0 0 0 2px rgba(79,70,229,0.2)';
-            btn.style.transform = 'scale(1.08)';
+            btn.classList.add('border-brand-500', 'ring-2', 'ring-brand-500/50');
+            btn.classList.remove('border-slate-800');
             btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
           } else {
-            btn.style.borderColor = '#e2e8f0';
-            btn.style.boxShadow = '';
-            btn.style.transform = '';
+            btn.classList.remove('border-brand-500', 'ring-2', 'ring-brand-500/50');
+            btn.classList.add('border-slate-800');
           }
         });
       }
-
-      // Sync inline carousel
-      if (typeof window.updateInlineSlideCarousel === 'function') {
-        window.updateInlineSlideCarousel(s.currentIndex);
-      }
     }
 
-    // ── Touch/Swipe Support ──────────────────────────────────────────────────
+    // ── Touch / Swipe Support ────────────────────────────────────────────────
 
     let _touchStartX = null;
     if (stageEl) {
@@ -755,7 +623,6 @@
     window.addEventListener('keydown', function (e) {
       if (!window._slideViewerState.isOpen) return;
 
-      // Close modal overlays first if open
       if (e.key === 'Escape') {
         if (shortcutsModal && !shortcutsModal.classList.contains('hidden')) {
           e.preventDefault();
@@ -780,8 +647,6 @@
         prevSlide();
       } else if (e.key === 'f' || e.key === 'F') {
         toggleNativeFullscreen();
-      } else if (e.key === 't' || e.key === 'T') {
-        toggleThumbnailsBar();
       } else if (e.key === 'g' || e.key === 'G') {
         toggleSlideGrid();
       } else if (e.key === 'p' || e.key === 'P') {

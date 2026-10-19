@@ -4,9 +4,11 @@
  * Client-side logic for the Material Editor.
  * - Quill 2.x rich-text editor setup
  * - Direct signed file upload to Cloudinary (no server buffering)
- * - Resource management (ordering, deletion, labeling)
+ * - Resource management (ordering, deletion, inline labeling)
  * - Base version conflict check (409 handling)
  * - Unsaved changes guard (beforeunload)
+ * - Notes preview toggle
+ * - Mobile tabs switching
  */
 
 (function () {
@@ -49,6 +51,16 @@
   const resourceCountEl = document.getElementById('resource-count');
   const resourcesContainer = document.getElementById('resources-container');
   const resourcesEmpty = document.getElementById('resources-empty');
+
+  // Preview & Tab Elements
+  const btnTogglePreview = document.getElementById('btn-toggle-preview');
+  const quillEditorWrap = document.getElementById('quill-editor-wrap');
+  const quillPreviewWrap = document.getElementById('quill-preview-wrap');
+  const quillPreview = document.getElementById('quill-preview');
+  const tabBtnNotes = document.getElementById('tab-btn-notes');
+  const tabBtnFiles = document.getElementById('tab-btn-files');
+  const colNotes = document.getElementById('col-notes');
+  const colFiles = document.getElementById('col-files');
 
   // File Upload Elements
   const btnShowAddFile = document.getElementById('btn-show-add-file');
@@ -118,9 +130,50 @@
   function markClean() {
     isDirty = false;
     if (saveStatus) {
-      saveStatus.textContent = 'All changes saved';
-      saveStatus.className = 'text-xs font-medium text-slate-400';
+      saveStatus.textContent = 'Saved, version ' + currentVersion;
+      saveStatus.className = 'text-xs font-medium text-slate-500';
     }
+  }
+
+  // Preview notes toggle
+  if (btnTogglePreview && quillEditorWrap && quillPreviewWrap) {
+    let isPreviewing = false;
+    btnTogglePreview.addEventListener('click', function () {
+      isPreviewing = !isPreviewing;
+      if (isPreviewing) {
+        const html = getEditorHtml();
+        if (quillPreview) {
+          if (!html || html.trim() === '<p><br></p>' || html.trim() === '') {
+            quillPreview.innerHTML = '<p class="text-slate-400 italic">No notes written yet.</p>';
+          } else {
+            quillPreview.innerHTML = html;
+          }
+        }
+        quillEditorWrap.classList.add('hidden');
+        quillPreviewWrap.classList.remove('hidden');
+        btnTogglePreview.textContent = 'Edit notes';
+      } else {
+        quillEditorWrap.classList.remove('hidden');
+        quillPreviewWrap.classList.add('hidden');
+        btnTogglePreview.textContent = 'Preview';
+      }
+    });
+  }
+
+  // Mobile tabs toggle
+  if (tabBtnNotes && tabBtnFiles && colNotes && colFiles) {
+    tabBtnNotes.addEventListener('click', function () {
+      colNotes.classList.remove('hidden');
+      colFiles.classList.add('hidden');
+      tabBtnNotes.className = 'flex-1 py-3 text-center text-sm font-semibold border-b-2 border-brand text-brand';
+      tabBtnFiles.className = 'flex-1 py-3 text-center text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700';
+    });
+    tabBtnFiles.addEventListener('click', function () {
+      colNotes.classList.add('hidden');
+      colFiles.classList.remove('hidden');
+      tabBtnFiles.className = 'flex-1 py-3 text-center text-sm font-semibold border-b-2 border-brand text-brand';
+      tabBtnNotes.className = 'flex-1 py-3 text-center text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700';
+    });
   }
 
   // Guard against accidental tab close
@@ -137,19 +190,27 @@
       resourceCountEl.textContent = resources.length;
     }
 
+    const imageExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'];
+    const imageResources = resources.filter(function (r) {
+      if (r.kind !== 'file') return false;
+      const fmt = ((r.file && r.file.format) || '').toLowerCase();
+      return imageExtensions.includes(fmt);
+    });
+
     const fileResources = resources.filter(function (r) { return r.kind === 'file'; });
     const btnPreviewSlides = document.getElementById('btn-preview-slides');
     const slideCountEl = document.getElementById('slide-count');
     if (btnPreviewSlides) {
-      if (fileResources.length > 0) {
+      if (imageResources.length >= 2) {
         btnPreviewSlides.classList.remove('hidden');
-        if (slideCountEl) slideCountEl.textContent = fileResources.length;
+        if (slideCountEl) slideCountEl.textContent = imageResources.length;
       } else {
         btnPreviewSlides.classList.add('hidden');
       }
     }
+
     if (typeof window.initSlideViewer === 'function') {
-      window.initSlideViewer(materialId, fileResources);
+      window.initSlideViewer(materialId, imageResources);
     }
 
     window.openEditorSlides = function () {
@@ -173,23 +234,22 @@
 
     resources.forEach(function (res, idx) {
       const itemEl = document.createElement('div');
-      itemEl.className = 'p-2.5 rounded-xl border border-slate-100 bg-slate-50/70 hover:bg-white hover:border-slate-200 transition flex items-center justify-between gap-2 text-xs';
+      itemEl.className = 'p-2.5 rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition flex items-center justify-between gap-2.5 text-xs';
 
       const isFile = res.kind === 'file';
-      const badgeText = isFile ? ((res.file && res.file.format) || 'FILE').toUpperCase() : 'LINK';
-      const badgeClass = isFile ? 'bg-indigo-100 text-indigo-700' : 'bg-teal-100 text-teal-700';
+      const badgeText = isFile ? ((res.file && res.file.format) || 'File').toUpperCase() : 'LINK';
 
       const leftCol = document.createElement('div');
-      leftCol.className = 'flex items-center gap-2 min-w-0 flex-1';
+      leftCol.className = 'flex items-center gap-2.5 min-w-0 flex-1';
 
       const badge = document.createElement('span');
-      badge.className = 'text-[9px] font-extrabold px-1.5 py-0.5 rounded font-mono flex-shrink-0 ' + badgeClass;
+      badge.className = 'text-[11px] font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 flex-shrink-0';
       badge.textContent = badgeText;
       leftCol.appendChild(badge);
 
-      if (isFile && ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(((res.file && res.file.format) || '').toLowerCase()) && res._id) {
+      if (isFile && imageExtensions.includes(((res.file && res.file.format) || '').toLowerCase()) && res._id) {
         const thumbWrap = document.createElement('div');
-        thumbWrap.className = 'w-9 h-9 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-indigo-400 transition p-0.5 flex items-center justify-center';
+        thumbWrap.className = 'w-9 h-9 rounded-md overflow-hidden border border-slate-200 bg-slate-50 flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-brand/40 transition p-0.5 flex items-center justify-center';
         thumbWrap.title = 'Click to preview slide';
         const img = document.createElement('img');
         img.src = `/materials/${materialId}/resources/${res._id}/open`;
@@ -199,31 +259,49 @@
         thumbWrap.appendChild(img);
         thumbWrap.onclick = function (e) {
           e.stopPropagation();
-          const fileIdx = fileResources.findIndex(function (fr) { return fr._id === res._id; });
+          const imgIdx = imageResources.findIndex(function (ir) { return ir._id === res._id; });
           if (typeof window.openSlideViewer === 'function') {
-            window.openSlideViewer(fileIdx >= 0 ? fileIdx : 0);
+            window.openSlideViewer(imgIdx >= 0 ? imgIdx : 0);
           }
         };
         leftCol.appendChild(thumbWrap);
       }
 
-      const title = document.createElement('span');
-      title.className = 'font-semibold text-slate-800 truncate';
-      title.textContent = res.label || (isFile ? res.file?.originalFilename : res.url);
-      leftCol.appendChild(title);
+      // Middle: editable label and quiet filename/URL
+      const textWrap = document.createElement('div');
+      textWrap.className = 'min-w-0 flex-1';
 
+      const labelInput = document.createElement('input');
+      labelInput.type = 'text';
+      labelInput.value = res.label || '';
+      labelInput.placeholder = isFile ? ((res.file && res.file.originalFilename) || 'File label') : (res.url || 'Link label');
+      labelInput.className = 'w-full text-xs font-medium text-slate-800 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-brand focus:bg-white focus:outline-none px-1 py-0.5 rounded transition';
+      labelInput.title = 'Edit label';
+      labelInput.addEventListener('input', function () {
+        res.label = labelInput.value;
+        markDirty();
+      });
+      textWrap.appendChild(labelInput);
+
+      const subtext = document.createElement('div');
+      subtext.className = 'text-[11px] text-slate-400 truncate px-1';
+      subtext.textContent = isFile ? ((res.file && res.file.originalFilename) || '') : res.url;
+      textWrap.appendChild(subtext);
+
+      leftCol.appendChild(textWrap);
       itemEl.appendChild(leftCol);
 
       // Reorder & Delete controls
       const controls = document.createElement('div');
-      controls.className = 'flex items-center gap-1 flex-shrink-0';
+      controls.className = 'flex items-center gap-0.5 flex-shrink-0';
 
       // Up arrow
       if (idx > 0) {
         const upBtn = document.createElement('button');
         upBtn.type = 'button';
-        upBtn.className = 'p-1 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100';
+        upBtn.className = 'w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100 transition';
         upBtn.title = 'Move up';
+        upBtn.setAttribute('aria-label', 'Move resource up');
         upBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd" /></svg>';
         upBtn.onclick = function () {
           const temp = resources[idx - 1];
@@ -239,8 +317,9 @@
       if (idx < resources.length - 1) {
         const downBtn = document.createElement('button');
         downBtn.type = 'button';
-        downBtn.className = 'p-1 text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100';
+        downBtn.className = 'w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-700 rounded hover:bg-slate-100 transition';
         downBtn.title = 'Move down';
+        downBtn.setAttribute('aria-label', 'Move resource down');
         downBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>';
         downBtn.onclick = function () {
           const temp = resources[idx + 1];
@@ -255,8 +334,9 @@
       // Remove button
       const delBtn = document.createElement('button');
       delBtn.type = 'button';
-      delBtn.className = 'p-1 text-slate-400 hover:text-red-500 rounded hover:bg-red-50 ml-1';
+      delBtn.className = 'w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 transition ml-0.5';
       delBtn.title = 'Remove resource';
+      delBtn.setAttribute('aria-label', 'Remove resource');
       delBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>';
       delBtn.onclick = async function () {
         if (res._id) {
@@ -612,12 +692,12 @@
 
     function showDragOverlay() {
       if (dropzoneActiveState) dropzoneActiveState.classList.remove('hidden');
-      uploadPanel.classList.add('border-indigo-500', 'bg-indigo-100/60', 'ring-4', 'ring-indigo-200/50');
+      uploadPanel.classList.add('border-brand', 'bg-brand/5', 'ring-2', 'ring-brand/20');
     }
 
     function hideDragOverlay() {
       if (dropzoneActiveState) dropzoneActiveState.classList.add('hidden');
-      uploadPanel.classList.remove('border-indigo-500', 'bg-indigo-100/60', 'ring-4', 'ring-indigo-200/50');
+      uploadPanel.classList.remove('border-brand', 'bg-brand/5', 'ring-2', 'ring-brand/20');
     }
 
     uploadPanel.addEventListener('click', function () {
@@ -686,7 +766,7 @@
       saveBtn.disabled = true;
       if (saveSpinner) saveSpinner.classList.remove('hidden');
       if (saveStatus) {
-        saveStatus.textContent = 'Saving changes...';
+        saveStatus.textContent = 'Saving changes…';
         saveStatus.className = 'text-xs font-medium text-slate-500';
       }
 
@@ -734,6 +814,10 @@
 
         currentVersion = json.version;
         markClean();
+        if (saveStatus) {
+          saveStatus.textContent = 'Changes saved';
+          saveStatus.className = 'text-xs font-medium text-emerald-600';
+        }
 
         // Redirect back to viewer to see saved changes
         window.location.href = `/materials/${materialId}`;
@@ -751,9 +835,9 @@
     btnCopyContent.addEventListener('click', function () {
       const bodyHtml = getEditorHtml();
       navigator.clipboard.writeText(bodyHtml).then(function () {
-        btnCopyContent.textContent = 'Copied to Clipboard!';
+        btnCopyContent.textContent = 'Copied to clipboard';
         setTimeout(function () {
-          btnCopyContent.textContent = 'Copy My Text';
+          btnCopyContent.textContent = 'Copy my text';
         }, 2500);
       }).catch(function () {
         alert('Could not auto-copy. Please manually select and copy your text.');

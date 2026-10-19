@@ -80,7 +80,7 @@ exports.materialsLibrary = async (req, res) => {
     ] = await Promise.all([
       Material.countDocuments(filter),
       Material.find(filter)
-        .sort({ name: 1 })
+        .sort({ usageCount: -1, name: 1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
@@ -92,17 +92,22 @@ exports.materialsLibrary = async (req, res) => {
 
     const totalPages = Math.max(1, Math.ceil(totalMatching / limit));
 
-    // Fetch file counts for materials on current page
+    // Fetch file counts and indicators for materials on current page
     const matIds = materials.map(m => m._id);
     const contents = await MaterialContent.find({ material: { $in: matIds } })
-      .select('material resources updatedAt')
+      .select('material resources body updatedAt')
       .lean();
 
     const contentMap = {};
     for (const c of contents) {
       const fileCount = (c.resources || []).filter(r => r.kind === 'file').length;
+      const linkCount = (c.resources || []).filter(r => r.kind === 'link').length;
+      const textOnly = (c.body || '').replace(/<[^>]*>/g, '').trim();
+      const hasNotes = textOnly.length > 0;
       contentMap[String(c.material)] = {
         fileCount,
+        linkCount,
+        hasNotes,
         updatedAt: c.updatedAt,
       };
     }
@@ -185,8 +190,13 @@ exports.editMaterial = async (req, res) => {
     const content = await MaterialContent.findOne({ material: material._id }).lean();
     const user = req.session.user;
     if (!canEdit(user, content)) {
-      req.session.flashError = 'This material is locked for editing.';
-      return res.redirect(`/materials/${material._id}`);
+      return res.render('materials/locked', {
+        title: `${material.name} — Locked`,
+        material,
+        content: content || { body: '', resources: [], locked: true, version: 1 },
+        userIsAdmin: false,
+        message: 'This material is locked. Ask an admin to add content.',
+      });
     }
 
     res.render('materials/edit', {

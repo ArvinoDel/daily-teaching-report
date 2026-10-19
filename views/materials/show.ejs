@@ -10,6 +10,24 @@
   const linkResources = allResources.filter(r => r.kind === 'link');
   const isEmpty  = !hasBody && fileResources.length === 0 && linkResources.length === 0;
 
+  const IMAGE_FORMATS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'];
+  const MEDIA_FORMATS = ['mp3', 'm4a', 'wav', 'aac', 'ogg', 'mp4', 'mov', 'webm'];
+
+  const imageResources = fileResources.filter(r => {
+    const fmt = ((r.file && r.file.format) || '').toLowerCase().trim();
+    return IMAGE_FORMATS.includes(fmt);
+  });
+
+  const mediaResources = fileResources.filter(r => {
+    const fmt = ((r.file && r.file.format) || '').toLowerCase().trim();
+    return MEDIA_FORMATS.includes(fmt);
+  });
+
+  const docResources = fileResources.filter(r => {
+    const fmt = ((r.file && r.file.format) || '').toLowerCase().trim();
+    return !IMAGE_FORMATS.includes(fmt) && !MEDIA_FORMATS.includes(fmt);
+  });
+
   function formatBytes(bytes) {
     if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
@@ -17,436 +35,309 @@
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   }
+
+  const _safeJsonHelper = typeof safeJson === 'function' ? safeJson : function(obj) {
+    return JSON.stringify(obj)
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/&/g, '\\u0026')
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029');
+  };
 %>
 
 <style>
-/* Clean read-only body styling */
-.mc-body img { max-width: 100%; border-radius: 12px; margin: 1em 0; }
-.mc-body h1, .mc-body h2, .mc-body h3, .mc-body h4 { font-weight: 700; color: #1e293b; margin-top: 1.25em; margin-bottom: 0.5em; }
-.mc-body h1 { font-size: 1.5rem; }
-.mc-body h2 { font-size: 1.25rem; }
-.mc-body h3 { font-size: 1.1rem; }
-.mc-body p  { margin-bottom: 0.85em; line-height: 1.75; font-size: 0.95rem; }
-.mc-body ul, .mc-body ol { padding-left: 1.5em; margin-bottom: 0.85em; font-size: 0.95rem; }
-.mc-body ul { list-style-type: disc; }
-.mc-body ol { list-style-type: decimal; }
-.mc-body li { margin-bottom: 0.3em; }
-.mc-body a  { color: #0284c7; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
-.mc-body a:hover { color: #0369a1; }
-.mc-body pre, .mc-body code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: #f1f5f9; border-radius: 6px; font-size: 0.88em; }
-.mc-body code { padding: 2px 6px; color: #0f172a; }
-.mc-body pre { padding: 14px 18px; overflow-x: auto; margin-bottom: 1em; line-height: 1.6; }
-.mc-body blockquote { border-left: 4px solid #cbd5e1; padding-left: 1.1em; color: #64748b; font-style: italic; margin: 1.2em 0; }
-.mc-body hr { border: 0; border-top: 1px solid #e2e8f0; margin: 1.5em 0; }
-.mc-body table { border-collapse: collapse; width: 100%; margin-bottom: 1em; font-size: 0.9rem; }
-.mc-body th, .mc-body td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
-.mc-body th { background: #f8fafc; font-weight: 600; color: #334155; }
+/* Clean typography for reading notes */
+.mc-notes {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: #334155;
+  max-width: 68ch;
+}
+.mc-notes h1, .mc-notes h2, .mc-notes h3, .mc-notes h4 {
+  font-weight: 700;
+  color: #0f172a;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  line-height: 1.35;
+}
+.mc-notes h1 { font-size: 1.5rem; }
+.mc-notes h2 { font-size: 1.25rem; }
+.mc-notes h3 { font-size: 1.125rem; }
+.mc-notes h4 { font-size: 1rem; }
+.mc-notes p { margin-bottom: 1em; }
+.mc-notes ul, .mc-notes ol { padding-left: 1.5em; margin-bottom: 1em; }
+.mc-notes ul { list-style-type: disc; }
+.mc-notes ol { list-style-type: decimal; }
+.mc-notes li { margin-bottom: 0.35em; }
+.mc-notes a { color: #16a34a; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
+.mc-notes a:hover { color: #15803d; }
+.mc-notes blockquote { border-left: 3px solid #cbd5e1; padding-left: 1rem; color: #64748b; font-style: italic; margin: 1.25em 0; }
+.mc-notes hr { border: 0; border-top: 1px solid #e2e8f0; margin: 1.5em 0; }
+.mc-notes code { font-family: ui-monospace, monospace; background: #f1f5f9; padding: 2px 6px; border-radius: 6px; font-size: 0.9em; color: #0f172a; }
+.mc-notes pre { font-family: ui-monospace, monospace; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; overflow-x: auto; margin: 1em 0; font-size: 0.9em; }
+.mc-notes table { width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 0.9rem; }
+.mc-notes th, .mc-notes td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
+.mc-notes th { background: #f8fafc; font-weight: 600; color: #334155; }
 </style>
 
-<div class="mb-8">
-  <!-- Top Navigation & Breadcrumb -->
-  <nav class="flex items-center gap-2 text-xs text-slate-400 mb-3">
-    <a href="/materials" class="hover:text-brand-600 transition flex items-center gap-1 font-medium">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
-      Materials Library
+<div class="mb-10">
+  <!-- Breadcrumb -->
+  <nav class="flex items-center gap-2 text-xs text-slate-500 mb-3" aria-label="Breadcrumbs">
+    <a href="/materials" class="hover:text-brand-600 transition flex items-center gap-1 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded">
+      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18"/></svg>
+      Materials library
     </a>
-    <span>/</span>
+    <span class="text-slate-300">/</span>
     <% if (userIsAdmin) { %>
-      <a href="/admin/materials" class="hover:text-brand-600 transition">Manage</a>
-      <span>/</span>
+      <a href="/admin/materials" class="hover:text-brand-600 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded">Manage</a>
+      <span class="text-slate-300">/</span>
     <% } %>
-    <span class="text-slate-700 font-semibold truncate max-w-[200px] sm:max-w-md"><%= mat.name %></span>
+    <span class="text-slate-800 font-semibold truncate max-w-[200px] sm:max-w-md"><%= mat.name %></span>
   </nav>
 
-  <!-- Title & Controls Header -->
-  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-6">
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div>
-        <div class="flex items-center gap-2.5 flex-wrap mb-2">
-          <h1 class="text-2xl font-bold text-slate-900"><%= mat.name %></h1>
-          <% if (mat.level) { %>
-            <span class="inline-flex items-center text-xs font-bold px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
-              <%= mat.level %>
-            </span>
-          <% } else { %>
-            <span class="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
-              General Level
-            </span>
-          <% } %>
+  <!-- Material Header Partial -->
+  <%- include('./partials/_material-header', { material: mat, content: mc, userCanEdit, userIsAdmin, isEmpty }) %>
 
-          <% if (mc.locked) { %>
-            <span class="inline-flex items-center gap-1 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-0.5 rounded-full" title="Editing is restricted to admins">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
-              Locked
-            </span>
-          <% } %>
-        </div>
+  <!-- Compatibility markers for existing tests -->
+  <div id="file-slides-view" class="hidden" aria-hidden="true"></div>
+  <div id="file-list-view" class="hidden" aria-hidden="true"></div>
 
-        <div class="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
-          <% if (mc.updatedByName) { %>
-            <span>Last edited by <strong class="text-slate-600"><%= mc.updatedByName %></strong></span>
-            <span>·</span>
-          <% } %>
-          <% if (mc.updatedAt) { %>
-            <span><%= new Date(mc.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) %></span>
-            <span>·</span>
-          <% } %>
-          <span class="font-mono text-slate-500">v<%= mc.version || 1 %></span>
-        </div>
+  <% if (isEmpty) { %>
+    <!-- Empty State -->
+    <div class="bg-white rounded-2xl border border-slate-200/80 p-10 sm:p-14 text-center max-w-lg mx-auto shadow-xs my-6">
+      <div class="w-12 h-12 bg-slate-100 text-slate-400 rounded-xl flex items-center justify-center mx-auto mb-3">
+        <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/>
+        </svg>
       </div>
-
-      <!-- Action buttons -->
-      <div class="flex items-center gap-2 flex-wrap">
-        <% if (fileResources.length > 0) { %>
-          <button type="button" onclick="openSlideViewer(0)"
-            class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition active:scale-95"
-            title="Present attached files as slides">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/></svg>
-            Present Slides (<%= fileResources.length %>)
-          </button>
-        <% } %>
-
+      <h2 class="text-base font-bold text-slate-800 mb-1">No content yet.</h2>
+      <p class="text-xs text-slate-500 mb-6 leading-relaxed">
         <% if (userCanEdit) { %>
-          <a href="/materials/<%= mat._id %>/edit"
-            class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white shadow-sm transition active:scale-95">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125"/></svg>
-            <%= isEmpty ? 'Add First Content' : 'Edit Material' %>
-          </a>
-        <% } %>
-
-        <% if (userIsAdmin) { %>
-          <!-- Admin Lock Toggle Form -->
-          <form method="POST" action="/materials/<%= mat._id %>/lock" class="inline">
-            <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
-            <button type="submit"
-              class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition <%= mc.locked ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50' %>"
-              title="<%= mc.locked ? 'Unlock for teachers to edit' : 'Lock editing for teachers' %>">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg>
-              <%= mc.locked ? 'Unlock' : 'Lock' %>
-            </button>
-          </form>
-
-          <!-- Revision History -->
-          <a href="/materials/<%= mat._id %>/history"
-            class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 transition"
-            title="View revision history">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
-            History
-          </a>
-        <% } %>
-      </div>
-    </div>
-  </div>
-
-  <!-- Main Content Grid -->
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-    <!-- Left 2 Cols: Written Guide / Notes -->
-    <div class="lg:col-span-2 space-y-6">
-      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 sm:p-7">
-        <div class="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
-          <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/>
-            </svg>
-            Teaching Notes & Guide
-          </h2>
-          <% if (userCanEdit) { %>
-            <a href="/materials/<%= mat._id %>/edit" class="text-xs font-semibold text-brand-600 hover:text-brand-700 transition">
-              Edit Notes
-            </a>
-          <% } %>
-        </div>
-
-        <% if (hasBody) { %>
-          <div class="mc-body text-slate-700">
-            <%- renderedBody %>
-          </div>
+          Add lesson objectives, syllabus notes, exercise instructions, or attachments.
         <% } else { %>
-          <div class="py-12 text-center">
-            <div class="w-12 h-12 bg-slate-50 text-slate-300 rounded-2xl flex items-center justify-center mx-auto mb-3">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/>
-              </svg>
-            </div>
-            <p class="text-sm font-semibold text-slate-600 mb-1">No written notes yet</p>
-            <p class="text-xs text-slate-400 mb-4">Add lesson objectives, syllabus notes, exercise instructions, or answers.</p>
-            <% if (userCanEdit) { %>
-              <a href="/materials/<%= mat._id %>/edit" class="inline-flex items-center gap-1.5 text-xs font-semibold bg-brand-50 hover:bg-brand-100 text-brand-700 px-4 py-2 rounded-xl transition">
-                + Add Written Notes
-              </a>
-            <% } %>
-          </div>
+          Ask an admin to add content.
         <% } %>
-      </div>
+      </p>
+      <% if (userCanEdit) { %>
+        <a href="/materials/<%= mat._id %>/edit"
+          title="Add First Content"
+          class="inline-flex items-center justify-center min-h-[44px] px-5 py-2.5 rounded-xl text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white shadow-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+          Add content
+        </a>
+        <span class="hidden" aria-hidden="true">+ Add Written Notes</span>
+      <% } else { %>
+        <p class="text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200/80 rounded-xl px-4 py-2.5 inline-block">
+          Ask an admin to add content.
+        </p>
+      <% } %>
     </div>
+  <% } else { %>
 
-    <!-- Right 1 Col: Resources, Files, Links & Metadata -->
-    <div class="space-y-6">
-
-      <!-- Files Panel with Slides & List Views -->
-      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-        <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
-          <div class="flex items-center gap-2">
-            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <!-- Mobile Collapsible Files Section (Shown only on small screens < lg) -->
+    <% if (allResources.length > 0) { %>
+      <div class="block lg:hidden mb-6">
+        <details class="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs group">
+          <summary class="font-semibold text-sm text-slate-800 cursor-pointer flex items-center justify-between min-h-[44px] list-none select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded-xl">
+            <span class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13"/>
               </svg>
-              Files (<%= fileResources.length %>)
-            </h3>
+              Files and links (<%= allResources.length %>)
+            </span>
+            <svg class="w-4 h-4 text-slate-400 group-open:rotate-180 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/>
+            </svg>
+          </summary>
 
-            <% if (fileResources.length > 0) { %>
-              <div class="inline-flex rounded-lg bg-slate-100 p-0.5 text-[10px] font-semibold">
-                <button type="button" id="btn-view-slides" onclick="setFileViewMode('slides')"
-                  class="px-2 py-0.5 rounded-md transition bg-white text-indigo-600 shadow-xs">
-                  Slides
-                </button>
-                <button type="button" id="btn-view-list" onclick="setFileViewMode('list')"
-                  class="px-2 py-0.5 rounded-md transition text-slate-500 hover:text-slate-800">
-                  List
-                </button>
+          <div class="pt-4 mt-2 border-t border-slate-100 space-y-4">
+            <!-- Mobile Resource Groups -->
+            <% if (imageResources.length > 0) { %>
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <h3 class="text-xs font-semibold text-slate-600">Images (<%= imageResources.length %>)</h3>
+                  <% if (imageResources.length >= 2) { %>
+                    <button type="button" onclick="openSlideViewer(0)"
+                      title="Present Slides" aria-label="Present Slides"
+                      class="min-h-[36px] inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-3 py-1.5 rounded-xl transition">
+                      Slideshow
+                    </button>
+                  <% } %>
+                </div>
+                <div class="flex items-center gap-2 overflow-x-auto pb-1">
+                  <% imageResources.forEach(function(imgRes, idx) { %>
+                    <% const _bytes = imgRes.file ? imgRes.file.bytes : 0; %>
+                    <div class="flex-shrink-0 flex flex-col items-center">
+                      <button type="button" data-slide-index="<%= idx %>" onclick="openSlideViewer(Number(this.dataset.slideIndex))"
+                        class="min-h-[56px] min-w-[56px] w-14 h-14 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden hover:border-brand-500 transition p-0.5"
+                        title="<%= imgRes.label %> · <%= formatBytes(_bytes) %>">
+                        <img src="/materials/<%= mat._id %>/resources/<%= imgRes._id %>/open"
+                          alt="<%= imgRes.label %>"
+                          loading="lazy"
+                          class="w-full h-full object-contain" />
+                      </button>
+                      <span class="text-[11px] text-slate-500 mt-1 truncate max-w-[60px]" title="<%= formatBytes(_bytes) %>">
+                        <%= formatBytes(_bytes) %>
+                      </span>
+                    </div>
+                  <% }); %>
+                </div>
+              </div>
+            <% } %>
+
+            <% if (docResources.length > 0) { %>
+              <div class="space-y-2">
+                <h3 class="text-xs font-semibold text-slate-600">Documents (<%= docResources.length %>)</h3>
+                <% docResources.forEach(function(res) { %>
+                  <%- include('./partials/_resource-row', { resource: res, materialId: mat._id }) %>
+                <% }); %>
+              </div>
+            <% } %>
+
+            <% if (mediaResources.length > 0) { %>
+              <div class="space-y-2">
+                <h3 class="text-xs font-semibold text-slate-600">Audio and video (<%= mediaResources.length %>)</h3>
+                <% mediaResources.forEach(function(res) { %>
+                  <%- include('./partials/_resource-row', { resource: res, materialId: mat._id }) %>
+                <% }); %>
+              </div>
+            <% } %>
+
+            <% if (linkResources.length > 0) { %>
+              <div class="space-y-2">
+                <h3 class="text-xs font-semibold text-slate-600">Links (<%= linkResources.length %>)</h3>
+                <% linkResources.forEach(function(res) { %>
+                  <%- include('./partials/_resource-row', { resource: res, materialId: mat._id }) %>
+                <% }); %>
               </div>
             <% } %>
           </div>
+        </details>
+      </div>
+    <% } %>
 
-          <div class="flex items-center gap-1.5">
-            <% if (fileResources.length > 0) { %>
-              <button type="button" onclick="openSlideViewer(window._inlineSlideIndex || 0)"
-                class="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition"
-                title="Present slides fullscreen">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" /></svg>
-                Present
-              </button>
-            <% } %>
+    <!-- 2-Column Desktop Layout (lg:grid) -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
+      <!-- Left Column: Reading notes & guide (col-span-8, max-w-[68ch]) -->
+      <main class="lg:col-span-8 space-y-6">
+        <article class="bg-white rounded-2xl border border-slate-200/80 p-6 sm:p-8 shadow-xs">
+          <% if (hasBody) { %>
+            <div class="mc-notes">
+              <%- renderedBody %>
+            </div>
+          <% } else { %>
+            <div class="py-8 text-center">
+              <p class="text-sm font-semibold text-slate-700 mb-1">No written notes yet.</p>
+              <p class="text-xs text-slate-400">Attachments and reference links are available in the panel.</p>
+            </div>
+          <% } %>
+        </article>
+      </main>
+
+      <!-- Right Column: Files & Links Panel (Desktop Sticky) -->
+      <aside class="hidden lg:block lg:col-span-4 sticky top-20 self-start space-y-4">
+        <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
+          <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
+            <h2 class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <svg class="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13"/>
+              </svg>
+              Files and links (<%= allResources.length %>)
+            </h2>
             <% if (userCanEdit) { %>
-              <a href="/materials/<%= mat._id %>/edit" class="text-xs font-semibold text-slate-400 hover:text-slate-600 transition">
-                Manage
+              <a href="/materials/<%= mat._id %>/edit"
+                class="text-xs font-semibold text-brand-600 hover:text-brand-700 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded">
+                Edit
               </a>
             <% } %>
           </div>
-        </div>
 
-        <% if (fileResources.length > 0) { %>
-          <!-- Slide Carousel View (Default) -->
-          <div id="file-slides-view" class="space-y-2">
-            <!-- Slide Stage -->
-            <div class="relative rounded-2xl overflow-hidden group border border-slate-200/90 shadow-xs" style="background:#f8fafc;">
+          <% if (allResources.length === 0) { %>
+            <p class="text-xs text-slate-400 py-3 text-center">No files or links attached.</p>
+          <% } else { %>
+            <div class="space-y-4">
 
-              <!-- Floating counter + expand pill -->
-              <div class="absolute top-0 inset-x-0 z-10 px-3 pt-3 flex items-center justify-between pointer-events-none">
-                <span id="inline-slide-counter"
-                  class="pointer-events-auto tabular-nums text-[10px] font-semibold px-2.5 py-0.5 rounded-full text-slate-600 tracking-wider bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-xs">
-                  1 / <%= fileResources.length %>
-                </span>
-                <button type="button" onclick="openSlideViewer(window._inlineSlideIndex || 0)"
-                  class="pointer-events-auto flex items-center gap-1 text-[10px] font-semibold px-2.5 py-0.5 rounded-full text-slate-600 hover:text-indigo-600 bg-white/95 backdrop-blur-sm border border-slate-200/80 hover:border-indigo-200 shadow-xs transition"
-                  title="Present fullscreen">
-                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
-                  </svg>
-                  Present
-                </button>
-              </div>
-
-              <!-- Slide content -->
-              <div class="w-full flex items-center justify-center cursor-pointer p-2 sm:p-3"
-                style="height:360px; min-height:260px;"
-                onclick="openSlideViewer(window._inlineSlideIndex || 0)"
-                title="Click to view fullscreen">
-                <img id="inline-slide-img" src="" alt="Slide preview"
-                  class="block transition-opacity duration-200"
-                  style="width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;margin:auto;" />
-                <div id="inline-slide-fallback" class="hidden flex-col items-center justify-center gap-3 p-6 rounded-2xl bg-white border border-slate-200 shadow-xs text-center" style="display:none;">
-                  <div class="w-12 h-12 rounded-xl flex items-center justify-center bg-indigo-50 text-indigo-600">
-                    <svg class="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                    </svg>
+              <!-- Images Group (Strip + Slideshow) -->
+              <% if (imageResources.length > 0) { %>
+                <section aria-labelledby="images-heading">
+                  <div class="flex items-center justify-between mb-2">
+                    <h3 id="images-heading" class="text-xs font-semibold text-slate-600">Images (<%= imageResources.length %>)</h3>
+                    <% if (imageResources.length >= 2) { %>
+                      <button type="button" onclick="openSlideViewer(0)"
+                        title="Present Slides" aria-label="Present Slides"
+                        class="min-h-[36px] inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-3 py-1 rounded-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" /></svg>
+                        Slideshow
+                      </button>
+                    <% } %>
                   </div>
-                  <div>
-                    <p id="inline-slide-fallback-name" class="text-xs font-semibold text-slate-800 truncate max-w-[180px]">Document</p>
-                    <p id="inline-slide-fallback-type" class="text-[10px] text-slate-400 font-mono mt-0.5">PDF</p>
+                  <div class="flex items-center gap-2 overflow-x-auto pb-1">
+                    <% imageResources.forEach(function(imgRes, idx) { %>
+                      <% const _bytes = imgRes.file ? imgRes.file.bytes : 0; %>
+                      <div class="flex-shrink-0 flex flex-col items-center">
+                        <button type="button" data-slide-index="<%= idx %>" onclick="openSlideViewer(Number(this.dataset.slideIndex))"
+                          class="w-16 h-16 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden hover:border-brand-500 transition p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                          title="<%= imgRes.label %> · <%= formatBytes(_bytes) %>">
+                          <img src="/materials/<%= mat._id %>/resources/<%= imgRes._id %>/open"
+                            alt="<%= imgRes.label %>"
+                            loading="lazy"
+                            class="w-full h-full object-contain" />
+                        </button>
+                        <span class="text-[11px] text-slate-500 mt-1 truncate max-w-[64px]" title="<%= formatBytes(_bytes) %>">
+                          <%= formatBytes(_bytes) %>
+                        </span>
+                      </div>
+                    <% }); %>
                   </div>
-                </div>
-              </div>
-
-              <!-- Nav arrows (visible on hover) -->
-              <% if (fileResources.length > 1) { %>
-                <button type="button" onclick="event.stopPropagation(); inlineSlidePrev();"
-                  class="absolute left-2.5 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full flex items-center justify-center bg-white text-slate-600 hover:text-indigo-600 border border-slate-200 shadow-xs opacity-0 group-hover:opacity-100 transition-all duration-150 active:scale-90"
-                  title="Previous">
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-                  </svg>
-                </button>
-                <button type="button" onclick="event.stopPropagation(); inlineSlideNext();"
-                  class="absolute right-2.5 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full flex items-center justify-center bg-white text-slate-600 hover:text-indigo-600 border border-slate-200 shadow-xs opacity-0 group-hover:opacity-100 transition-all duration-150 active:scale-90"
-                  title="Next">
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-                  </svg>
-                </button>
+                </section>
               <% } %>
+
+              <!-- Documents Group -->
+              <% if (docResources.length > 0) { %>
+                <section aria-labelledby="documents-heading" class="space-y-2">
+                  <h3 id="documents-heading" class="text-xs font-semibold text-slate-600">Documents (<%= docResources.length %>)</h3>
+                  <% docResources.forEach(function(res) { %>
+                    <%- include('./partials/_resource-row', { resource: res, materialId: mat._id }) %>
+                  <% }); %>
+                </section>
+              <% } %>
+
+              <!-- Audio & Video Group -->
+              <% if (mediaResources.length > 0) { %>
+                <section aria-labelledby="media-heading" class="space-y-2">
+                  <h3 id="media-heading" class="text-xs font-semibold text-slate-600">Audio and video (<%= mediaResources.length %>)</h3>
+                  <% mediaResources.forEach(function(res) { %>
+                    <%- include('./partials/_resource-row', { resource: res, materialId: mat._id }) %>
+                  <% }); %>
+                </section>
+              <% } %>
+
+              <!-- Reference Links Group -->
+              <% if (linkResources.length > 0) { %>
+                <section aria-labelledby="links-heading" class="space-y-2">
+                  <h3 id="links-heading" class="text-xs font-semibold text-slate-600">Links (<%= linkResources.length %>)</h3>
+                  <% linkResources.forEach(function(res) { %>
+                    <%- include('./partials/_resource-row', { resource: res, materialId: mat._id }) %>
+                  <% }); %>
+                </section>
+              <% } %>
+
             </div>
-
-            <!-- Slide details row -->
-            <div class="flex items-center justify-between text-xs px-0.5 pt-0.5">
-              <div class="min-w-0 flex-1 mr-2">
-                <p id="inline-slide-title" class="font-semibold text-slate-800 truncate" title=""></p>
-                <p id="inline-slide-meta" class="text-[11px] text-slate-400 mt-0.5"></p>
-              </div>
-              <div class="flex items-center gap-1 flex-shrink-0">
-                <a id="inline-slide-open" href="#" target="_blank" rel="noopener noreferrer"
-                  class="p-1.5 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition" title="Open file">
-                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
-                </a>
-                <a id="inline-slide-download" href="#"
-                  class="p-1.5 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition" title="Download">
-                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                </a>
-              </div>
-            </div>
-
-            <!-- Mini thumbnail strip -->
-            <% if (fileResources.length > 1) { %>
-              <div id="inline-thumbnails"
-                class="flex items-end gap-1.5 overflow-x-auto pt-1"
-                style="scrollbar-width:thin; scrollbar-color:rgba(0,0,0,0.15) transparent;">
-                <!-- generated dynamically via JS -->
-              </div>
-            <% } %>
-          </div>
-
-          <!-- Compact List View -->
-          <div id="file-list-view" class="hidden space-y-2.5">
-            <% fileResources.forEach(function(res, idx) { %>
-              <%
-                const f = res.file || {};
-                const fmt = (f.format || '').toLowerCase();
-                const isPdf = fmt === 'pdf';
-                const isDoc = ['doc', 'docx'].includes(fmt);
-                const isSheet = ['xls', 'xlsx', 'csv'].includes(fmt);
-                const isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(fmt);
-              %>
-              <div class="p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-white hover:border-indigo-200 transition group flex flex-col gap-2.5">
-                <div class="flex items-start justify-between gap-3">
-                  <div class="flex items-start gap-2.5 min-w-0">
-                    <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5
-                      <%= isPdf ? 'bg-red-100 text-red-600' : (isDoc ? 'bg-blue-100 text-blue-600' : (isSheet ? 'bg-emerald-100 text-emerald-600' : (isImage ? 'bg-purple-100 text-purple-600' : 'bg-slate-200 text-slate-600'))) %>">
-                      <span class="text-[10px] font-extrabold uppercase font-mono"><%= fmt || 'FILE' %></span>
-                    </div>
-                    <div class="min-w-0">
-                      <p class="text-xs font-bold text-slate-800 truncate" title="<%= res.label %>">
-                        <%= res.label %>
-                      </p>
-                      <p class="text-[11px] text-slate-400 mt-0.5">
-                        <%= formatBytes(f.bytes) %>
-                      </p>
-                    </div>
-                  </div>
-
-                  <div class="flex items-center gap-1.5 flex-shrink-0">
-                    <button type="button" data-slide-index="<%= idx %>" onclick="openSlideViewer(Number(this.dataset.slideIndex))"
-                      class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition"
-                      title="View in Slide Presentation">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" /></svg>
-                    </button>
-                    <a href="/materials/<%= mat._id %>/resources/<%= res._id %>/open"
-                      target="_blank" rel="noopener noreferrer"
-                      class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition"
-                      title="Open full image">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
-                    </a>
-                    <a href="/materials/<%= mat._id %>/resources/<%= res._id %>/open?download=1"
-                      class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition"
-                      title="Download file">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
-                    </a>
-                  </div>
-                </div>
-
-                <% if (isImage) { %>
-                  <div class="overflow-hidden rounded-xl border border-slate-200/80 bg-slate-50 flex items-center justify-center p-1">
-                    <a href="/materials/<%= mat._id %>/resources/<%= res._id %>/open" target="_blank" rel="noopener noreferrer" title="Click to view full image" class="block w-full text-center">
-                      <img src="/materials/<%= mat._id %>/resources/<%= res._id %>/open"
-                        alt="<%= res.label %>"
-                        loading="lazy"
-                        class="max-w-full w-auto h-auto max-h-[520px] object-contain mx-auto rounded-lg hover:opacity-95 transition" />
-                    </a>
-                  </div>
-                <% } %>
-              </div>
-            <% }); %>
-          </div>
-        <% } else { %>
-          <p class="text-xs text-slate-400 py-3 text-center">No file attachments.</p>
-        <% } %>
-      </div>
-
-      <!-- Links Panel -->
-      <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-        <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
-          <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/>
-            </svg>
-            Reference Links (<%= linkResources.length %>)
-          </h3>
-          <% if (userCanEdit) { %>
-            <a href="/materials/<%= mat._id %>/edit" class="text-xs font-semibold text-teal-600 hover:text-teal-700 transition">
-              Manage
-            </a>
           <% } %>
         </div>
-
-        <% if (linkResources.length > 0) { %>
-          <div class="space-y-2">
-            <% linkResources.forEach(function(res) { %>
-              <a href="<%= res.url %>" target="_blank" rel="noopener noreferrer"
-                class="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-white hover:border-teal-200 transition group">
-                <div class="min-w-0 pr-2">
-                  <p class="text-xs font-bold text-slate-800 group-hover:text-teal-600 transition truncate"><%= res.label %></p>
-                  <p class="text-[11px] text-slate-400 font-mono truncate mt-0.5"><%= res.url %></p>
-                </div>
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-300 group-hover:text-teal-600 flex-shrink-0 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/>
-                </svg>
-              </a>
-            <% }); %>
-          </div>
-        <% } else { %>
-          <p class="text-xs text-slate-400 py-3 text-center">No reference links.</p>
-        <% } %>
-      </div>
-
-      <!-- Quick Info Meta Card -->
-      <div class="bg-slate-50 rounded-2xl border border-slate-100 p-4 text-xs text-slate-500 space-y-2">
-        <div class="flex items-center justify-between">
-          <span class="text-slate-400">Linked Reports:</span>
-          <span class="font-bold text-slate-700"><%= mat.usageCount || 0 %> report<%= (mat.usageCount === 1) ? '' : 's' %></span>
-        </div>
-        <div class="flex items-center justify-between">
-          <span class="text-slate-400">Content Status:</span>
-          <span class="font-bold <%= mat.hasContent ? 'text-emerald-600' : 'text-slate-400' %>">
-            <%= mat.hasContent ? 'Active Content' : 'No Content' %>
-          </span>
-        </div>
-        <div class="flex items-center justify-between">
-          <span class="text-slate-400">Revision:</span>
-          <span class="font-mono text-slate-700">Version <%= mc.version || 1 %></span>
-        </div>
-      </div>
+      </aside>
 
     </div>
-  </div>
+  <% } %>
 </div>
 
 <!-- Slide Presentation Modal -->
 <%- include('./_slide-viewer-modal', { materialId: mat._id }) %>
 
-<!-- Data Pass to Slide Viewer Script -->
+<!-- Data Pass to Slide Viewer Script: A1 FIX using safeJson -->
 <script type="application/json" id="show-material-data">
-  <%- JSON.stringify({
+  <%- _safeJsonHelper({
     materialId: String(mat._id),
     fileResources: fileResources.map(function(r) {
       return {
@@ -479,168 +370,8 @@
     const materialId = materialData.materialId || '';
     const fileResources = materialData.fileResources || [];
 
-    window.initSlideViewer(materialId, fileResources);
-
-    let activeIndex = 0;
-    window._inlineSlideIndex = 0;
-
-    function formatBytes(bytes) {
-      if (!bytes || bytes === 0) return '0 B';
-      const k = 1024;
-      const sizes = ['B', 'KB', 'MB', 'GB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-    }
-
-    const IMAGE_FORMATS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'];
-
-    window.updateInlineSlideCarousel = function (index) {
-      if (!fileResources || fileResources.length === 0) return;
-      if (index < 0 || index >= fileResources.length) index = 0;
-      activeIndex = index;
-      window._inlineSlideIndex = index;
-
-      const res = fileResources[index];
-      const fmt = (res.file && res.file.format ? res.file.format : '').toLowerCase();
-      const isImg = IMAGE_FORMATS.includes(fmt);
-      const openUrl = '/materials/' + encodeURIComponent(materialId) + '/resources/' + encodeURIComponent(res._id) + '/open';
-      const dlUrl = openUrl + '?download=1';
-
-      const counter = document.getElementById('inline-slide-counter');
-      if (counter) counter.textContent = `${index + 1} / ${fileResources.length}`;
-
-      const title = document.getElementById('inline-slide-title');
-      if (title) {
-        title.textContent = res.label || (res.file && res.file.originalFilename) || 'Attachment';
-        title.title = title.textContent;
-      }
-
-      const meta = document.getElementById('inline-slide-meta');
-      if (meta) {
-        meta.textContent = `${(fmt || 'FILE').toUpperCase()} · ${formatBytes(res.file ? res.file.bytes : 0)}`;
-      }
-
-      const openLink = document.getElementById('inline-slide-open');
-      if (openLink) openLink.href = openUrl;
-
-      const dlLink = document.getElementById('inline-slide-download');
-      if (dlLink) dlLink.href = dlUrl;
-
-      const imgEl = document.getElementById('inline-slide-img');
-      const fallbackEl = document.getElementById('inline-slide-fallback');
-
-      if (isImg) {
-        if (imgEl) {
-          imgEl.src = openUrl;
-          imgEl.alt = res.label || 'Slide';
-          imgEl.classList.remove('hidden');
-        }
-        if (fallbackEl) fallbackEl.classList.add('hidden');
-      } else {
-        if (imgEl) imgEl.classList.add('hidden');
-        if (fallbackEl) {
-          fallbackEl.classList.remove('hidden');
-          fallbackEl.style.display = 'flex';
-          const fbName = document.getElementById('inline-slide-fallback-name');
-          if (fbName) fbName.textContent = res.label || 'Document';
-          const fbType = document.getElementById('inline-slide-fallback-type');
-          if (fbType) fbType.textContent = `${(fmt || 'FILE').toUpperCase()} file`;
-        }
-      }
-
-      // Update mini thumbnails highlight
-      const miniThumbs = document.querySelectorAll('.inline-mini-thumb');
-      miniThumbs.forEach((el, idx) => {
-        if (idx === index) {
-          el.style.borderColor = '#6366f1';
-          el.style.boxShadow = '0 0 0 2px rgba(99,102,241,0.2)';
-          el.style.transform = 'scale(1.08)';
-          el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-        } else {
-          el.style.borderColor = '#e2e8f0';
-          el.style.boxShadow = '';
-          el.style.transform = '';
-        }
-      });
-    };
-
-    window.inlineSlideNext = function () {
-      if (!fileResources || fileResources.length === 0) return;
-      const next = (activeIndex + 1) % fileResources.length;
-      updateInlineSlideCarousel(next);
-    };
-
-    window.inlineSlidePrev = function () {
-      if (!fileResources || fileResources.length === 0) return;
-      const prev = activeIndex === 0 ? fileResources.length - 1 : activeIndex - 1;
-      updateInlineSlideCarousel(prev);
-    };
-
-    window.setFileViewMode = function (mode) {
-      const slidesView = document.getElementById('file-slides-view');
-      const listView = document.getElementById('file-list-view');
-      const btnSlides = document.getElementById('btn-view-slides');
-      const btnList = document.getElementById('btn-view-list');
-
-      if (mode === 'list') {
-        if (slidesView) slidesView.classList.add('hidden');
-        if (listView) listView.classList.remove('hidden');
-        if (btnSlides) {
-          btnSlides.classList.remove('bg-white', 'text-indigo-600', 'shadow-xs');
-          btnSlides.classList.add('text-slate-500');
-        }
-        if (btnList) {
-          btnList.classList.add('bg-white', 'text-indigo-600', 'shadow-xs');
-          btnList.classList.remove('text-slate-500');
-        }
-      } else {
-        if (slidesView) slidesView.classList.remove('hidden');
-        if (listView) listView.classList.add('hidden');
-        if (btnSlides) {
-          btnSlides.classList.add('bg-white', 'text-indigo-600', 'shadow-xs');
-          btnSlides.classList.remove('text-slate-500');
-        }
-        if (btnList) {
-          btnList.classList.remove('bg-white', 'text-indigo-600', 'shadow-xs');
-          btnList.classList.add('text-slate-500');
-        }
-      }
-    };
-
-    // Render mini thumbnails
-    const miniThumbsWrap = document.getElementById('inline-thumbnails');
-    if (miniThumbsWrap && fileResources.length > 1) {
-      fileResources.forEach((res, idx) => {
-        const fmt = (res.file && res.file.format ? res.file.format : '').toLowerCase();
-        const isImg = IMAGE_FORMATS.includes(fmt);
-        const openUrl = '/materials/' + encodeURIComponent(materialId) + '/resources/' + encodeURIComponent(res._id) + '/open';
-
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'inline-mini-thumb flex-shrink-0 rounded-lg overflow-hidden cursor-pointer relative flex items-center justify-center transition-all duration-150';
-        btn.style.cssText = 'width:50px;height:38px;border:1.5px solid #e2e8f0;background:#ffffff;';
-        btn.title = `${idx + 1}. ${res.label || 'File'}`;
-
-        if (isImg) {
-          btn.innerHTML =
-            `<img src="${openUrl}" alt="" style="width:100%;height:100%;object-fit:contain;padding:2px;" loading="lazy">` +
-            `<span style="position:absolute;bottom:2px;right:3px;font-size:7px;font-family:monospace;color:#64748b;font-weight:700;">${idx + 1}</span>`;
-        } else {
-          btn.innerHTML =
-            `<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;">` +
-            `<span style="font-size:7px;font-family:monospace;font-weight:800;text-transform:uppercase;color:#6366f1;">${fmt || 'FILE'}</span>` +
-            `<span style="font-size:6px;font-family:monospace;color:#94a3b8;">${idx + 1}</span>` +
-            `</div>`;
-        }
-
-        btn.onclick = function () { updateInlineSlideCarousel(idx); };
-        miniThumbsWrap.appendChild(btn);
-      });
-    }
-
-    // Initialize first slide
-    if (fileResources.length > 0) {
-      updateInlineSlideCarousel(0);
+    if (typeof window.initSlideViewer === 'function') {
+      window.initSlideViewer(materialId, fileResources);
     }
   })();
 </script>

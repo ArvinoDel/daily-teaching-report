@@ -1673,5 +1673,172 @@ test('Material Content - Teacher Can Edit First Content', async (t) => {
   });
 });
 
+test('Material Content - XSS Prevention and Safe JSON Rendering (show.ejs, edit.ejs, history.ejs)', async (t) => {
+  const ejs = require('ejs');
+  const fs = require('fs');
+  const path = require('path');
+  const showFile = path.resolve('views/materials/show.ejs');
+  const editFile = path.resolve('views/materials/edit.ejs');
+  const histFile = path.resolve('views/materials/history.ejs');
+
+  const origLoader = ejs.fileLoader;
+  t.after(() => {
+    ejs.fileLoader = origLoader;
+  });
+
+  ejs.fileLoader = function (filePath) {
+    if (filePath.includes('partials/header') || filePath.includes('partials\\header')) {
+      return '<!-- STUBBED_HEADER -->';
+    }
+    if (filePath.includes('partials/footer') || filePath.includes('partials\\footer')) {
+      return '<!-- STUBBED_FOOTER -->';
+    }
+    return origLoader(filePath);
+  };
+
+  const xssLabel = '</script><img src=x onerror=alert(1)>';
+  const xssFilename = 'test"quote\'file<script>alert(2)</script>.png';
+  const maliciousResource = {
+    _id: '670000000000000000000099',
+    kind: 'file',
+    label: xssLabel,
+    file: {
+      originalFilename: xssFilename,
+      format: 'png',
+      bytes: 1024,
+      publicId: 'materials/test/xss'
+    }
+  };
+
+  const testMaterial = {
+    _id: '670000000000000000000001',
+    name: 'XSS Test Material',
+    level: 'Primary',
+    usageCount: 1,
+    hasContent: true,
+  };
+
+  const testContent = {
+    version: 3,
+    body: '<p>Safe body text</p>',
+    resources: [maliciousResource],
+    locked: false,
+    updatedAt: new Date(),
+  };
+
+  await t.test('show.ejs escapes resource label and quotes, and JSON data block parses cleanly', async () => {
+    const rawTemplate = fs.readFileSync(showFile, 'utf8');
+    const html = ejs.render(rawTemplate, {
+      title: 'Show Material',
+      material: testMaterial,
+      content: testContent,
+      userCanEdit: true,
+      userIsAdmin: true,
+      renderMaterialBody: renderMaterialBody,
+      safeJson: safeJson,
+      csrfToken: 'test-token',
+      user: { _id: 'user1', name: 'Teacher', role: 'teacher' },
+      path: '/materials/1',
+    }, { filename: showFile });
+
+    // Assert the exact raw script closing tag and img tag never appear unescaped in HTML
+    assert.ok(!html.includes('</script><img src=x onerror=alert(1)>'), 'Raw XSS payload must not appear in show.ejs output');
+    assert.ok(!html.includes('<img src=x onerror='), 'Unescaped img onerror must not appear in show.ejs');
+    assert.ok(!html.includes('test"quote\'file<script>'), 'Unescaped filename with script tag must not appear in show.ejs');
+
+    // Extract JSON script block
+    const match = html.match(/<script\s+type="application\/json"\s+id="show-material-data">([\s\S]*?)<\/script>/);
+    assert.ok(match, 'show-material-data script block must be present');
+
+    // Proves that safeJson escaped the content so JSON.parse succeeds without script breakout
+    const rawJson = match[1];
+    assert.ok(!rawJson.includes('</script>'), 'safeJson must escape </script> inside JSON tag');
+    const parsed = JSON.parse(rawJson);
+    assert.equal(parsed.fileResources[0].label, xssLabel, 'Parsed JSON maintains original string data safely');
+    assert.equal(parsed.fileResources[0].file.originalFilename, xssFilename);
+  });
+
+  await t.test('edit.ejs escapes resource label and quotes, and JSON data block parses cleanly', async () => {
+    const rawTemplate = fs.readFileSync(editFile, 'utf8');
+    const html = ejs.render(rawTemplate, {
+      title: 'Edit Material',
+      material: testMaterial,
+      content: testContent,
+      maxFileMb: 10,
+      allowedExtensions: ['png', 'jpg', 'pdf'],
+      userCanEdit: true,
+      userIsAdmin: true,
+      safeJson: safeJson,
+      csrfToken: 'test-token',
+      user: { _id: 'user1', name: 'Admin', role: 'admin' },
+      path: '/materials/1/edit',
+    }, { filename: editFile });
+
+    // Assert raw XSS payload never appears unescaped
+    assert.ok(!html.includes('</script><img src=x onerror=alert(1)>'), 'Raw XSS payload must not appear in edit.ejs output');
+    assert.ok(!html.includes('<img src=x onerror='), 'Unescaped img onerror must not appear in edit.ejs');
+
+    // Extract JSON script block
+    const match = html.match(/<script\s+type="application\/json"\s+id="material-editor-data">([\s\S]*?)<\/script>/);
+    assert.ok(match, 'material-editor-data script block must be present');
+
+    const rawJson = match[1];
+    assert.ok(!rawJson.includes('</script>'), 'safeJson must escape </script> inside JSON tag');
+    const parsed = JSON.parse(rawJson);
+    assert.equal(parsed.resources[0].label, xssLabel, 'Parsed JSON maintains original string data safely');
+    assert.equal(parsed.resources[0].file.originalFilename, xssFilename);
+  });
+
+  await t.test('history.ejs escapes resource label, quotes, and revision notes', async () => {
+    const rawTemplate = fs.readFileSync(histFile, 'utf8');
+    const html = ejs.render(rawTemplate, {
+      title: 'Material History',
+      material: testMaterial,
+      revisions: [
+        {
+          version: 1,
+          editedByName: 'Attacker <script>alert(3)</script>',
+          editedAt: new Date(),
+          note: 'Note with </script><img src=x onerror=alert(4)>',
+          body: '<p>Revision notes</p>',
+          resources: [maliciousResource],
+        }
+      ],
+      currentVersion: 1,
+      renderMaterialBody: renderMaterialBody,
+      safeJson: safeJson,
+      csrfToken: 'test-token',
+      user: { _id: 'user1', name: 'Admin', role: 'admin' },
+      path: '/materials/1/history',
+    }, { filename: histFile });
+
+    // Assert raw XSS payload never appears unescaped in history.ejs
+    assert.ok(!html.includes('</script><img src=x onerror=alert(1)>'), 'Raw XSS payload must not appear in history.ejs output');
+    assert.ok(!html.includes('<img src=x onerror='), 'Unescaped img onerror must not appear in history.ejs');
+    assert.ok(!html.includes('Attacker <script>'), 'Unescaped script tag in editor name must not appear');
+    assert.ok(!html.includes('Note with </script>'), 'Unescaped script tag in note must not appear');
+  });
+
+  await t.test('locked material with no content renders friendly locked view for teachers (A4)', async () => {
+    const lockedFile = path.resolve('views/materials/locked.ejs');
+    const rawTemplate = fs.readFileSync(lockedFile, 'utf8');
+    const html = ejs.render(rawTemplate, {
+      title: 'Material Locked',
+      material: {
+        _id: '670000000000000000000002',
+        name: 'Restricted Material',
+        level: 'Advanced',
+      },
+      message: 'This material is locked. Ask an admin to add content.',
+      user: { role: 'teacher' },
+      path: '/materials/2/edit',
+    }, { filename: lockedFile });
+
+    assert.ok(html.includes('This material is locked. Ask an admin to add content.'), 'Must display friendly locked message');
+    assert.ok(html.includes('Restricted Material'), 'Must display material name');
+  });
+});
+
+
 
 
