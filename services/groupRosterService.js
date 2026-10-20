@@ -151,9 +151,77 @@ function applyRosterMove(fromPairs, toPairs, { studentId, normKey, maxStudents =
 }
 
 /**
+ * Pure helper: plan renaming a student in a pairs list.
+ * Finds student by id OR normalized name in a pairs list and returns the new pairs,
+ * or null when the student is not in it.
+ * Checks for duplicates against other students in the pairs list.
+ *
+ * @param {Array<{ name: string, norm: string, id: string|ObjectId|null }>} pairs
+ * @param {Object} options
+ * @param {string|ObjectId} [options.studentId]
+ * @param {string} [options.oldNorm]
+ * @param {string} options.newName
+ * @returns {Array<{ name: string, norm: string, id: string|ObjectId|null }>|null}
+ */
+function planRenameInGroup(pairs, { studentId, oldNorm, newName }) {
+  if (!newName || typeof newName !== 'string' || !newName.trim()) {
+    const err = new Error('Student name is required.');
+    err.status = 400;
+    err.code = 'VALIDATION_ERROR';
+    throw err;
+  }
+  const trimmed = newName.trim();
+  if (trimmed.length > 100) {
+    const err = new Error('Student name max 100 characters.');
+    err.status = 400;
+    err.code = 'VALIDATION_ERROR';
+    throw err;
+  }
+  const newNorm = normalizeName(trimmed);
+  if (!newNorm) {
+    const err = new Error('Invalid student name.');
+    err.status = 400;
+    err.code = 'VALIDATION_ERROR';
+    throw err;
+  }
+
+  const safePairs = Array.isArray(pairs) ? pairs : [];
+  const targetIdStr = studentId ? String(studentId) : null;
+  const targetOldNorm = oldNorm ? String(oldNorm).toLowerCase() : null;
+
+  const idx = safePairs.findIndex(p => {
+    if (targetIdStr && p.id && String(p.id) === targetIdStr) return true;
+    if (targetOldNorm && p.norm === targetOldNorm) return true;
+    return false;
+  });
+
+  if (idx === -1) {
+    return null;
+  }
+
+  // Check if newNorm collides with another student in this group
+  const duplicate = safePairs.find((p, i) => i !== idx && p.norm === newNorm);
+  if (duplicate) {
+    const err = new Error(`A student with this name already exists in this group ("${duplicate.name}").`);
+    err.status = 409;
+    err.code = 'CONFLICT';
+    err.duplicate = true;
+    throw err;
+  }
+
+  const target = safePairs[idx];
+  const updatedPair = {
+    ...target,
+    name: trimmed,
+    norm: newNorm,
+  };
+
+  return safePairs.map((p, i) => (i === idx ? updatedPair : p));
+}
+
+/**
  * Pure helper: rename a student in currentPairs.
- * Validates newName, checks for duplicates within currentPairs,
- * updates name and norm while preserving id.
+ * Thin wrapper around planRenameInGroup for backward compatibility.
  *
  * @param {Array<{ name: string, norm: string, id: string|ObjectId|null }>} currentPairs
  * @param {Object} options
@@ -163,46 +231,26 @@ function applyRosterMove(fromPairs, toPairs, { studentId, normKey, maxStudents =
  * @returns {{ pairs: Array, renamed: Object, oldName: string, students: string[], student_ids: Array }}
  */
 function applyRosterRename(currentPairs, { studentId, normKey, newName }) {
-  if (!newName || typeof newName !== 'string' || !newName.trim()) {
-    throw new Error('Student name is required.');
-  }
-  const trimmed = newName.trim();
-  if (trimmed.length > 100) {
-    throw new Error('Student name max 100 characters.');
-  }
-  const newNorm = normalizeName(trimmed);
-  if (!newNorm) {
-    throw new Error('Invalid student name.');
-  }
-
-  const safePairs = [...(currentPairs || [])];
+  const safePairs = Array.isArray(currentPairs) ? currentPairs : [];
   const targetIdStr = studentId ? String(studentId) : null;
+  const targetOldNorm = normKey ? String(normKey).toLowerCase() : null;
 
   const idx = safePairs.findIndex(p => {
     if (targetIdStr && p.id && String(p.id) === targetIdStr) return true;
-    if (normKey && p.norm === normKey) return true;
+    if (targetOldNorm && p.norm === targetOldNorm) return true;
     return false;
   });
 
-  if (idx === -1) {
-    throw new Error('Student not found in this group.');
+  const newPairs = planRenameInGroup(currentPairs, { studentId, oldNorm: normKey, newName });
+  if (newPairs === null || idx === -1) {
+    const err = new Error('Student not found in this group.');
+    err.status = 404;
+    err.code = 'NOT_FOUND';
+    throw err;
   }
 
-  // Check if newNorm collides with another student in this group
-  const duplicate = safePairs.find((p, i) => i !== idx && p.norm === newNorm);
-  if (duplicate) {
-    throw new Error(`A student with this name already exists in this group ("${duplicate.name}").`);
-  }
-
-  const target = safePairs[idx];
-  const oldName = target.name;
-  const updatedPair = {
-    ...target,
-    name: trimmed,
-    norm: newNorm,
-  };
-
-  const newPairs = safePairs.map((p, i) => (i === idx ? updatedPair : p));
+  const oldName = safePairs[idx].name;
+  const updatedPair = newPairs[idx];
   const roster = pairsToRoster(newPairs);
 
   return {
@@ -533,23 +581,103 @@ async function moveStudent(fromGroup, toGroup, studentId) {
 }
 
 /**
+ * Safe save order sequencing:
+ * 1. Saves Student first (protected by unique index on normalized_name).
+ *    Treats duplicate-key error (11000) as 409 conflict.
+ * 2. Saves Group second. If group save fails, attempts best-effort restoration
+ *    of student's previous attributes (raw_name, full_name, normalized_name, grade_school)
+ *    and rethrows original group error.
+ *
+ * @param {Object} student - Student doc or fake
+ * @param {Object} group - Group doc or fake
+ * @param {Object} newStudentData - { raw_name, full_name, normalized_name, grade_school }
+ * @param {Object} newGroupRoster - { students, student_ids }
+ */
+async function saveStudentAndGroupWithRollback(student, group, newStudentData, newGroupRoster) {
+  const previousState = {
+    raw_name: student.raw_name,
+    full_name: student.full_name,
+    normalized_name: student.normalized_name,
+    grade_school: student.grade_school,
+  };
+
+  student.raw_name = newStudentData.raw_name;
+  student.full_name = newStudentData.full_name;
+  student.normalized_name = newStudentData.normalized_name;
+  student.grade_school = newStudentData.grade_school;
+
+  try {
+    await student.save();
+  } catch (studentErr) {
+    if (studentErr.code === 11000 || (studentErr.message && studentErr.message.includes('E11000'))) {
+      const conflictErr = new Error('A student with this name already exists in the system.');
+      conflictErr.status = 409;
+      conflictErr.code = 'CONFLICT';
+      conflictErr.conflict = true;
+      throw conflictErr;
+    }
+    throw studentErr;
+  }
+
+  group.students = newGroupRoster.students;
+  group.student_ids = newGroupRoster.student_ids;
+
+  try {
+    await group.save();
+  } catch (groupErr) {
+    try {
+      student.raw_name = previousState.raw_name;
+      student.full_name = previousState.full_name;
+      student.normalized_name = previousState.normalized_name;
+      student.grade_school = previousState.grade_school;
+      await student.save();
+    } catch (restoreErr) {
+      console.error('Failed to restore student after group save failure:', restoreErr);
+    }
+    throw groupErr;
+  }
+}
+
+/**
  * Rename a student in a group.
  * Resolves current group names to pairs, identifies the target by studentId,
  * checks for unlinked names (needs repair) and global normalized_name collisions,
- * calls pure helper applyRosterRename, and updates group, Student doc, other groups, and past reports.
+ * calls pure helper planRenameInGroup, and updates group, Student doc, other groups, and past reports.
  *
  * @param {Object} group - Loaded Mongoose Group doc
  * @param {string|ObjectId} studentId - Student ObjectId
  * @param {string} newName - New raw name string
- * @returns {Promise<{ ok: true, name: string, oldName: string, studentId: string, student: Object }>}
+ * @returns {Promise<{ ok: true, name: string, oldName: string, studentId: string, student: Object, groupsUpdated: number, reportsUpdated: number, historyIncomplete: boolean, skippedGroups: Array }>}
  */
 async function renameStudentInGroup(group, studentId, newName) {
-  const currentPairs = await resolveGroupPairs(group);
+  const trimmed = (newName || '').trim();
+  if (!trimmed) {
+    const err = new Error('Student name is required.');
+    err.status = 400;
+    err.code = 'VALIDATION_ERROR';
+    throw err;
+  }
+  if (trimmed.length > 100) {
+    const err = new Error('Student name max 100 characters.');
+    err.status = 400;
+    err.code = 'VALIDATION_ERROR';
+    throw err;
+  }
+  const newNorm = normalizeName(trimmed);
+  if (!newNorm) {
+    const err = new Error('Invalid student name.');
+    err.status = 400;
+    err.code = 'VALIDATION_ERROR';
+    throw err;
+  }
 
+  const currentPairs = await resolveGroupPairs(group);
   const unlinked = currentPairs.find(p => !p.id);
   if (unlinked) {
     const err = new Error("Repair this group's roster first.");
     err.needsRepair = true;
+    err.status = 409;
+    err.code = 'NEEDS_REPAIR';
     err.groupId = group._id ? String(group._id) : '';
     err.groupName = group.group_name || '';
     throw err;
@@ -557,19 +685,10 @@ async function renameStudentInGroup(group, studentId, newName) {
 
   const sDoc = await Student.findById(studentId);
   if (!sDoc) {
-    throw new Error('Student not found.');
-  }
-
-  const trimmed = (newName || '').trim();
-  if (!trimmed) {
-    throw new Error('Student name is required.');
-  }
-  if (trimmed.length > 100) {
-    throw new Error('Student name max 100 characters.');
-  }
-  const newNorm = normalizeName(trimmed);
-  if (!newNorm) {
-    throw new Error('Invalid student name.');
+    const err = new Error('Student not found.');
+    err.status = 404;
+    err.code = 'NOT_FOUND';
+    throw err;
   }
 
   // Check if another Student document in the database has this normalized name
@@ -582,65 +701,111 @@ async function renameStudentInGroup(group, studentId, newName) {
       `A student named "${existingOther.full_name || existingOther.raw_name}" (${existingOther.student_code || 'existing'}) already exists in the system.`
     );
     err.conflict = true;
+    err.status = 409;
+    err.code = 'CONFLICT';
     throw err;
   }
 
+  const oldRawName = sDoc.raw_name;
+  const oldFullName = sDoc.full_name;
+  const oldNorm = sDoc.normalized_name;
+  const newFullName = extractFullName(trimmed);
+  const newGradeSchool = extractGradeSchool(trimmed);
+
   // Pure helper handles group-level duplicate and array mutation
-  const renameResult = applyRosterRename(currentPairs, {
+  const newCurrentPairs = planRenameInGroup(currentPairs, {
     studentId: String(studentId),
-    normKey: sDoc.normalized_name,
+    oldNorm,
     newName: trimmed,
   });
 
-  const oldRawName = sDoc.raw_name;
-  const oldFullName = sDoc.full_name;
+  if (!newCurrentPairs) {
+    const err = new Error('Student not found in this group.');
+    err.status = 404;
+    err.code = 'NOT_FOUND';
+    throw err;
+  }
 
-  // Persist group roster
-  group.students = renameResult.students;
-  group.student_ids = renameResult.student_ids;
-  await group.save();
+  const newCurrentRoster = pairsToRoster(newCurrentPairs);
 
-  // Update Student document
-  sDoc.raw_name = trimmed;
-  sDoc.full_name = extractFullName(trimmed);
-  sDoc.normalized_name = newNorm;
-  sDoc.grade_school = extractGradeSchool(trimmed);
-  await sDoc.save();
+  // Safe save order: Student first, then current group (with rollback on failure)
+  await saveStudentAndGroupWithRollback(
+    sDoc,
+    group,
+    {
+      raw_name: trimmed,
+      full_name: newFullName,
+      normalized_name: newNorm,
+      grade_school: newGradeSchool,
+    },
+    newCurrentRoster
+  );
 
-  // Keep other groups containing this student in sync
+  // Keep other groups containing this student in sync (Zero index pairing)
+  let groupsUpdated = 0;
+  const skippedGroups = [];
+
   try {
-    const otherGroups = await Group.find({
-      _id: { $ne: group._id },
-      $or: [
-        { student_ids: sDoc._id },
-        { students: { $in: [oldRawName, oldFullName].filter(Boolean) } },
-      ],
-    });
+    const allOtherGroups = await Group.find({ _id: { $ne: group._id } });
 
-    for (const og of otherGroups) {
-      let changed = false;
-      if (Array.isArray(og.student_ids) && Array.isArray(og.students)) {
-        for (let i = 0; i < og.student_ids.length; i++) {
-          if (String(og.student_ids[i]) === String(sDoc._id)) {
-            if (og.students[i] !== trimmed) {
-              og.students[i] = trimmed;
-              changed = true;
-            }
-          }
-        }
+    for (const og of allOtherGroups) {
+      const hasName = (og.students || []).some(s => normalizeName(s) === oldNorm);
+      const hasId = (og.student_ids || []).some(sid => String(sid) === String(sDoc._id));
+      if (!hasName && !hasId) {
+        continue;
       }
-      if (Array.isArray(og.students)) {
-        for (let i = 0; i < og.students.length; i++) {
-          if (og.students[i] === oldRawName || (oldFullName && og.students[i] === oldFullName)) {
-            if (og.students[i] !== trimmed) {
-              og.students[i] = trimmed;
-              changed = true;
-            }
-          }
-        }
+
+      // Build pairs with resolveGroupPairs (names are the source of truth)
+      const ogPairs = await resolveGroupPairs(og);
+
+      // Check if other group contains unlinked names (needsRepair situation)
+      const unlinkedOg = ogPairs.find(p => !p.id);
+      if (unlinkedOg) {
+        skippedGroups.push({
+          groupId: og._id,
+          group_name: og.group_name,
+          reason: "Group roster contains unlinked students (repair needed).",
+        });
+        continue;
       }
-      if (changed) {
+
+      let newOgPairs;
+      try {
+        newOgPairs = planRenameInGroup(ogPairs, {
+          studentId: String(sDoc._id),
+          oldNorm,
+          newName: trimmed,
+        });
+      } catch (planErr) {
+        if (planErr.duplicate || planErr.code === 'CONFLICT' || planErr.status === 409) {
+          skippedGroups.push({
+            groupId: og._id,
+            group_name: og.group_name,
+            reason: `A student with this name already exists in this group.`,
+          });
+          continue;
+        }
+        throw planErr;
+      }
+
+      if (!newOgPairs) {
+        continue;
+      }
+
+      const ogRoster = pairsToRoster(newOgPairs);
+      og.students = ogRoster.students;
+      og.student_ids = ogRoster.student_ids;
+
+      try {
         await og.save();
+        groupsUpdated++;
+      } catch (ogSaveErr) {
+        console.error(`Error saving other group ${og._id}:`, ogSaveErr);
+        skippedGroups.push({
+          groupId: og._id,
+          group_name: og.group_name,
+          reason: `Failed to save changes: ${ogSaveErr.message}`,
+        });
       }
     }
   } catch (syncErr) {
@@ -648,53 +813,50 @@ async function renameStudentInGroup(group, studentId, newName) {
   }
 
   // Update past reports so student AC achievements and logs remain consistent
-  try {
-    const Report = require('../models/Report');
-    if (oldRawName && oldRawName !== trimmed) {
-      await Report.updateMany(
-        { ac_students: oldRawName },
-        { $set: { 'ac_students.$[elem]': trimmed } },
-        { arrayFilters: [{ elem: oldRawName }] }
+  let reportsUpdated = 0;
+  let historyIncomplete = false;
+
+  const Report = require('../models/Report');
+
+  async function updateReportField(field, oldVal, newVal) {
+    if (!oldVal || !newVal || oldVal === newVal) return;
+    try {
+      const res = await Report.updateMany(
+        { [field]: oldVal },
+        { $set: { [`${field}.$[elem]`]: newVal } },
+        { arrayFilters: [{ elem: oldVal }] }
       );
-      await Report.updateMany(
-        { ac_reduced_students: oldRawName },
-        { $set: { 'ac_reduced_students.$[elem]': trimmed } },
-        { arrayFilters: [{ elem: oldRawName }] }
-      );
-      await Report.updateMany(
-        { absent_students: oldRawName },
-        { $set: { 'absent_students.$[elem]': trimmed } },
-        { arrayFilters: [{ elem: oldRawName }] }
-      );
+      if (res && typeof res.modifiedCount === 'number') {
+        reportsUpdated += res.modifiedCount;
+      }
+    } catch (reportErr) {
+      historyIncomplete = true;
+      console.error(`Error updating student name in report field "${field}" from "${oldVal}" to "${newVal}":`, reportErr);
     }
-    const newFullName = sDoc.full_name;
-    if (oldFullName && oldFullName !== newFullName && oldFullName !== oldRawName) {
-      await Report.updateMany(
-        { ac_students: oldFullName },
-        { $set: { 'ac_students.$[elem]': newFullName } },
-        { arrayFilters: [{ elem: oldFullName }] }
-      );
-      await Report.updateMany(
-        { ac_reduced_students: oldFullName },
-        { $set: { 'ac_reduced_students.$[elem]': newFullName } },
-        { arrayFilters: [{ elem: oldFullName }] }
-      );
-      await Report.updateMany(
-        { absent_students: oldFullName },
-        { $set: { 'absent_students.$[elem]': newFullName } },
-        { arrayFilters: [{ elem: oldFullName }] }
-      );
-    }
-  } catch (reportErr) {
-    console.error('Error updating student name in reports:', reportErr);
+  }
+
+  if (oldRawName && oldRawName !== trimmed) {
+    await updateReportField('ac_students', oldRawName, trimmed);
+    await updateReportField('ac_reduced_students', oldRawName, trimmed);
+    await updateReportField('absent_students', oldRawName, trimmed);
+  }
+
+  if (oldFullName && oldFullName !== newFullName && oldFullName !== oldRawName) {
+    await updateReportField('ac_students', oldFullName, newFullName);
+    await updateReportField('ac_reduced_students', oldFullName, newFullName);
+    await updateReportField('absent_students', oldFullName, newFullName);
   }
 
   return {
     ok: true,
     name: trimmed,
-    oldName: renameResult.oldName || oldRawName,
+    oldName: oldRawName,
     studentId: String(sDoc._id),
     student: sDoc,
+    groupsUpdated,
+    reportsUpdated,
+    historyIncomplete,
+    skippedGroups,
   };
 }
 
@@ -776,14 +938,17 @@ module.exports = {
   applyRosterRemove,
   applyRosterMove,
   applyRosterRename,
+  planRenameInGroup,
 
   // Name-first resolution helper
   resolveGroupPairs,
 
-  // DB wrappers
+  // DB wrappers & sequencing
+  saveStudentAndGroupWithRollback,
   addStudentsToGroup,
   removeStudentFromGroup,
   moveStudent,
   renameStudentInGroup,
   syncRosterFromNames,
 };
+

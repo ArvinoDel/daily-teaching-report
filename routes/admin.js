@@ -49,6 +49,7 @@ router.get('/groups/:id/edit',        groupCtrl.groupEditForm);
 router.post('/groups/:id/repair',     groupCtrl.groupRepairRoster);
 router.post('/groups/:id/students/:studentId/remove', groupCtrl.groupRemoveStudent);
 router.post('/groups/:id/students/:studentId/move',   groupCtrl.groupMoveStudent);
+router.get('/groups/:id/students/:studentId/rename-preview', groupCtrl.groupRenamePreview);
 router.post('/groups/:id/students/:studentId/rename', groupCtrl.groupRenameStudent);
 router.post('/groups/:id/students',   groupCtrl.groupAddStudents);
 router.post('/groups/:id',            groupCtrl.groupUpdate);

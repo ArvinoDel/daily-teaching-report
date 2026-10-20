@@ -159,4 +159,9 @@ reportSchema.index({ partner_teacher: 1 });
 // Material lookup index
 reportSchema.index({ material: 1 });
 
+// Multikey indexes for student history lookup, preview count and updates (background)
+reportSchema.index({ ac_students: 1 }, { background: true });
+reportSchema.index({ ac_reduced_students: 1 }, { background: true });
+reportSchema.index({ absent_students: 1 }, { background: true });
+
 module.exports = mongoose.model('Report', reportSchema);

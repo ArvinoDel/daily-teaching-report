@@ -16,6 +16,7 @@ const auditLogSchema = new mongoose.Schema({
       'update', 'delete', 'salary_generate', 'salary_publish',
       'salary_update', 'merge', 'salary_bulk_update', 'import_groups',
       'group_student_add', 'group_student_remove', 'group_student_move',
+      'group_student_rename',
       'group_roster_repair',
     ],
     required: true,

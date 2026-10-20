@@ -6,6 +6,8 @@ const {
   applyRosterRemove,
   applyRosterMove,
   applyRosterRename,
+  planRenameInGroup,
+  saveStudentAndGroupWithRollback,
 } = require('../services/groupRosterService');
 const { normalizeName } = require('../models/Student');
 
@@ -276,6 +278,43 @@ test('Group Roster Service - Pure Helper Tests', async (t) => {
     assert.equal(result.renamed.norm, 'alice smith');
     assert.equal(result.renamed.id, 'id-1');
     assert.deepEqual(result.students, ['Alice Smith 12 SPB', 'Bob Jones']);
+  });
+
+  await t.test('9h. planRenameInGroup: pure helper returns new pairs or null when student not found', () => {
+    const pairs = [
+      { name: 'Alice Smith', norm: 'alice smith', id: 'id-1' },
+      { name: 'Bob Jones', norm: 'bob jones', id: 'id-2' },
+    ];
+
+    // Found by id
+    const resId = planRenameInGroup(pairs, { studentId: 'id-1', newName: 'Alice Johnson 11 CS' });
+    assert.equal(resId.length, 2);
+    assert.equal(resId[0].name, 'Alice Johnson 11 CS');
+    assert.equal(resId[0].norm, 'alice johnson');
+    assert.equal(resId[0].id, 'id-1');
+    assert.equal(resId[1].name, 'Bob Jones'); // untouched
+
+    // Found by oldNorm
+    const resNorm = planRenameInGroup(pairs, { oldNorm: 'bob jones', newName: 'Bob Vance 12 A' });
+    assert.equal(resNorm.length, 2);
+    assert.equal(resNorm[0].name, 'Alice Smith'); // untouched
+    assert.equal(resNorm[1].name, 'Bob Vance 12 A');
+    assert.equal(resNorm[1].norm, 'bob vance');
+
+    // Not found returns null
+    const resNotFound = planRenameInGroup(pairs, { studentId: 'id-99', oldNorm: 'unknown', newName: 'Nobody' });
+    assert.equal(resNotFound, null);
+
+    // Duplicate throws conflict
+    assert.throws(
+      () => planRenameInGroup(pairs, { studentId: 'id-1', newName: 'Bob Jones' }),
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, 'CONFLICT');
+        assert.match(err.message, /already exists in this group/);
+        return true;
+      }
+    );
   });
 });
 
@@ -1085,10 +1124,12 @@ test('Group Roster Service - DB Wrapper & Atomicity Tests', async (t) => {
       save: async function () { otherGroupSaved = true; return this; },
     };
 
+    const Report = require('../models/Report');
     const origFindById = Student.findById;
     const origFindOne = Student.findOne;
     const origStudentFind = Student.find;
     const origGroupFind = Group.find;
+    const origReportUpdateMany = Report.updateMany;
 
     Student.findById = async (id) => (String(id) === String(studentId) ? studentDoc : null);
     Student.findOne = async () => null; // No duplicate in DB
@@ -1099,6 +1140,7 @@ test('Group Roster Service - DB Wrapper & Atomicity Tests', async (t) => {
       ],
     });
     Group.find = async () => [otherGroup];
+    Report.updateMany = async () => ({ modifiedCount: 2 });
 
     try {
       const res = await renameStudentInGroup(group, studentId, 'Alice Smith-Williams 10 A');
@@ -1113,11 +1155,16 @@ test('Group Roster Service - DB Wrapper & Atomicity Tests', async (t) => {
       assert.equal(studentDoc.grade_school, '10 A');
       assert.equal(otherGroupSaved, true);
       assert.deepEqual(otherGroup.students, ['Alice Smith-Williams 10 A']);
+      assert.equal(res.groupsUpdated, 1);
+      assert.equal(res.reportsUpdated, 6);
+      assert.equal(res.historyIncomplete, false);
+      assert.deepEqual(res.skippedGroups, []);
     } finally {
       Student.findById = origFindById;
       Student.findOne = origFindOne;
       Student.find = origStudentFind;
       Group.find = origGroupFind;
+      Report.updateMany = origReportUpdateMany;
     }
   });
 
@@ -1185,5 +1232,494 @@ test('Group Roster Service - DB Wrapper & Atomicity Tests', async (t) => {
     assert.equal(responseStatus, 400);
     assert.equal(responseJson.ok, false);
     assert.match(responseJson.message, /Student name is required/);
+  });
+
+  await t.test('25. saveStudentAndGroupWithRollback: student save fails -> group not saved', async () => {
+    let groupSaveCalled = false;
+    const fakeStudent = {
+      raw_name: 'Old Name',
+      full_name: 'Old Name',
+      normalized_name: 'old name',
+      grade_school: '',
+      save: async () => { throw new Error('Student DB write failed'); },
+    };
+    const fakeGroup = {
+      students: ['Old Name'],
+      student_ids: ['id-1'],
+      save: async () => { groupSaveCalled = true; },
+    };
+
+    await assert.rejects(
+      async () => saveStudentAndGroupWithRollback(
+        fakeStudent,
+        fakeGroup,
+        { raw_name: 'New Name', full_name: 'New Name', normalized_name: 'new name', grade_school: '' },
+        { students: ['New Name'], student_ids: ['id-1'] }
+      ),
+      /Student DB write failed/
+    );
+
+    assert.equal(groupSaveCalled, false);
+    assert.deepEqual(fakeGroup.students, ['Old Name']);
+  });
+
+  await t.test('26. saveStudentAndGroupWithRollback: duplicate-key error (11000) on student treated as 409 conflict', async () => {
+    let groupSaveCalled = false;
+    const dupErr = new Error('E11000 duplicate key error');
+    dupErr.code = 11000;
+    const fakeStudent = {
+      raw_name: 'Old Name',
+      full_name: 'Old Name',
+      normalized_name: 'old name',
+      grade_school: '',
+      save: async () => { throw dupErr; },
+    };
+    const fakeGroup = {
+      students: ['Old Name'],
+      student_ids: ['id-1'],
+      save: async () => { groupSaveCalled = true; },
+    };
+
+    await assert.rejects(
+      async () => saveStudentAndGroupWithRollback(
+        fakeStudent,
+        fakeGroup,
+        { raw_name: 'New Name', full_name: 'New Name', normalized_name: 'new name', grade_school: '' },
+        { students: ['New Name'], student_ids: ['id-1'] }
+      ),
+      (err) => {
+        assert.equal(err.status, 409);
+        assert.equal(err.code, 'CONFLICT');
+        assert.equal(err.conflict, true);
+        assert.match(err.message, /already exists in the system/);
+        return true;
+      }
+    );
+
+    assert.equal(groupSaveCalled, false);
+  });
+
+  await t.test('27. saveStudentAndGroupWithRollback: group save fails -> student restored to previous fields', async () => {
+    const studentSaves = [];
+    const fakeStudent = {
+      raw_name: 'Original Raw',
+      full_name: 'Original Full',
+      normalized_name: 'original raw',
+      grade_school: '10 A',
+      save: async function () {
+        studentSaves.push({
+          raw_name: this.raw_name,
+          full_name: this.full_name,
+          normalized_name: this.normalized_name,
+          grade_school: this.grade_school,
+        });
+      },
+    };
+
+    const fakeGroup = {
+      students: ['Original Raw'],
+      student_ids: ['id-1'],
+      save: async () => { throw new Error('Group version conflict or disk full'); },
+    };
+
+    await assert.rejects(
+      async () => saveStudentAndGroupWithRollback(
+        fakeStudent,
+        fakeGroup,
+        { raw_name: 'New Raw', full_name: 'New Full', normalized_name: 'new raw', grade_school: '11 B' },
+        { students: ['New Raw'], student_ids: ['id-1'] }
+      ),
+      /Group version conflict or disk full/
+    );
+
+    // Assert student was saved with new values first, then rolled back to previous values
+    assert.equal(studentSaves.length, 2);
+    assert.equal(studentSaves[0].raw_name, 'New Raw');
+    assert.equal(studentSaves[1].raw_name, 'Original Raw');
+    assert.equal(fakeStudent.raw_name, 'Original Raw');
+    assert.equal(fakeStudent.full_name, 'Original Full');
+    assert.equal(fakeStudent.normalized_name, 'original raw');
+    assert.equal(fakeStudent.grade_school, '10 A');
+  });
+
+  await t.test('28. saveStudentAndGroupWithRollback: both succeed -> both updated', async () => {
+    let studentSaved = false;
+    let groupSaved = false;
+    const fakeStudent = {
+      raw_name: 'Old Name',
+      full_name: 'Old Name',
+      normalized_name: 'old name',
+      grade_school: '',
+      save: async () => { studentSaved = true; },
+    };
+    const fakeGroup = {
+      students: ['Old Name'],
+      student_ids: ['id-1'],
+      save: async () => { groupSaved = true; },
+    };
+
+    await saveStudentAndGroupWithRollback(
+      fakeStudent,
+      fakeGroup,
+      { raw_name: 'New Name 12 C', full_name: 'New Name', normalized_name: 'new name', grade_school: '12 C' },
+      { students: ['New Name 12 C'], student_ids: ['id-1'] }
+    );
+
+    assert.equal(studentSaved, true);
+    assert.equal(groupSaved, true);
+    assert.equal(fakeStudent.raw_name, 'New Name 12 C');
+    assert.equal(fakeStudent.full_name, 'New Name');
+    assert.equal(fakeStudent.grade_school, '12 C');
+    assert.deepEqual(fakeGroup.students, ['New Name 12 C']);
+  });
+
+  await t.test('29. renameStudentInGroup: other group with deliberately misaligned/shuffled students/student_ids: target renamed, no other student touched', async () => {
+    const studentCharlieId = makeObjectId();
+    const studentAliceId = makeObjectId();
+    const studentBobId = makeObjectId();
+
+    const charlieDoc = {
+      _id: studentCharlieId,
+      raw_name: 'Charlie Brown',
+      full_name: 'Charlie Brown',
+      normalized_name: 'charlie brown',
+      grade_school: '',
+      save: async function () { return this; },
+    };
+
+    const currentGroup = {
+      _id: makeObjectId(),
+      group_name: 'Current Group',
+      students: ['Charlie Brown'],
+      student_ids: [studentCharlieId],
+      save: async function () { return this; },
+    };
+
+    // Other group with 3 students: Alice, Bob, Charlie.
+    // Deliberately shuffled student_ids: [studentCharlieId, studentAliceId, studentBobId] (misaligned with students order!)
+    let otherGroupSaved = false;
+    const otherGroup = {
+      _id: makeObjectId(),
+      group_name: 'Misaligned Other Group',
+      students: ['Alice Smith', 'Bob Jones', 'Charlie Brown'],
+      student_ids: [studentCharlieId, studentAliceId, studentBobId], // shuffled order!
+      save: async function () { otherGroupSaved = true; return this; },
+    };
+
+    const Report = require('../models/Report');
+    const origFindById = Student.findById;
+    const origFindOne = Student.findOne;
+    const origStudentFind = Student.find;
+    const origGroupFind = Group.find;
+    const origReportUpdateMany = Report.updateMany;
+
+    Student.findById = async (id) => (String(id) === String(studentCharlieId) ? charlieDoc : null);
+    Student.findOne = async () => null;
+    Student.find = (query) => ({
+      lean: async () => [
+        { _id: studentCharlieId, normalized_name: 'charlie brown', full_name: 'Charlie Brown' },
+        { _id: studentAliceId, normalized_name: 'alice smith', full_name: 'Alice Smith' },
+        { _id: studentBobId, normalized_name: 'bob jones', full_name: 'Bob Jones' },
+      ],
+    });
+    Group.find = async () => [otherGroup];
+    Report.updateMany = async () => ({ modifiedCount: 1 });
+
+    try {
+      const res = await renameStudentInGroup(currentGroup, studentCharlieId, 'Charlie Brown-Davis 12 CS');
+      assert.equal(res.ok, true);
+      assert.equal(otherGroupSaved, true);
+      assert.equal(res.groupsUpdated, 1);
+      assert.deepEqual(res.skippedGroups, []);
+
+      // Verify otherGroup: Alice Smith and Bob Jones are COMPLETELY UNTOUCHED!
+      // Charlie Brown is renamed to Charlie Brown-Davis 12 CS.
+      assert.deepEqual(otherGroup.students, [
+        'Alice Smith',
+        'Bob Jones',
+        'Charlie Brown-Davis 12 CS',
+      ]);
+      // And student_ids are now properly aligned with students via resolveGroupPairs
+      assert.deepEqual(
+        otherGroup.student_ids.map(id => String(id)),
+        [String(studentAliceId), String(studentBobId), String(studentCharlieId)]
+      );
+    } finally {
+      Student.findById = origFindById;
+      Student.findOne = origFindOne;
+      Student.find = origStudentFind;
+      Group.find = origGroupFind;
+      Report.updateMany = origReportUpdateMany;
+    }
+  });
+
+  await t.test('30. renameStudentInGroup: other group with unlinked students is skipped into skippedGroups without throwing', async () => {
+    const studentAliceId = makeObjectId();
+    const aliceDoc = {
+      _id: studentAliceId,
+      raw_name: 'Alice Smith',
+      full_name: 'Alice Smith',
+      normalized_name: 'alice smith',
+      grade_school: '',
+      save: async function () { return this; },
+    };
+
+    const currentGroup = {
+      _id: makeObjectId(),
+      group_name: 'Clean Group',
+      students: ['Alice Smith'],
+      student_ids: [studentAliceId],
+      save: async function () { return this; },
+    };
+
+    let otherGroupSaved = false;
+    const brokenOtherGroup = {
+      _id: makeObjectId(),
+      group_name: 'Inconsistent Group',
+      students: ['Alice Smith', 'Ghost Student Without Doc'],
+      student_ids: [studentAliceId],
+      save: async function () { otherGroupSaved = true; return this; },
+    };
+
+    const Report = require('../models/Report');
+    const origFindById = Student.findById;
+    const origFindOne = Student.findOne;
+    const origStudentFind = Student.find;
+    const origGroupFind = Group.find;
+    const origReportUpdateMany = Report.updateMany;
+
+    Student.findById = async (id) => (String(id) === String(studentAliceId) ? aliceDoc : null);
+    Student.findOne = async () => null;
+    Student.find = (query) => ({
+      // Only Alice has student doc, Ghost Student has no doc
+      lean: async () => [{ _id: studentAliceId, normalized_name: 'alice smith', full_name: 'Alice Smith' }],
+    });
+    Group.find = async () => [brokenOtherGroup];
+    Report.updateMany = async () => ({ modifiedCount: 0 });
+
+    try {
+      const res = await renameStudentInGroup(currentGroup, studentAliceId, 'Alice Johnson');
+      assert.equal(res.ok, true);
+      assert.equal(otherGroupSaved, false); // broken group was NOT modified
+      assert.equal(res.groupsUpdated, 0);
+      assert.equal(res.skippedGroups.length, 1);
+      assert.equal(res.skippedGroups[0].group_name, 'Inconsistent Group');
+      assert.match(res.skippedGroups[0].reason, /unlinked students/);
+    } finally {
+      Student.findById = origFindById;
+      Student.findOne = origFindOne;
+      Student.find = origStudentFind;
+      Group.find = origGroupFind;
+      Report.updateMany = origReportUpdateMany;
+    }
+  });
+
+  await t.test('31. renameStudentInGroup: report update failure sets historyIncomplete: true without failing rename', async () => {
+    const studentAliceId = makeObjectId();
+    const aliceDoc = {
+      _id: studentAliceId,
+      raw_name: 'Alice Smith',
+      full_name: 'Alice Smith',
+      normalized_name: 'alice smith',
+      grade_school: '',
+      save: async function () { return this; },
+    };
+
+    const currentGroup = {
+      _id: makeObjectId(),
+      group_name: 'Class A',
+      students: ['Alice Smith'],
+      student_ids: [studentAliceId],
+      save: async function () { return this; },
+    };
+
+    const Report = require('../models/Report');
+    const origFindById = Student.findById;
+    const origFindOne = Student.findOne;
+    const origStudentFind = Student.find;
+    const origGroupFind = Group.find;
+    const origReportUpdateMany = Report.updateMany;
+
+    Student.findById = async () => aliceDoc;
+    Student.findOne = async () => null;
+    Student.find = () => ({
+      lean: async () => [{ _id: studentAliceId, normalized_name: 'alice smith', full_name: 'Alice Smith' }],
+    });
+    Group.find = async () => [];
+    // Report update throws an error
+    Report.updateMany = async () => { throw new Error('Simulated write failure on reports'); };
+
+    try {
+      const res = await renameStudentInGroup(currentGroup, studentAliceId, 'Alice Cooper');
+      assert.equal(res.ok, true);
+      assert.equal(res.name, 'Alice Cooper');
+      assert.equal(res.historyIncomplete, true);
+    } finally {
+      Student.findById = origFindById;
+      Student.findOne = origFindOne;
+      Student.find = origStudentFind;
+      Group.find = origGroupFind;
+      Report.updateMany = origReportUpdateMany;
+    }
+  });
+
+  await t.test('32. groupRenamePreview: returns matching other groups, caps at 20, and counts report entries', async () => {
+    const { groupRenamePreview } = require('../controllers/adminGroupController');
+    const Report = require('../models/Report');
+
+    const groupId = makeObjectId();
+    const studentId = makeObjectId();
+
+    const studentDoc = {
+      _id: studentId,
+      raw_name: 'Alice Smith',
+      full_name: 'Alice Smith',
+      normalized_name: 'alice smith',
+    };
+
+    const groupDoc = {
+      _id: groupId,
+      group_name: 'Main Class',
+    };
+
+    // Create 25 other groups containing Alice
+    const fakeOtherGroups = Array.from({ length: 25 }, (_, i) => ({
+      _id: makeObjectId(),
+      group_name: `Other Class ${String(i + 1).padStart(2, '0')}`,
+      students: ['Alice Smith 11 CS'],
+      student_ids: [studentId],
+    }));
+
+    const origGroupFindById = Group.findById;
+    const origGroupFind = Group.find;
+    const origStudentFindById = Student.findById;
+    const origReportCount = Report.countDocuments;
+
+    Group.findById = async (id) => (String(id) === String(groupId) ? groupDoc : null);
+    Student.findById = async (id) => (String(id) === String(studentId) ? studentDoc : null);
+    Group.find = () => ({
+      select: () => ({
+        sort: () => ({
+          lean: async () => fakeOtherGroups,
+        }),
+      }),
+    });
+    Report.countDocuments = async (query) => {
+      // Assert $or was passed
+      assert.ok(query.$or, 'Query must use $or');
+      assert.equal(query.$or.length, 3);
+      return 14;
+    };
+
+    let statusCalled = null;
+    let jsonCalled = null;
+    const req = {
+      params: { id: String(groupId), studentId: String(studentId) },
+    };
+    const res = {
+      status: (code) => { statusCalled = code; return res; },
+      json: (data) => { jsonCalled = data; return res; },
+    };
+
+    try {
+      await groupRenamePreview(req, res);
+      assert.equal(jsonCalled.ok, true);
+      assert.equal(jsonCalled.otherGroups.length, 20); // capped at 20
+      assert.equal(jsonCalled.moreGroups, 5); // 25 - 20 = 5
+      assert.equal(jsonCalled.reportEntries, 14);
+      assert.equal(jsonCalled.otherGroups[0].group_name, 'Other Class 01');
+    } finally {
+      Group.findById = origGroupFindById;
+      Group.find = origGroupFind;
+      Student.findById = origStudentFindById;
+      Report.countDocuments = origReportCount;
+    }
+  });
+
+  await t.test('33. groupRenamePreview: returns 400 for invalid ObjectIds and 404 for missing entities', async () => {
+    const { groupRenamePreview } = require('../controllers/adminGroupController');
+
+    // 1. Invalid ObjectIds
+    let statusCalled = null;
+    let jsonCalled = null;
+    const res = {
+      status: (code) => { statusCalled = code; return res; },
+      json: (data) => { jsonCalled = data; return res; },
+    };
+    await groupRenamePreview({ params: { id: 'invalid', studentId: 'invalid' } }, res);
+    assert.equal(statusCalled, 400);
+    assert.equal(jsonCalled.ok, false);
+
+    // 2. Group not found
+    const origGroupFindById = Group.findById;
+    Group.findById = async () => null;
+    try {
+      await groupRenamePreview({ params: { id: String(makeObjectId()), studentId: String(makeObjectId()) } }, res);
+      assert.equal(statusCalled, 404);
+      assert.match(jsonCalled.message, /Group not found/);
+    } finally {
+      Group.findById = origGroupFindById;
+    }
+  });
+
+  await t.test('34. groupRenameStudent: maps typed errors directly without text matching', async () => {
+    const groupId = makeObjectId();
+    const studentId = makeObjectId();
+
+    const origGroupFindById = Group.findById;
+    Group.findById = async () => ({ _id: groupId, group_name: 'Test Group' });
+
+    // Mock groupRosterService.renameStudentInGroup to throw typed errors
+    const service = require('../services/groupRosterService');
+    const origRename = service.renameStudentInGroup;
+
+    let responseStatus = null;
+    let responseJson = null;
+    const res = {
+      status: (code) => { responseStatus = code; return res; },
+      json: (data) => { responseJson = data; return res; },
+    };
+
+    try {
+      // 1. Typed 404 error
+      service.renameStudentInGroup = async () => {
+        const err = new Error('Student not found in this group.');
+        err.status = 404;
+        err.code = 'NOT_FOUND';
+        throw err;
+      };
+      await groupRenameStudent({ params: { id: String(groupId), studentId: String(studentId) }, body: { newName: 'New' } }, res);
+      assert.equal(responseStatus, 404);
+      assert.equal(responseJson.code, 'NOT_FOUND');
+
+      // 2. Typed 409 needsRepair error
+      service.renameStudentInGroup = async () => {
+        const err = new Error("Repair this group's roster first.");
+        err.status = 409;
+        err.code = 'NEEDS_REPAIR';
+        err.needsRepair = true;
+        err.groupId = String(groupId);
+        err.groupName = 'Test Group';
+        throw err;
+      };
+      await groupRenameStudent({ params: { id: String(groupId), studentId: String(studentId) }, body: { newName: 'New' } }, res);
+      assert.equal(responseStatus, 409);
+      assert.equal(responseJson.needsRepair, true);
+      assert.equal(responseJson.code, 'NEEDS_REPAIR');
+
+      // 3. Typed 409 conflict error
+      service.renameStudentInGroup = async () => {
+        const err = new Error('A student with this name already exists in the system.');
+        err.status = 409;
+        err.code = 'CONFLICT';
+        throw err;
+      };
+      await groupRenameStudent({ params: { id: String(groupId), studentId: String(studentId) }, body: { newName: 'New' } }, res);
+      assert.equal(responseStatus, 409);
+      assert.equal(responseJson.code, 'CONFLICT');
+    } finally {
+      Group.findById = origGroupFindById;
+      service.renameStudentInGroup = origRename;
+    }
   });
 });

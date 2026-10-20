@@ -252,7 +252,7 @@
           studentId: btn.dataset.studentId,
           name: btn.dataset.studentName,
           studentCode: btn.dataset.studentCode,
-        });
+        }, btn);
       });
     });
 
@@ -561,6 +561,8 @@
   /* ═══════════════════════════════════════════════════════════════
      EDIT STUDENT MODAL
   ════════════════════════════════════════════════════════════════ */
+  let lastFocusedEditButton = null;
+
   function initEditModal() {
     const modal = document.getElementById('modal-edit-student');
     const cancelBtn = document.getElementById('btn-cancel-edit-student');
@@ -577,6 +579,15 @@
         errorBox.classList.add('hidden');
         errorBox.textContent = '';
       }
+      const previewNotice = document.getElementById('edit-student-preview-notice');
+      if (previewNotice) {
+        previewNotice.classList.add('hidden');
+        previewNotice.innerHTML = '';
+      }
+      if (lastFocusedEditButton && typeof lastFocusedEditButton.focus === 'function') {
+        lastFocusedEditButton.focus();
+        lastFocusedEditButton = null;
+      }
     }
 
     if (cancelBtn) {
@@ -592,6 +603,31 @@
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
         closeModal();
+      }
+    });
+
+    // Focus trap (Tab and Shift+Tab stay inside modal)
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        const focusable = modal.querySelectorAll(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        const visibleFocusable = Array.prototype.filter.call(focusable, el => el.offsetParent !== null);
+        if (visibleFocusable.length === 0) return;
+        const first = visibleFocusable[0];
+        const last = visibleFocusable[visibleFocusable.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
       }
     });
 
@@ -680,17 +716,48 @@
 
           // Update local ROSTER
           const target = ROSTER.find(r => r.studentId === activeEditStudent.studentId);
-          const oldName = activeEditStudent.name;
           if (target) {
             target.name = data.name;
           }
           renderRoster();
           closeModal();
 
+          const nOther = data.groupsUpdated || 0;
+          const mReports = data.reportsUpdated || 0;
           Toast.fire({
             icon: 'success',
-            title: `Updated "${oldName}" to "${data.name}".`,
+            title: `Renamed. Updated ${nOther} other group(s) and ${mReports} report entries.`,
           });
+
+          // Warning if historyIncomplete or skippedGroups is non-empty
+          const skipped = Array.isArray(data.skippedGroups) ? data.skippedGroups : [];
+          if (data.historyIncomplete || skipped.length > 0) {
+            const warningParts = [];
+            if (skipped.length > 0) {
+              const namesList = skipped.map(g => `<li><strong>${escHtml(g.group_name)}</strong>: ${escHtml(g.reason)}</li>`).join('');
+              warningParts.push(`
+                <p class="font-semibold text-slate-800">The following group(s) were skipped and not updated:</p>
+                <ul class="list-disc list-inside mt-1 mb-2 text-xs text-slate-600 space-y-1">${namesList}</ul>
+                <p class="text-xs text-slate-500">Please open those groups and run "Repair roster" to fix any inconsistencies.</p>
+              `);
+            }
+            if (data.historyIncomplete) {
+              warningParts.push(`
+                <p class="text-xs text-amber-700 mt-2 font-medium">
+                  Some past report entries could not be updated automatically.
+                </p>
+              `);
+            }
+
+            Swal.fire({
+              icon: 'warning',
+              title: 'Partial Update Warning',
+              html: `<div class="text-left text-sm text-slate-700 space-y-2">${warningParts.join('')}</div>`,
+              confirmButtonText: 'Understood',
+              confirmButtonColor: '#4f46e5',
+              customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+            });
+          }
 
         } catch (err) {
           console.error(err);
@@ -707,14 +774,15 @@
           }
         } finally {
           confirmBtn.disabled = false;
-          confirmBtn.textContent = 'Save Name';
+          confirmBtn.textContent = 'Save name';
         }
       });
     }
   }
 
-  function openEditModal(student) {
+  async function openEditModal(student, triggerBtn) {
     activeEditStudent = student;
+    lastFocusedEditButton = triggerBtn || document.activeElement;
     const modal = document.getElementById('modal-edit-student');
     if (!modal) return;
 
@@ -722,6 +790,7 @@
     const currentNameEl = document.getElementById('edit-student-current-name');
     const nameInput = document.getElementById('edit-student-name-input');
     const errorBox = document.getElementById('edit-student-error');
+    const previewNotice = document.getElementById('edit-student-preview-notice');
 
     if (codeEl) codeEl.textContent = student.studentCode && student.studentCode !== '—' ? student.studentCode : '—';
     if (currentNameEl) currentNameEl.textContent = student.name || '—';
@@ -733,12 +802,76 @@
       errorBox.textContent = '';
     }
 
+    // Neutral loading state while preview loads
+    if (previewNotice) {
+      previewNotice.className = 'mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 flex items-center gap-2';
+      previewNotice.innerHTML = `
+        <svg class="animate-spin w-3.5 h-3.5 text-slate-400 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+        </svg>
+        <span>Checking other groups and report history…</span>
+      `;
+      previewNotice.classList.remove('hidden');
+    }
+
     modal.classList.remove('hidden');
     if (nameInput) {
       setTimeout(() => {
         nameInput.focus();
         nameInput.select();
       }, 50);
+    }
+
+    // Fetch rename preview
+    const sid = student.studentId;
+    try {
+      const res = await fetch(`/admin/groups/${GROUP_ID}/students/${sid}/rename-preview`, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      });
+      if (!res.ok) throw new Error('Preview failed');
+      const data = await res.json();
+
+      if (activeEditStudent && activeEditStudent.studentId === sid && previewNotice) {
+        const otherGroups = Array.isArray(data.otherGroups) ? data.otherGroups : [];
+        const moreGroups = data.moreGroups || 0;
+        const totalOther = otherGroups.length + moreGroups;
+        const reportEntries = data.reportEntries || 0;
+
+        let groupsListStr = '';
+        if (otherGroups.length > 0) {
+          const names = otherGroups.map(g => escHtml(g.group_name)).join(', ');
+          groupsListStr = ` (${names}${moreGroups > 0 ? `, +${moreGroups} more` : ''})`;
+        }
+
+        previewNotice.className = 'mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900';
+        previewNotice.innerHTML = `
+          <div class="flex items-start gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+            </svg>
+            <div class="leading-relaxed">
+              This renames the student everywhere: in this group, in ${totalOther} other group(s)${groupsListStr} and in ${reportEntries} past report entries.
+            </div>
+          </div>
+        `;
+      }
+    } catch (err) {
+      console.error('Rename preview error:', err);
+      if (activeEditStudent && activeEditStudent.studentId === sid && previewNotice) {
+        // Fallback: general warning text without numbers
+        previewNotice.className = 'mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900';
+        previewNotice.innerHTML = `
+          <div class="flex items-start gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+            </svg>
+            <div class="leading-relaxed">
+              This renames the student everywhere: in this group, in other groups containing this student, and in past report entries.
+            </div>
+          </div>
+        `;
+      }
     }
   }
 

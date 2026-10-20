@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Group    = require('../models/Group');
 const Student  = require('../models/Student');
 const AuditLog = require('../models/AuditLog');
+const Report   = require('../models/Report');
 const { normalizeName } = require('../models/Student');
 const groupRosterService = require('../services/groupRosterService');
 
@@ -71,7 +72,7 @@ async function logAudit(req, action, targetId, targetLabel, meta = {}) {
       meta,
     });
   } catch (e) {
-    console.error('Audit log error:', e);
+    console.error(`Audit log error for action "${action}":`, e);
   }
 }
 
@@ -676,6 +677,76 @@ exports.groupMoveStudent = async (req, res) => {
 };
 
 /* ═══════════════════════════════════════════════════════════════
+   Rename Preview GET /admin/groups/:id/students/:studentId/rename-preview
+═══════════════════════════════════════════════════════════════ */
+exports.groupRenamePreview = async (req, res) => {
+  try {
+    const { id, studentId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(studentId)) {
+      return res.status(400).json({ ok: false, message: 'Invalid group or student ID.' });
+    }
+
+    const group = await Group.findById(id);
+    if (!group) {
+      return res.status(404).json({ ok: false, message: 'Group not found.' });
+    }
+
+    const student = await Student.findById(studentId);
+    if (!student) {
+      return res.status(404).json({ ok: false, message: 'Student not found.' });
+    }
+
+    const studentNorm = student.normalized_name;
+    const studentIdStr = String(student._id);
+
+    const allOtherGroups = await Group.find({ _id: { $ne: group._id } })
+      .select('_id group_name students student_ids')
+      .sort({ group_name: 1 })
+      .lean();
+
+    const matchingOtherGroups = [];
+    for (const og of allOtherGroups) {
+      // Name first, then id
+      const hasName = (og.students || []).some(s => normalizeName(s) === studentNorm);
+      const hasId = !hasName && (og.student_ids || []).some(sid => String(sid) === studentIdStr);
+      if (hasName || hasId) {
+        matchingOtherGroups.push({
+          _id: String(og._id),
+          group_name: og.group_name,
+        });
+      }
+    }
+
+    const totalMatching = matchingOtherGroups.length;
+    const otherGroups = matchingOtherGroups.slice(0, 20);
+    const moreGroups = Math.max(0, totalMatching - otherGroups.length);
+
+    const candidateNames = Array.from(new Set([student.raw_name, student.full_name].filter(Boolean)));
+    let reportEntries = 0;
+    if (candidateNames.length > 0) {
+      reportEntries = await Report.countDocuments({
+        $or: [
+          { ac_students: { $in: candidateNames } },
+          { ac_reduced_students: { $in: candidateNames } },
+          { absent_students: { $in: candidateNames } },
+        ],
+      });
+    }
+
+    return res.json({
+      ok: true,
+      otherGroups,
+      moreGroups,
+      reportEntries,
+    });
+  } catch (err) {
+    console.error('groupRenamePreview error:', err);
+    return res.status(500).json({ ok: false, message: 'Failed to generate rename preview.' });
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════
    Rename Student   POST /admin/groups/:id/students/:studentId/rename
 ═══════════════════════════════════════════════════════════════ */
 exports.groupRenameStudent = async (req, res) => {
@@ -707,40 +778,40 @@ exports.groupRenameStudent = async (req, res) => {
       studentId,
       oldName: result.oldName,
       newName: result.name,
+      groupsUpdated: result.groupsUpdated,
+      reportsUpdated: result.reportsUpdated,
+      historyIncomplete: result.historyIncomplete,
+      skippedGroupsCount: (result.skippedGroups || []).length,
     });
 
     return res.json({
       ok: true,
-      studentId: String(studentId),
       name: result.name,
       oldName: result.oldName,
+      studentId: String(studentId),
       student_code: result.student.student_code || '',
       barcode: result.student.barcode || '',
+      groupsUpdated: result.groupsUpdated,
+      reportsUpdated: result.reportsUpdated,
+      historyIncomplete: result.historyIncomplete,
+      skippedGroups: result.skippedGroups,
     });
   } catch (err) {
     console.error('groupRenameStudent error:', err);
-    if (err.needsRepair) {
-      return res.status(409).json({
-        ok: false,
-        needsRepair: true,
-        groupId: err.groupId,
-        groupName: err.groupName,
-        message: err.message,
-      });
-    }
     if (err.name === 'VersionError') {
       return res.status(409).json({ ok: false, message: 'Group changed, refresh the page' });
     }
-    if (err.conflict) {
-      return res.status(409).json({ ok: false, message: err.message });
+    if (err.status) {
+      const payload = { ok: false, message: err.message || 'Failed to rename student.' };
+      if (err.code) payload.code = err.code;
+      if (err.needsRepair) {
+        payload.needsRepair = true;
+        payload.groupId = err.groupId;
+        payload.groupName = err.groupName;
+      }
+      return res.status(err.status).json(payload);
     }
-    const statusCode = err.message && (
-      err.message.includes('required') ||
-      err.message.includes('max 100') ||
-      err.message.includes('Invalid') ||
-      err.message.includes('already exists in this group')
-    ) ? 400 : 500;
-    return res.status(statusCode).json({ ok: false, message: err.message || 'Failed to rename student.' });
+    return res.status(500).json({ ok: false, message: err.message || 'Failed to rename student.' });
   }
 };
 
