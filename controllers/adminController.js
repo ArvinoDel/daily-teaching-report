@@ -6,6 +6,10 @@ const Group    = require('../models/Group');
 const Material = require('../models/Material'); // 🟢 Added for material autocomplete
 const { normalizeMaterialName, formatMaterialDisplayName } = require('../models/Material');
 const { recordMaterial, resolveMaterialId, recountMaterialUsage, resolveGroupLevel } = require('../services/materialService');
+const {
+  normalizeClassFields,
+  validateCompetition,
+} = require('../services/reportInputService');
 
 const TEACHING_TYPES = [
   'Prime Teacher (Full)',
@@ -40,8 +44,15 @@ function validateReportInput({ date, subject, class_name, duration, teaching_typ
   } else if (!/^[0-9a-fA-F]{24}$/.test(teacher)) {
     errors.push('Invalid teacher selected.');
   }
-  if (!class_name || class_name.trim().length === 0)  errors.push('Class name is required.');
-  if (class_name && class_name.trim().length > 50)    errors.push('Class name max 50 characters.');
+  if (class_name === undefined || class_name === null || class_name === '') {
+    errors.push('Class name is required.');
+  } else if (typeof class_name !== 'string') {
+    errors.push('Invalid class name.');
+  } else {
+    const trimmed = class_name.trim();
+    if (trimmed.length === 0) errors.push('Class name is required.');
+    else if (trimmed.length > 50) errors.push('Class name max 50 characters.');
+  }
   const durStr = String(duration || '').trim();
   const dur    = Number(durStr);
   if (!durStr || !/^\d+$/.test(durStr) || isNaN(dur) || dur < 1) {
@@ -570,12 +581,25 @@ exports.reportEditForm = async (req, res) => {
 
 exports.reportUpdate = async (req, res) => {
   try {
-    const { date, subject, class_name, duration, teaching_type, notes, session_mode, session_type, teacher } = req.body;
+    const { date, subject, duration, teaching_type, notes, session_mode, session_type, teacher } = req.body;
     const uses_personal_internet = req.body.uses_personal_internet === 'true';
     const ac_students          = parseStudentList(req.body.ac_students);
     const absent_students      = parseStudentList(req.body.absent_students);
     const ac_reduced_students  = parseStudentList(req.body.ac_reduced_students);
-    const competition_groups = session_type === 'competition' ? parseStudentList(req.body.competition_groups) : [];
+
+    const normalized = normalizeClassFields({
+      session_type,
+      class_name: req.body.class_name,
+      competition_groups: req.body.competition_groups,
+    });
+    const class_name = normalized.class_name;
+    const competition_groups = normalized.competition_groups;
+
+    const compErrors = validateCompetition({
+      session_type,
+      competition_groups,
+    });
+
     const partner_teacher_name = (req.body.partner_teacher_name || '').trim();
     const partner_teacher_id   = req.body.partner_teacher && /^[0-9a-fA-F]{24}$/.test(req.body.partner_teacher)
       ? req.body.partner_teacher : null;
@@ -585,6 +609,8 @@ exports.reportUpdate = async (req, res) => {
       date, subject, class_name, duration, teaching_type, notes, ac_students, absent_students, ac_reduced_students, session_mode, session_type,
       teacher, partner_teacher: partner_teacher_id, partner_teacher_name, teacherUser
     });
+    validationErrors.push(...compErrors);
+
     if (validationErrors.length > 0) {
       const [report, groupsJson, teachersJson, teachers, materialsJson] = await Promise.all([
         Report.findById(req.params.id).populate('teacher', 'displayName username'),
@@ -593,7 +619,17 @@ exports.reportUpdate = async (req, res) => {
         User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),
         getMaterialsJson(),
       ]);
-      return res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors, groupsJson, teachersJson, teachers, materialsJson });
+      const formData = {
+        ...req.body,
+        class_name,
+        competition_groups,
+      };
+      if (report) {
+        report.session_type = session_type || report.session_type;
+        report.class_name = class_name;
+        report.competition_groups = competition_groups;
+      }
+      return res.render('admin/reports/edit', { report, formData, teachingTypes: TEACHING_TYPES, errors: validationErrors, groupsJson, teachersJson, teachers, materialsJson });
     }
 
     // Load old report values BEFORE update to detect material/level changes

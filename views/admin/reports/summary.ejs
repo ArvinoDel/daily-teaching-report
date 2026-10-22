@@ -196,7 +196,7 @@
                   <!-- Class name + type badge & Material -->
                   <div>
                     <div class="flex flex-wrap items-center gap-2">
-                      <span class="font-bold text-slate-800 text-sm"><%= report.class_name %></span>
+                      <span class="font-bold text-slate-800 text-sm"><%= (report.session_type === 'competition' && report.competition_groups && report.competition_groups.length > 0) ? report.competition_groups.join(' vs ') : report.class_name %></span>
                       <% if (report.groupLevel) { %>
                         <span class="text-xs font-bold text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full whitespace-nowrap">
                           <%= report.groupLevel %>

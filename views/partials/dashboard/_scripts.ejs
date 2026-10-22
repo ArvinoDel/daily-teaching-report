@@ -11,7 +11,9 @@
           subject:               r.subject,
           materialId:            (r.material && (r.material._id || r.material)) ? String(r.material._id || r.material) : null,
           materialHasContent:    Boolean(r.material && r.material.hasContent),
-          class_name:            r.class_name,
+          class_name:            (r.session_type === 'competition' && r.competition_groups && r.competition_groups.length > 0)
+                                   ? r.competition_groups.join(' vs ')
+                                   : r.class_name,
           teaching_type:         r.teaching_type,
           durationFormatted:     r.durationFormatted,
           session_mode:          r.session_mode          || 'offline',

@@ -4,6 +4,10 @@ const User     = require('../models/User');
 const Group    = require('../models/Group'); // 🟢 Added for autocomplete
 const Material = require('../models/Material'); // 🟢 Added for material autocomplete
 const { normalizeMaterialName, formatMaterialDisplayName } = require('../models/Material');
+const {
+  normalizeClassFields,
+  validateCompetition,
+} = require('../services/reportInputService');
 const ExcelJS  = require('exceljs');
 
 const TEACHING_TYPES = ['Prime Teacher (Full)', 'Assistant Teacher', '1/2 Prime Teacher', 'Prime Teacher (Assisted)'];
@@ -35,8 +39,15 @@ function validateReportInput({ date, subject, class_name, duration, teaching_typ
     else if (!/^[0-9a-fA-F]{24}$/.test(teacher)) errors.push('Invalid teacher selected.');
   }
   if (subject && subject.trim().length > 100) errors.push('Subject max 100 characters.');
-  if (!class_name || class_name.trim().length === 0) errors.push('Class name is required.');
-  if (class_name && class_name.trim().length > 50) errors.push('Class name max 50 characters.'); // Bug #4 fix: match schema maxlength
+  if (class_name === undefined || class_name === null || class_name === '') {
+    errors.push('Class name is required.');
+  } else if (typeof class_name !== 'string') {
+    errors.push('Invalid class name.');
+  } else {
+    const trimmed = class_name.trim();
+    if (trimmed.length === 0) errors.push('Class name is required.');
+    else if (trimmed.length > 50) errors.push('Class name max 50 characters.'); // Bug #4 fix: match schema maxlength
+  }
   const dur = Number(duration);
   if (!duration || isNaN(dur) || dur < 1 || !Number.isInteger(dur)) errors.push('Duration must be an integer of at least 1 minute.');
   if (!teaching_type || !TEACHING_TYPES.includes(teaching_type)) errors.push('Invalid teaching type.');
@@ -332,12 +343,25 @@ exports.newForm = async (req, res) => {
 exports.create = async (req, res) => {
   const isAdmin = req.session.user && (req.session.user.role === 'admin' || req.session.user.role === 'superadmin');
   try {
-    const { date, subject, class_name, duration, teaching_type, notes, session_mode, session_type, teacher } = req.body;
+    const { date, subject, duration, teaching_type, notes, session_mode, session_type, teacher } = req.body;
     const uses_personal_internet = req.body.uses_personal_internet === 'true';
     const ac_students          = parseStudentList(req.body.ac_students);
     const absent_students      = parseStudentList(req.body.absent_students);
     const ac_reduced_students  = parseStudentList(req.body.ac_reduced_students);
-    const competition_groups = session_type === 'competition' ? parseStudentList(req.body.competition_groups) : [];
+
+    const normalized = normalizeClassFields({
+      session_type,
+      class_name: req.body.class_name,
+      competition_groups: req.body.competition_groups,
+    });
+    const class_name = normalized.class_name;
+    const competition_groups = normalized.competition_groups;
+
+    const compErrors = validateCompetition({
+      session_type,
+      competition_groups,
+    });
+
     const partner_teacher_name = (req.body.partner_teacher_name || '').trim();
     const partner_teacher_id   = req.body.partner_teacher && /^[0-9a-fA-F]{24}$/.test(req.body.partner_teacher)
       ? req.body.partner_teacher : null;
@@ -353,6 +377,8 @@ exports.create = async (req, res) => {
       teacherUser,
       isAdmin,
     });
+    validationErrors.push(...compErrors);
+
     if (validationErrors.length > 0) {
       const [groupsJson, teachersJson, teachers, materialsJson] = await Promise.all([
         getGroupsJson(),
@@ -360,7 +386,12 @@ exports.create = async (req, res) => {
         isAdmin ? User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }) : Promise.resolve([]),
         getMaterialsJson(),
       ]);
-      return res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: validationErrors, formData: req.body, groupsJson, teachersJson, teachers, materialsJson });
+      const formData = {
+        ...req.body,
+        class_name,
+        competition_groups,
+      };
+      return res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: validationErrors, formData, groupsJson, teachersJson, teachers, materialsJson });
     }
 
     // Record material and obtain canonical Material _id
@@ -471,9 +502,19 @@ exports.createBulk = async (req, res) => {
       const ac_students          = Array.isArray(entry.ac_students)          ? entry.ac_students          : parseStudentList(entry.ac_students || '');
       const absent_students      = Array.isArray(entry.absent_students)      ? entry.absent_students      : parseStudentList(entry.absent_students || '');
       const ac_reduced_students  = Array.isArray(entry.ac_reduced_students)  ? entry.ac_reduced_students  : parseStudentList(entry.ac_reduced_students || '');
-      const competition_groups = entry.session_type === 'competition'
-        ? (Array.isArray(entry.competition_groups) ? entry.competition_groups : parseStudentList(entry.competition_groups || ''))
-        : [];
+      const normalized = normalizeClassFields({
+        session_type: entry.session_type,
+        class_name: entry.class_name,
+        competition_groups: entry.competition_groups,
+      });
+      const class_name = normalized.class_name;
+      const competition_groups = normalized.competition_groups;
+
+      const compErrors = validateCompetition({
+        session_type: entry.session_type,
+        competition_groups,
+      });
+
       const partner_teacher_name = (entry.partner_teacher_name || '').trim();
       const partner_teacher_id   = entry.partner_teacher && /^[0-9a-fA-F]{24}$/.test(entry.partner_teacher)
         ? entry.partner_teacher : null;
@@ -482,7 +523,7 @@ exports.createBulk = async (req, res) => {
         date:                 entry.date,
         teaching_type:        entry.teaching_type,
         duration:             entry.duration,
-        class_name:           entry.class_name,
+        class_name:           class_name,
         subject:              entry.subject,
         notes:                entry.notes,
         ac_students, absent_students, ac_reduced_students,
@@ -494,6 +535,7 @@ exports.createBulk = async (req, res) => {
         teacherUser,
         isAdmin,
       });
+      errs.push(...compErrors);
 
       if (errs.length > 0) {
         errs.forEach(e => allErrors.push(`Report ${i + 1}: ${e}`));
@@ -504,7 +546,7 @@ exports.createBulk = async (req, res) => {
           data: {
             date:                   entry.date,
             subject:                (entry.subject || '').trim(),
-            class_name:             entry.class_name.trim(),
+            class_name:             class_name,
             duration:               Number(entry.duration),
             teaching_type:          entry.teaching_type,
             notes:                  (entry.notes || '').trim(),
@@ -651,12 +693,25 @@ exports.editForm = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
-    const { date, subject, class_name, duration, teaching_type, notes, session_mode, session_type } = req.body;
+    const { date, subject, duration, teaching_type, notes, session_mode, session_type } = req.body;
     const uses_personal_internet = req.body.uses_personal_internet === 'true';
     const ac_students          = parseStudentList(req.body.ac_students);
     const absent_students      = parseStudentList(req.body.absent_students);
     const ac_reduced_students  = parseStudentList(req.body.ac_reduced_students);
-    const competition_groups = session_type === 'competition' ? parseStudentList(req.body.competition_groups) : [];
+
+    const normalized = normalizeClassFields({
+      session_type,
+      class_name: req.body.class_name,
+      competition_groups: req.body.competition_groups,
+    });
+    const class_name = normalized.class_name;
+    const competition_groups = normalized.competition_groups;
+
+    const compErrors = validateCompetition({
+      session_type,
+      competition_groups,
+    });
+
     const partner_teacher_name = (req.body.partner_teacher_name || '').trim();
     const partner_teacher_id   = req.body.partner_teacher && /^[0-9a-fA-F]{24}$/.test(req.body.partner_teacher)
       ? req.body.partner_teacher : null;
@@ -672,6 +727,8 @@ exports.update = async (req, res) => {
       teacherUser,
       isAdmin: false,
     });
+    validationErrors.push(...compErrors);
+
     if (validationErrors.length > 0) {
       const [report, groupsJson, teachersJson, materialsJson] = await Promise.all([
         Report.findOne({ _id: req.params.id, teacher: req.session.user._id }),
@@ -679,7 +736,17 @@ exports.update = async (req, res) => {
         getTeachersJson(),
         getMaterialsJson(),
       ]);
-      return res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: validationErrors, groupsJson, teachersJson, materialsJson });
+      const formData = {
+        ...req.body,
+        class_name,
+        competition_groups,
+      };
+      if (report) {
+        report.session_type = session_type || report.session_type;
+        report.class_name = class_name;
+        report.competition_groups = competition_groups;
+      }
+      return res.render('reports/edit', { report, formData, teachingTypes: TEACHING_TYPES, errors: validationErrors, groupsJson, teachersJson, materialsJson });
     }
 
     // Load old report values BEFORE update to detect material/level changes
@@ -1213,10 +1280,14 @@ exports.exportExcel = async (req, res) => {
         day: '2-digit',
       });
 
+      const displayClassName = (report.session_type === 'competition' && report.competition_groups && report.competition_groups.length > 0)
+        ? report.competition_groups.join(' vs ')
+        : report.class_name;
+
       const values = [
         index + 1,
         dateFormatted,
-        report.class_name,
+        displayClassName,
         report.subject || '',
         report.teaching_type,
         `${report.duration} min`,

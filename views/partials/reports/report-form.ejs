@@ -8,7 +8,7 @@
   const _sessionTypeValue = typeof sessionTypeValue !== 'undefined' ? sessionTypeValue : 'group';
   const _sessionModeValue = typeof sessionModeValue !== 'undefined' ? sessionModeValue : 'offline';
   const _usesPersonalInternetValue = typeof usesPersonalInternetValue !== 'undefined' ? usesPersonalInternetValue : false;
-  const _competitionGroupsValue = typeof competitionGroupsValue !== 'undefined' ? competitionGroupsValue : '';
+  const _competitionGroupsValue = typeof competitionGroupsValue !== 'undefined' ? (Array.isArray(competitionGroupsValue) ? competitionGroupsValue.join(',') : competitionGroupsValue) : '';
   const _subjectValue = typeof subjectValue !== 'undefined' ? subjectValue : '';
   const _teachingTypeValue = typeof teachingTypeValue !== 'undefined' ? teachingTypeValue : '';
   const _durationValue = typeof durationValue !== 'undefined' ? durationValue : (_isEdit ? '' : 60);
@@ -192,6 +192,7 @@
           </div>
         </div>
         <p class="text-xs text-slate-400 mt-1"><span id="comp-group-count">0</span> group(s) selected — min 2 for competition</p>
+        <p id="competition-error" class="hidden text-xs text-red-500 font-semibold mt-1"></p>
       </div>
       <p id="group-hint" class="text-xs text-slate-400">Type a name or select from your groups list.</p>
     </div>
@@ -524,10 +525,20 @@ function setSessionType(type) {
 
   var inactiveCls = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-slate-200 bg-white text-slate-400 hover:border-slate-300';
 
+  if (typeof clearCompetitionError === 'function') clearCompetitionError();
+  var compClassHidden = document.getElementById('comp-class-name-hidden');
+  if (compClassHidden && compClassHidden.parentNode) {
+    compClassHidden.parentNode.removeChild(compClassHidden);
+  }
+
   if (type === 'group') {
     bG.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-brand-500 bg-brand-50 text-brand-700';
     bP.className = inactiveCls;
     bC.className = inactiveCls;
+    competitionSelectedIds = [];
+    var compHiddenG = document.getElementById('competition_groups_hidden');
+    if (compHiddenG) compHiddenG.value = '';
+    renderCompetitionTags();
     groupAcWrap.classList.remove('hidden');
     if (privateAcWrap) privateAcWrap.classList.add('hidden');
     compWrap.classList.add('hidden');
@@ -542,6 +553,10 @@ function setSessionType(type) {
     bG.className = inactiveCls;
     bP.className = 'flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition border-purple-400 bg-purple-50 text-purple-700';
     bC.className = inactiveCls;
+    competitionSelectedIds = [];
+    var compHiddenP = document.getElementById('competition_groups_hidden');
+    if (compHiddenP) compHiddenP.value = '';
+    renderCompetitionTags();
     // Only clear when manually switching away from a GROUP — not when selectGroup() auto-switches to private
     if (selectedGroup && selectedGroup.type !== 'PRIVATE') { clearGroupSelection(); }
     groupAcWrap.classList.add('hidden');
@@ -554,8 +569,6 @@ function setSessionType(type) {
     if (!privateInput.value && classInput.value) privateInput.value = classInput.value;
     groupHint.classList.add('hidden');
     classNameLabel.innerHTML = 'Student Name <span class="text-red-500">*</span>';
-    competitionSelectedIds = [];
-    renderCompetitionTags();
   } else if (type === 'competition') {
     bG.className = inactiveCls;
     bP.className = inactiveCls;
@@ -568,6 +581,10 @@ function setSessionType(type) {
     classInput.required = false;
     privateInput.removeAttribute('name');
     privateInput.required = false;
+    if (formEl) {
+      var allNamedClass = formEl.querySelectorAll('input[name="class_name"]');
+      allNamedClass.forEach(function(el) { el.removeAttribute('name'); });
+    }
     groupHint.classList.remove('hidden');
     classNameLabel.innerHTML = 'Competition Groups <span class="text-red-500">*</span>';
     groupHint.innerHTML = '<span class="inline-flex items-center gap-1 text-orange-600 font-semibold">' +
@@ -1086,6 +1103,14 @@ function clearGroupSelection() {
 /* ═══════════════════════════════════════════════════════════════
    Competition: Multi-Group Selection
    ═══════════════════════════════════════════════════════════════ */
+function clearCompetitionError() {
+  var errEl = document.getElementById('competition-error');
+  if (errEl) {
+    errEl.textContent = '';
+    errEl.classList.add('hidden');
+  }
+}
+
 var competitionSelectedIds = [];
 var competitionSearchInput = document.getElementById('competition-search');
 var competitionDropdown    = document.getElementById('competition-dropdown');
@@ -1124,6 +1149,7 @@ if (competitionSearchInput) {
   });
 
   competitionSearchInput.addEventListener('input', function() {
+    clearCompetitionError();
     var q = this.value.trim().toLowerCase();
     if (!q) { competitionDropdown.classList.add('hidden'); return; }
     var list = groupsData.filter(function(g){return g.group_name.toLowerCase().includes(q);});
@@ -1136,6 +1162,7 @@ if (competitionSearchInput) {
 }
 
 function addCompetitionGroup(id) {
+  clearCompetitionError();
   if (competitionSelectedIds.indexOf(id) === -1) {
     competitionSelectedIds.push(id);
   }
@@ -1146,6 +1173,7 @@ function addCompetitionGroup(id) {
 }
 
 function removeCompetitionGroup(id) {
+  clearCompetitionError();
   competitionSelectedIds = competitionSelectedIds.filter(function(x) { return x !== id; });
   renderCompetitionTags();
   renderCompetitionRoster();
@@ -1171,14 +1199,10 @@ function renderCompetitionTags() {
     return g ? g.group_name : '';
   }).filter(Boolean);
 
-  var hiddenClassName = document.querySelector('input[name="class_name"]');
-  if (!hiddenClassName && competitionSelectedIds.length > 0) {
-    var inp = document.createElement('input');
-    inp.type = 'hidden'; inp.name = 'class_name'; inp.id = 'comp-class-name-hidden';
-    formEl.appendChild(inp);
-    hiddenClassName = inp;
+  var compClassHidden = document.getElementById('comp-class-name-hidden');
+  if (compClassHidden && compClassHidden.parentNode) {
+    compClassHidden.parentNode.removeChild(compClassHidden);
   }
-  if (hiddenClassName) hiddenClassName.value = names.join(', ');
 
   var compGroupsHidden = document.getElementById('competition_groups_hidden');
   if (compGroupsHidden) compGroupsHidden.value = names.join(',');
@@ -1549,6 +1573,15 @@ absentCtrl    = initTagInput({ inputId:'absent-input',     boxId:'absent-tag-box
   if (initSessionType === 'competition') {
     initCompGroups.forEach(function(name) {
       var g = groupsData.find(function(x) { return x.group_name === name; });
+      if (!g) {
+        g = {
+          _id: 'custom_' + encodeURIComponent(name),
+          group_name: name,
+          students: [],
+          type: 'GROUP'
+        };
+        groupsData.push(g);
+      }
       if (g && competitionSelectedIds.indexOf(g._id) === -1) {
         competitionSelectedIds.push(g._id);
       }
@@ -2511,7 +2544,9 @@ function _getMainEntryData() {
   var sessionType = (document.getElementById('session_type_input') || {}).value || 'group';
   var sessionMode = (document.getElementById('session_mode_input') || {}).value || 'offline';
   var className   = '';
-  if (sessionType === 'private') {
+  if (sessionType === 'competition') {
+    className = '';
+  } else if (sessionType === 'private') {
     var pvInp = document.getElementById('private_name_input');
     className = pvInp ? pvInp.value.trim() : '';
   } else {
@@ -2681,7 +2716,13 @@ async function submitBulkReports() {
   var errors    = [];
 
   // Validate main entry
-  if (!mainData.class_name)    errors.push('Report 1: Class name is required.');
+  if (mainData.session_type === 'competition') {
+    if (!mainData.competition_groups || mainData.competition_groups.length < 2) {
+      errors.push('Report 1: Select at least 2 groups for the competition.');
+    }
+  } else {
+    if (!mainData.class_name)    errors.push('Report 1: Class name is required.');
+  }
   if (!mainData.teaching_type) errors.push('Report 1: Teaching type is required.');
   if (!mainData.duration)      errors.push('Report 1: Duration is required.');
   if (mainData.teaching_type === 'Assistant Teacher' || mainData.teaching_type === '1/2 Prime Teacher') {
@@ -2696,7 +2737,13 @@ async function submitBulkReports() {
   // Validate each extra entry independently
   extraData.forEach(function(d, i) {
     var label = 'Report ' + (i + 2);
-    if (!d || !d.class_name)    errors.push(label + ': Class name is required.');
+    if (d && d.session_type === 'competition') {
+      if (!d.competition_groups || d.competition_groups.length < 2) {
+        errors.push(label + ': Select at least 2 groups for the competition.');
+      }
+    } else {
+      if (!d || !d.class_name)    errors.push(label + ': Class name is required.');
+    }
     if (!d || !d.teaching_type) errors.push(label + ': Teaching type is required.');
     if (!d || !d.duration)      errors.push(label + ': Duration is required.');
     if (d && (d.teaching_type === 'Assistant Teacher' || d.teaching_type === '1/2 Prime Teacher')) {
@@ -2719,6 +2766,7 @@ async function submitBulkReports() {
 
   // Hide previous errors
   var errEl = document.getElementById('bulk-errors'); if (errEl) errEl.classList.add('hidden');
+  var errListEl = document.getElementById('bulk-error-list'); if (errListEl) errListEl.innerHTML = '';
 
   try {
     // Each entry carries its own date / teaching_type / duration / teacher
@@ -2763,6 +2811,30 @@ document.getElementById('report-form').addEventListener('submit', function(e) {
     e.preventDefault();
     submitBulkReports();
   } else {
+    var sessionType = (document.getElementById('session_type_input') || {}).value;
+    if (sessionType === 'competition') {
+      var compHidden = document.getElementById('competition_groups_hidden');
+      var compGroups = compHidden && compHidden.value ? compHidden.value.split(',').map(function(s){return s.trim();}).filter(Boolean) : [];
+      if (compGroups.length < 2) {
+        e.preventDefault();
+        e.stopPropagation();
+        var searchInp = document.getElementById('competition-search');
+        var errEl = document.getElementById('competition-error');
+        var typed = searchInp ? searchInp.value.trim() : '';
+        var msg = typed ? 'Choose the group from the list.' : 'Select at least 2 groups for the competition.';
+        if (errEl) {
+          errEl.textContent = msg;
+          errEl.classList.remove('hidden');
+        }
+        if (searchInp) {
+          searchInp.focus();
+          if (typeof searchInp.scrollIntoView === 'function') {
+            searchInp.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }
+        return false;
+      }
+    }
     window.__isDraftDisabled = true;
     window.__isSubmitting = true;
     if (_draftSaveTimer) clearTimeout(_draftSaveTimer);
@@ -2895,10 +2967,11 @@ function _buildEntryHtml(id, num) {
       '<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">' +
         '<div class="space-y-2"><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Session Type</label>' +
           '<div class="flex gap-2">' +
-            '<button type="button" id="bulk-entry-' + id + '-btn-group"       onclick="setEntrySessionType(' + id + ',\'group\')"       class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Group</button>' +
-            '<button type="button" id="bulk-entry-' + id + '-btn-private"     onclick="setEntrySessionType(' + id + ',\'private\')"     class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Private</button>' +
-            '<button type="button" id="bulk-entry-' + id + '-btn-competition" onclick="setEntrySessionType(' + id + ',\'competition\')" class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Comp</button>' +
-          '</div></div>' +
+            '<button type="button" id="bulk-entry-' + id + '-btn-group"   onclick="setEntrySessionType(' + id + ',\'group\')"   class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Group</button>' +
+            '<button type="button" id="bulk-entry-' + id + '-btn-private" onclick="setEntrySessionType(' + id + ',\'private\')" class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Private</button>' +
+          '</div>' +
+          '<p class="text-[11px] text-slate-400 mt-1">Competition reports: use the main form (add other reports one at a time).</p>' +
+        '</div>' +
         '<div class="space-y-2"><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Class Mode</label>' +
           '<div class="flex gap-2">' +
             '<button type="button" id="bulk-entry-' + id + '-btn-offline" onclick="setEntryMode(' + id + ',\'offline\')" class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Offline</button>' +
@@ -3155,9 +3228,22 @@ function restoreDraft() {
   }
 
   // 5. Group / Competition / Manual Roster
-  if (d.session_type === 'competition' && draft.competitionSelectedIds && draft.competitionSelectedIds.length) {
+  if (d.session_type === 'competition') {
     setSessionType('competition');
-    competitionSelectedIds = draft.competitionSelectedIds.slice();
+    if (draft.competitionSelectedIds && draft.competitionSelectedIds.length) {
+      competitionSelectedIds = draft.competitionSelectedIds.slice();
+    } else if (d.competition_groups && d.competition_groups.length) {
+      d.competition_groups.forEach(function(name) {
+        var g = groupsData.find(function(x) { return x.group_name === name; });
+        if (!g) {
+          g = { _id: 'custom_' + encodeURIComponent(name), group_name: name, students: [], type: 'GROUP' };
+          groupsData.push(g);
+        }
+        if (g && competitionSelectedIds.indexOf(g._id) === -1) {
+          competitionSelectedIds.push(g._id);
+        }
+      });
+    }
     renderCompetitionTags();
     renderCompetitionRoster();
     if (draft.studentStates) {

@@ -154,7 +154,7 @@
               <td class="px-6 py-3.5 font-semibold text-slate-800 whitespace-nowrap">
                 <%= r.teacher ? r.teacher.displayName : '—' %>
               </td>
-              <td class="px-6 py-3.5 text-slate-600"><%= r.class_name %></td>
+              <td class="px-6 py-3.5 text-slate-600"><%= (r.session_type === 'competition' && r.competition_groups && r.competition_groups.length > 0) ? r.competition_groups.join(' vs ') : r.class_name %></td>
               <td class="px-6 py-3.5 hidden sm:table-cell">
                 <span class="badge-<%= typeBadgeColor[r.teaching_type] || 'slate' %> text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap">
                   <%= r.teaching_type %>
