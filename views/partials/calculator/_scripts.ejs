@@ -273,6 +273,7 @@
   /* ══════════════════════════════════════════════════════════ */
   function listeningAnswersToBand(n) {
     var v = Math.round(n);
+    if (v < 0 || v > 40) return null;
     if (v >= 39) return 9.0;
     if (v >= 37) return 8.5;
     if (v >= 35) return 8.0;
@@ -283,8 +284,7 @@
     if (v >= 18) return 5.5;
     if (v >= 16) return 5.0;
     if (v >= 13) return 4.5;
-    if (v >= 10) return 4.0;
-    return null; // below 10
+    return 4.0; // 0 - 12 (scores below 10 are 4.0)
   }
 
   function ieltsListeningBandInfo(band) {
