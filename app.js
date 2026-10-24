@@ -123,7 +123,7 @@ const generalLimiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.originalUrl.startsWith('/api/cron'),
+  skip: (req) => req.originalUrl.startsWith('/api/cron') || req.originalUrl.startsWith('/auth/heartbeat'),
 });
 
 app.set('view engine', 'ejs');
