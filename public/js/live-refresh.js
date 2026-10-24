@@ -75,6 +75,7 @@
     return fetch(url, {
       method: 'GET',
       credentials: 'same-origin',
+      cache: 'no-store',
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
     })
       .then(function (res) {

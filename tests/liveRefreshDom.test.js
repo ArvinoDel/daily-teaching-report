@@ -383,3 +383,26 @@ test('LiveRefresh - no trailing refresh happens after a fallback reload', async 
   assert.strictEqual(fetchCount, 1);
 });
 
+test('LiveRefresh - fetch options include cache: no-store, same-origin credentials, and XMLHttpRequest header', async () => {
+  const initialHtml = `<div data-live-section="sec-1">Initial</div>`;
+  const { window } = createEnvironment(initialHtml);
+  let capturedOptions = null;
+
+  window.fetch = async (url, options) => {
+    capturedOptions = options;
+    return {
+      ok: true,
+      url,
+      text: async () => '<div data-live-section="sec-1">Updated</div>'
+    };
+  };
+
+  await window.LiveRefresh.refresh('sec-1');
+
+  assert.ok(capturedOptions);
+  assert.strictEqual(capturedOptions.cache, 'no-store');
+  assert.strictEqual(capturedOptions.credentials, 'same-origin');
+  assert.strictEqual(capturedOptions.headers['X-Requested-With'], 'XMLHttpRequest');
+});
+
+
