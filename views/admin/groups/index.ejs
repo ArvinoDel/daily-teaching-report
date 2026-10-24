@@ -255,7 +255,7 @@
       </div>
 
       <!-- ── Real content ──────────────────────────────────────────── -->
-      <div id="real-content" class="hidden">
+      <div id="real-content" data-live-section="admin-groups-table" class="hidden">
         <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
           <% if (groups.length===0) { %>
             <div class="py-16 text-center">
@@ -550,7 +550,10 @@
                 Swal.fire({
                   title: 'Deleted!', icon: 'success', timer: 1400, showConfirmButton: false,
                   customClass: { popup: 'rounded-2xl' }
-                }).then(function () { window.location.reload(); });
+                }).then(function () {
+                  clearSelection();
+                  LiveRefresh.refresh('admin-groups-table');
+                });
               } else {
                 Swal.fire({
                   title: 'Error', text: 'Failed to delete. Please try again.', icon: 'error',
@@ -591,7 +594,10 @@
                     title: 'Deleted!', text: data.deleted + ' group(s) removed.', icon: 'success',
                     timer: 1500, showConfirmButton: false, customClass: { popup: 'rounded-2xl' }
                   })
-                    .then(function () { window.location.reload(); });
+                    .then(function () {
+                      clearSelection();
+                      LiveRefresh.refresh('admin-groups-table');
+                    });
                 } else {
                   Swal.fire({
                     title: 'Error', text: data.error || 'Failed.', icon: 'error',
@@ -609,10 +615,7 @@
         }
 
         /* ── Skeleton swap + infinite scroll ─────────────────────── */
-        document.addEventListener('DOMContentLoaded', function () {
-          document.getElementById('page-skeleton').classList.add('hidden');
-          document.getElementById('real-content').classList.remove('hidden');
-
+        function initGroupScroll() {
           var PAGE_SIZE = 12;
           var rows = Array.from(document.querySelectorAll('.data-row'));
           var sentinel = document.getElementById('scroll-sentinel');
@@ -645,6 +648,20 @@
             }, { rootMargin: '160px' }).observe(sentinel);
           } else {
             rows.forEach(function (el) { el.classList.remove('hidden'); });
+          }
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+          document.getElementById('page-skeleton').classList.add('hidden');
+          document.getElementById('real-content').classList.remove('hidden');
+          initGroupScroll();
+        });
+
+        /* Re-init scroll after live section swap */
+        document.addEventListener('live:refreshed', function (e) {
+          if (e.detail.sections.indexOf('admin-groups-table') !== -1) {
+            clearSelection();
+            initGroupScroll();
           }
         });
 
