@@ -307,3 +307,79 @@ test('LiveRefresh - both promises from calls 1 and 2 resolve after trailing refr
   assert.strictEqual(p2Resolved, true);
   assert.strictEqual(fetchCount, 2);
 });
+
+test('LiveRefresh - empty 200 response triggers reload fallback and does not block later refresh', async () => {
+  const initialHtml = `<div data-live-section="sec-1">Initial</div>`;
+  const { window, isReloaded } = createEnvironment(initialHtml);
+
+  // First call returns whitespace 200 response
+  window.fetch = async () => ({
+    ok: true,
+    status: 200,
+    url: 'http://localhost:3000/reports',
+    text: async () => '   \n\t  '
+  });
+
+  await window.LiveRefresh.refresh('sec-1');
+  assert.strictEqual(isReloaded(), true);
+
+  // Later call should work because guard was reset
+  window.fetch = async () => ({
+    ok: true,
+    status: 200,
+    url: 'http://localhost:3000/reports',
+    text: async () => '<div data-live-section="sec-1">Recovered</div>'
+  });
+
+  await window.LiveRefresh.refresh('sec-1');
+  assert.strictEqual(window.document.querySelector('[data-live-section="sec-1"]').innerHTML, 'Recovered');
+});
+
+test('LiveRefresh - fetch rejects, then later refresh works', async () => {
+  const initialHtml = `<div data-live-section="sec-1">Initial</div>`;
+  const { window, isReloaded } = createEnvironment(initialHtml);
+
+  window.fetch = async () => {
+    throw new Error('Network timeout');
+  };
+
+  await window.LiveRefresh.refresh('sec-1');
+  assert.strictEqual(isReloaded(), true);
+
+  window.fetch = async () => ({
+    ok: true,
+    status: 200,
+    url: 'http://localhost:3000/reports',
+    text: async () => '<div data-live-section="sec-1">Recovered After Reject</div>'
+  });
+
+  await window.LiveRefresh.refresh('sec-1');
+  assert.strictEqual(window.document.querySelector('[data-live-section="sec-1"]').innerHTML, 'Recovered After Reject');
+});
+
+test('LiveRefresh - no trailing refresh happens after a fallback reload', async () => {
+  const initialHtml = `
+    <div data-live-section="sec-1">Initial 1</div>
+    <div data-live-section="sec-2">Initial 2</div>
+  `;
+  const { window, isReloaded } = createEnvironment(initialHtml);
+  let fetchCount = 0;
+
+  window.fetch = () => {
+    fetchCount++;
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        reject(new Error('Fetch failure on flight 1'));
+      }, 30);
+    });
+  };
+
+  const p1 = window.LiveRefresh.refresh('sec-1');
+  const p2 = window.LiveRefresh.refresh('sec-2');
+
+  await Promise.all([p1, p2]);
+
+  assert.strictEqual(isReloaded(), true);
+  assert.strictEqual(fetchCount, 1);
+});
+

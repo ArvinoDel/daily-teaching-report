@@ -36,10 +36,31 @@
   }
 
   /**
-   * Fetch the current URL, parse response HTML, and swap matching sections.
+   * Central finish handler ensuring _inFlight is ALWAYS reset.
+   */
+  function _finish() {
+    _inFlight = false;
+  }
+
+  /**
+   * Trigger fallback reload, discard pending trailing refresh queue,
+   * and resolve any pending callers.
+   */
+  function _fallbackReload() {
+    _pendingSections = [];
+    var resolvers = _pendingResolvers;
+    _pendingResolvers = [];
+    for (var i = 0; i < resolvers.length; i++) {
+      try { resolvers[i](); } catch (e) { /* ignore */ }
+    }
+    window.location.reload();
+  }
+
+  /**
+   * Fetch current URL, validate response, and swap matching sections.
    *
    * @param {string[]} names
-   * @returns {Promise<boolean>} resolves true on success, false on reload fallback
+   * @returns {Promise<boolean>} true on successful swap, false on fallback reload
    */
   function _performSwap(names) {
     var scrollX = window.scrollX || window.pageXOffset || 0;
@@ -58,15 +79,16 @@
     })
       .then(function (res) {
         if (!res.ok || (res.url && res.url.indexOf('/auth/login') !== -1)) {
-          _pendingSections = [];
-          _pendingResolvers = [];
-          window.location.reload();
+          _fallbackReload();
           return false;
         }
         return res.text();
       })
       .then(function (htmlText) {
-        if (!htmlText) return false;
+        if (typeof htmlText !== 'string' || !htmlText.trim || !htmlText.trim()) {
+          _fallbackReload();
+          return false;
+        }
 
         var parser = new DOMParser();
         var doc = parser.parseFromString(htmlText, 'text/html');
@@ -76,9 +98,7 @@
           var liveEl  = document.querySelector('[data-live-section="' + name + '"]');
           var freshEl = doc.querySelector('[data-live-section="' + name + '"]');
           if (!liveEl || !freshEl) {
-            _pendingSections = [];
-            _pendingResolvers = [];
-            window.location.reload();
+            _fallbackReload();
             return false;
           }
         }
@@ -106,9 +126,7 @@
         return true;
       })
       .catch(function () {
-        _pendingSections = [];
-        _pendingResolvers = [];
-        window.location.reload();
+        _fallbackReload();
         return false;
       });
   }
@@ -160,11 +178,7 @@
 
     return new Promise(function (resolve) {
       _runCycle(names, [resolve])
-        .then(function () {
-          _inFlight = false;
-        }, function () {
-          _inFlight = false;
-        });
+        .then(_finish, _finish);
     });
   }
 
