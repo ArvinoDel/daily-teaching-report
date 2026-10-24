@@ -190,11 +190,10 @@
           </svg>
           <span class="truncate">Notifications</span>
         </div>
-        <% if (typeof unreadNotificationCount !== 'undefined' && unreadNotificationCount > 0) { %>
-          <span class="px-2 py-0.5 text-xs font-bold text-white bg-red-500 rounded-full flex-shrink-0">
-            <%= unreadNotificationCount %>
-          </span>
-        <% } %>
+        <% const _mobNotifCount = typeof unreadNotificationCount !== 'undefined' ? unreadNotificationCount : 0; %>
+        <span id="mobile-notif-badge" data-notif-badge="menu" class="px-2 py-0.5 text-xs font-bold text-white bg-red-500 rounded-full flex-shrink-0 <%= _mobNotifCount > 0 ? '' : 'hidden' %>">
+          <%= _mobNotifCount %>
+        </span>
       </a>
 
       <a href="/profile/edit" onclick="toggleMenu()"
