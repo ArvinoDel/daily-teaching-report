@@ -64,7 +64,9 @@ exports.logout = async (req, res) => {
 
 // GET /auth/heartbeat - Keepalive ping for online presence
 exports.heartbeat = (req, res) => {
-  res.status(200).json({ ok: true, isOnline: !!(req.session && req.session.user) });
+  const isOnline = !!(req.session && req.session.user);
+  const unreadCount = isOnline ? (res.locals.unreadNotificationCount || 0) : 0;
+  res.status(200).json({ ok: true, isOnline, unreadCount });
 };
 
 // GET /auth/register

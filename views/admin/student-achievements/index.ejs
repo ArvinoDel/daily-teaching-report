@@ -234,7 +234,7 @@
 </div>
 
 <!-- ── Real content ──────────────────────────────────────────── -->
-<div id="real-content" class="hidden">
+<div id="real-content" data-live-section="admin-achievements-list" class="hidden">
 
 <% if (students.length === 0) { %>
   <div class="bg-white rounded-2xl border border-slate-100 shadow-sm py-16 text-center">
@@ -378,7 +378,7 @@
 <script id="students-json"   type="application/json"><%- studentsJson %></script>
 
 <script>
-  document.addEventListener('DOMContentLoaded', function () {
+  function initAchievements() {
 
     /* ── 1. Skeleton → real content ───────────────────────── */
     document.getElementById('page-skeleton').classList.add('hidden');
@@ -487,6 +487,15 @@
     document.addEventListener('click', function (e) {
       if (!document.getElementById('search-wrapper').contains(e.target)) dropdown.classList.add('hidden');
     });
+  } // end initAchievements
+
+  document.addEventListener('DOMContentLoaded', initAchievements);
+
+  /* Re-init after live section swap */
+  document.addEventListener('live:refreshed', function (e) {
+    if (e.detail.sections.indexOf('admin-achievements-list') !== -1) {
+      initAchievements();
+    }
   });
 </script>
 
@@ -550,7 +559,7 @@ async function runStudentSync() {
     var data = await res.json();
     if (data.ok) {
       alert(data.message || 'Sync successful! All students now have barcodes.');
-      window.location.reload();
+      LiveRefresh.refresh('admin-achievements-list');
     } else {
       alert('Sync failed: ' + (data.error || 'Unknown error'));
       btn.disabled = false;

@@ -1,4 +1,4 @@
-<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
+<div data-live-section="dashboard-daily-summary" class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
   <div class="px-4 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between">
     <div>
       <h2 class="text-sm font-bold text-slate-800">Daily Summary</h2>
@@ -83,4 +83,32 @@
     </div>
 
   <% } %>
+  <%# JSON data block: scripts cannot re-execute after innerHTML swap, so _scripts.ejs
+      re-reads this element's textContent via the live:refreshed event handler. %>
+  <script type="application/json" id="daily-data-json">
+    <%- JSON.stringify(dailySummary.map(function (day) {
+      return {
+        dateLabel: new Date(day.date).toLocaleDateString('en-US', {
+          weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
+        }),
+        reports: day.reports.map(function (r) {
+          return {
+            _id:                   String(r._id),
+            createdAt:             r.createdAt ? r.createdAt : null,
+            subject:               r.subject,
+            materialId:            (r.material && (r.material._id || r.material)) ? String(r.material._id || r.material) : null,
+            materialHasContent:    Boolean(r.material && r.material.hasContent),
+            class_name:            (r.session_type === 'competition' && r.competition_groups && r.competition_groups.length > 0)
+                                     ? r.competition_groups.join(' vs ')
+                                     : r.class_name,
+            teaching_type:         r.teaching_type,
+            durationFormatted:     r.durationFormatted,
+            session_mode:          r.session_mode          || 'offline',
+            session_type:          r.session_type          || 'group',
+            uses_personal_internet: r.uses_personal_internet || false,
+          };
+        }),
+      };
+    })) %>
+  </script>
 </div>
