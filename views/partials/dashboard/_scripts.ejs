@@ -1,32 +1,7 @@
-<script type="application/json" id="daily-data-json">
-  <%- JSON.stringify(dailySummary.map(function (day) {
-    return {
-      dateLabel: new Date(day.date).toLocaleDateString('en-US', {
-        weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
-      }),
-      reports: day.reports.map(function (r) {
-        return {
-          _id:                   String(r._id),
-          createdAt:             r.createdAt ? r.createdAt : null,
-          subject:               r.subject,
-          materialId:            (r.material && (r.material._id || r.material)) ? String(r.material._id || r.material) : null,
-          materialHasContent:    Boolean(r.material && r.material.hasContent),
-          class_name:            (r.session_type === 'competition' && r.competition_groups && r.competition_groups.length > 0)
-                                   ? r.competition_groups.join(' vs ')
-                                   : r.class_name,
-          teaching_type:         r.teaching_type,
-          durationFormatted:     r.durationFormatted,
-          session_mode:          r.session_mode          || 'offline',
-          session_type:          r.session_type          || 'group',
-          uses_personal_internet: r.uses_personal_internet || false,
-        };
-      }),
-    };
-  })) %>
-</script>
 <script>
   /* ── Data ────────────────────────────────────────────────── */
-  const dailyData = JSON.parse(document.getElementById('daily-data-json').textContent);
+  /* `let` so the live:refreshed handler can reassign after section swap */
+  let dailyData = JSON.parse(document.getElementById('daily-data-json').textContent);
 
   const badgeMap = {
     'Prime Teacher (Full)':     'badge-emerald',
@@ -206,7 +181,13 @@
               timer: 1500,
               showConfirmButton: false,
             }).then(function () {
-              window.location.reload();
+              hideDayDetail();
+              LiveRefresh.refresh([
+                'dashboard-stats',
+                'dashboard-type-breakdown',
+                'dashboard-commission',
+                'dashboard-daily-summary',
+              ]);
             });
           } else {
             Swal.fire({
@@ -228,5 +209,15 @@
           });
         });
     });
+  });
+
+  /* ── Live refresh: re-parse dailyData after section swap ─── */
+  document.addEventListener('live:refreshed', function (e) {
+    if (e.detail.sections.indexOf('dashboard-daily-summary') !== -1) {
+      var jsonEl = document.getElementById('daily-data-json');
+      if (jsonEl) {
+        try { dailyData = JSON.parse(jsonEl.textContent); } catch (err) { /* keep stale */ }
+      }
+    }
   });
 </script>
