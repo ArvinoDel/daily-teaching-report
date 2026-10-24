@@ -198,8 +198,42 @@ test('LiveRefresh - falls back to window.location.reload when section is missing
   assert.strictEqual(isReloaded(), true);
 });
 
-test('LiveRefresh - in-flight guard avoids duplicate concurrent fetch requests', async () => {
-  const initialHtml = `<div data-live-section="sec-1">Old</div>`;
+test('LiveRefresh - two calls in quick succession: trailing fetch updates with second response data', async () => {
+  const initialHtml = `<div data-live-section="sec-1">Initial</div>`;
+  const { window } = createEnvironment(initialHtml);
+  let fetchCount = 0;
+
+  window.fetch = () => {
+    fetchCount++;
+    const currentCount = fetchCount;
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({
+          ok: true,
+          url: 'http://localhost:3000/reports',
+          text: async () => `<div data-live-section="sec-1">Update ${currentCount}</div>`
+        });
+      }, 30);
+    });
+  };
+
+  const p1 = window.LiveRefresh.refresh('sec-1');
+  const p2 = window.LiveRefresh.refresh('sec-1');
+
+  await Promise.all([p1, p2]);
+
+  assert.strictEqual(fetchCount, 2);
+  assert.strictEqual(window.document.querySelector('[data-live-section="sec-1"]').innerHTML, 'Update 2');
+});
+
+test('LiveRefresh - five calls during one flight trigger exactly one trailing fetch for union of sections', async () => {
+  const initialHtml = `
+    <div data-live-section="sec-1">Old 1</div>
+    <div data-live-section="sec-2">Old 2</div>
+    <div data-live-section="sec-3">Old 3</div>
+    <div data-live-section="sec-4">Old 4</div>
+    <div data-live-section="sec-5">Old 5</div>
+  `;
   const { window } = createEnvironment(initialHtml);
   let fetchCount = 0;
 
@@ -210,17 +244,66 @@ test('LiveRefresh - in-flight guard avoids duplicate concurrent fetch requests',
         resolve({
           ok: true,
           url: 'http://localhost:3000/reports',
-          text: async () => '<div data-live-section="sec-1">Refreshed</div>'
+          text: async () => `
+            <div data-live-section="sec-1">New 1</div>
+            <div data-live-section="sec-2">New 2</div>
+            <div data-live-section="sec-3">New 3</div>
+            <div data-live-section="sec-4">New 4</div>
+            <div data-live-section="sec-5">New 5</div>
+          `
         });
-      }, 50);
+      }, 30);
     });
   };
 
   const p1 = window.LiveRefresh.refresh('sec-1');
-  const p2 = window.LiveRefresh.refresh('sec-1');
+  const p2 = window.LiveRefresh.refresh('sec-2');
+  const p3 = window.LiveRefresh.refresh('sec-3');
+  const p4 = window.LiveRefresh.refresh('sec-2');
+  const p5 = window.LiveRefresh.refresh('sec-4');
+  const p6 = window.LiveRefresh.refresh('sec-5');
+
+  await Promise.all([p1, p2, p3, p4, p5, p6]);
+
+  assert.strictEqual(fetchCount, 2);
+  assert.strictEqual(window.document.querySelector('[data-live-section="sec-1"]').innerHTML, 'New 1');
+  assert.strictEqual(window.document.querySelector('[data-live-section="sec-2"]').innerHTML, 'New 2');
+  assert.strictEqual(window.document.querySelector('[data-live-section="sec-3"]').innerHTML, 'New 3');
+  assert.strictEqual(window.document.querySelector('[data-live-section="sec-4"]').innerHTML, 'New 4');
+  assert.strictEqual(window.document.querySelector('[data-live-section="sec-5"]').innerHTML, 'New 5');
+});
+
+test('LiveRefresh - both promises from calls 1 and 2 resolve after trailing refresh', async () => {
+  const initialHtml = `<div data-live-section="sec-1">Initial</div>`;
+  const { window } = createEnvironment(initialHtml);
+  let fetchCount = 0;
+
+  window.fetch = () => {
+    fetchCount++;
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve({
+          ok: true,
+          url: 'http://localhost:3000/reports',
+          text: async () => `<div data-live-section="sec-1">Done ${fetchCount}</div>`
+        });
+      }, 30);
+    });
+  };
+
+  let p1Resolved = false;
+  let p2Resolved = false;
+
+  const p1 = window.LiveRefresh.refresh('sec-1').then(() => {
+    p1Resolved = true;
+  });
+  const p2 = window.LiveRefresh.refresh('sec-1').then(() => {
+    p2Resolved = true;
+  });
 
   await Promise.all([p1, p2]);
 
-  assert.strictEqual(fetchCount, 1);
-  assert.strictEqual(window.document.querySelector('[data-live-section="sec-1"]').innerHTML, 'Refreshed');
+  assert.strictEqual(p1Resolved, true);
+  assert.strictEqual(p2Resolved, true);
+  assert.strictEqual(fetchCount, 2);
 });
