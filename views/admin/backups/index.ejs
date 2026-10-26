@@ -338,8 +338,10 @@
                   </div>
 
                   <!-- Retention / Expiry Info -->
-                  <% if (b.pinned) { %>
-                    <span class="text-[11px] text-slate-400">Never expires</span>
+                  <% if (b.isPinned) { %>
+                    <span class="text-[11px] font-medium text-amber-700">Pinned</span>
+                  <% } else if (b.isProtectedLatest) { %>
+                    <span class="text-[11px] font-medium text-emerald-700">Kept (newest)</span>
                   <% } else if (b.status === 'success') { %>
                     <span class="text-[11px] <%= b.isExpiringSoon ? 'text-amber-600 font-bold' : 'text-slate-400' %>">
                       <%= b.isExpiringSoon ? '⚠️ Expiring' : 'Expires' %>
@@ -529,48 +531,112 @@
     });
   });
 
-  // ── Delete Expired Now Button ────────────────────────────────────
+  // ── Delete Expired Now Button (with Preview Step) ─────────────────
   var pruneBtn = document.getElementById('pruneExpiredBtn');
   if (pruneBtn) {
     pruneBtn.addEventListener('click', async function () {
-      var confirmed = await Swal.fire({
-        title:              'Delete Expired Backups?',
-        text:               'This will delete all unpinned backups older than <%= retentionDays %> days from MongoDB and Cloudinary. Pinned backups and the 2 newest successful backups are always protected.',
-        icon:               'warning',
-        showCancelButton:   true,
-        confirmButtonColor: '#e11d48',
-        cancelButtonColor:  '#64748b',
-        confirmButtonText:  'Yes, Delete Expired',
-        cancelButtonText:   'Cancel',
-        reverseButtons:     true,
-      });
-
-      if (!confirmed.isConfirmed) return;
-
       Swal.fire({
-        title: 'Pruning Expired Backups...',
-        text:  'Cleaning MongoDB records and removing Cloudinary assets.',
+        title: 'Scanning for Expired Backups...',
+        text:  'Checking retention rules and orphan storage files...',
         allowOutsideClick: false,
         didOpen: () => { Swal.showLoading(); },
       });
 
       try {
-        var res = await fetch('/admin/backups/prune', {
+        var prevRes = await fetch('/admin/backups/prune?preview=1&sweepOrphans=1', {
           method:  'POST',
           headers: {
             'X-Requested-With': 'XMLHttpRequest',
             'x-csrf-token':     '<%= csrfToken %>',
           },
         });
+        var prevData = await prevRes.json();
+
+        if (!prevData.ok) {
+          return Swal.fire('Error', prevData.error || 'Failed to scan for expired backups.', 'error');
+        }
+
+        var s = prevData.summary || {};
+        var expiredCount = s.expiredCount || 0;
+        var orphanCount  = s.orphanCount || 0;
+
+        if (expiredCount === 0 && orphanCount === 0) {
+          return Swal.fire({
+            title: 'No Items to Delete',
+            text:  'No expired backups or orphan storage files currently qualify for deletion under retention rules.',
+            icon:  'info',
+          });
+        }
+
+        var html = '<div class="text-left text-xs space-y-3 max-h-60 overflow-y-auto mt-3 p-3 bg-slate-50 rounded-xl border border-slate-200">';
+        html += '<div><p class="font-bold text-slate-800 text-sm mb-1">Expired Backups (' + expiredCount + '):</p>';
+        if (expiredCount === 0) {
+          html += '<p class="text-slate-400">None</p>';
+        } else {
+          html += '<ul class="list-disc pl-4 space-y-0.5 text-slate-600">';
+          (s.expiredBackups || []).forEach(function (b) {
+            var d = b.createdAt ? new Date(b.createdAt).toISOString().split('T')[0] : 'unknown';
+            html += '<li>' + d + ' (' + (b.sizeFormatted || '0 B') + ') - ' + b.status + '</li>';
+          });
+          html += '</ul>';
+        }
+        html += '</div>';
+
+        html += '<div><p class="font-bold text-slate-800 text-sm mb-1">Orphan Cloudinary Assets (' + orphanCount + '):</p>';
+        if (orphanCount === 0) {
+          html += '<p class="text-slate-400">' + (s.orphanSkippedReason ? 'Skipped: ' + s.orphanSkippedReason : 'None') + '</p>';
+        } else {
+          html += '<ul class="list-disc pl-4 space-y-0.5 text-slate-600">';
+          (s.orphansToDelete || []).forEach(function (o) {
+            var fn = (o.public_id || '').split('/').pop();
+            html += '<li>' + fn + ' (' + (o.sizeFormatted || '0 B') + ')</li>';
+          });
+          html += '</ul>';
+          if (s.orphanRemainingCount > 0) {
+            html += '<p class="text-amber-600 font-medium mt-1">+' + s.orphanRemainingCount + ' more beyond batch cap</p>';
+          }
+        }
+        html += '</div></div>';
+
+        var confirmed = await Swal.fire({
+          title:              'Delete Expired Backups & Orphans?',
+          html:               '<p class="text-sm text-slate-600">The following items will be permanently removed from MongoDB and Cloudinary storage:</p>' + html,
+          icon:               'warning',
+          showCancelButton:   true,
+          confirmButtonColor: '#e11d48',
+          cancelButtonColor:  '#64748b',
+          confirmButtonText:  'Yes, Delete All',
+          cancelButtonText:   'Cancel',
+          reverseButtons:     true,
+        });
+
+        if (!confirmed.isConfirmed) return;
+
+        Swal.fire({
+          title: 'Pruning Expired Backups...',
+          text:  'Cleaning MongoDB records and removing Cloudinary assets.',
+          allowOutsideClick: false,
+          didOpen: () => { Swal.showLoading(); },
+        });
+
+        var res = await fetch('/admin/backups/prune', {
+          method:  'POST',
+          headers: {
+            'Content-Type':     'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'x-csrf-token':     '<%= csrfToken %>',
+          },
+          body: JSON.stringify({ sweepOrphans: true }),
+        });
         var data = await res.json();
         if (data.ok) {
-          var s = data.summary || {};
+          var resSummary = data.summary || {};
           await Swal.fire({
             title: 'Cleanup Complete',
             html: '<div class="text-left text-sm space-y-1 mt-2">' +
-                  '<p>• Deleted records: <strong>' + (s.deletedCount || 0) + '</strong></p>' +
-                  '<p>• Freed storage: <strong>' + (s.freedBytesFormatted || '0 B') + '</strong></p>' +
-                  '<p>• Orphan assets removed: <strong>' + (s.orphanDeletedCount || 0) + '</strong></p>' +
+                  '<p>• Deleted records: <strong>' + (resSummary.deletedCount || 0) + '</strong></p>' +
+                  '<p>• Freed storage: <strong>' + (resSummary.freedBytesFormatted || '0 B') + '</strong></p>' +
+                  '<p>• Orphan assets removed: <strong>' + (resSummary.orphanDeletedCount || 0) + '</strong></p>' +
                   '</div>',
             icon: 'success',
           });

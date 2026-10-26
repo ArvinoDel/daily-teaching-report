@@ -121,3 +121,83 @@ test('Backup Expiry Planner - planBackupExpiry pure function', async (t) => {
     assert.deepEqual(result.expired.map(b => b._id), ['oldAuto', 'oldManual']);
   });
 });
+
+test('Orphan Sweep Planner - planOrphanSweep pure function', async (t) => {
+  const { planOrphanSweep } = require('../services/backupService');
+  const now = new Date('2026-10-26T12:00:00.000Z');
+  const dayMs = 24 * 60 * 60 * 1000;
+  // Cutoff is 60 + 7 = 67 days ago
+  const cutoffAge = 67 * dayMs;
+
+  await t.test('1. Skips when knownIds is empty (guard a)', () => {
+    const listed = [
+      { public_id: 'daily-teaching-report/backups/production/backup-old', created_at: new Date(now.getTime() - 100 * dayMs) },
+    ];
+    const result = planOrphanSweep(listed, new Set(), now, { retentionDays: 60 });
+    assert.equal(result.skippedReason, 'no_known_backups');
+    assert.equal(result.toDelete.length, 0);
+  });
+
+  await t.test('2. Skips when no listed asset matches any known ID (guard b)', () => {
+    const listed = [
+      { public_id: 'daily-teaching-report/backups/staging/backup-old1', created_at: new Date(now.getTime() - 100 * dayMs) },
+      { public_id: 'daily-teaching-report/backups/staging/backup-old2', created_at: new Date(now.getTime() - 100 * dayMs) },
+    ];
+    const knownIds = new Set(['daily-teaching-report/backups/production/backup-prod1']);
+
+    const result = planOrphanSweep(listed, knownIds, now, { retentionDays: 60 });
+    assert.equal(result.skippedReason, 'no_matching_environment_asset');
+    assert.equal(result.toDelete.length, 0);
+  });
+
+  await t.test('3. Ignores files outside the backup- naming pattern', () => {
+    const knownId = 'daily-teaching-report/backups/production/backup-valid';
+    const listed = [
+      { public_id: knownId, created_at: now },
+      // Non-backup pattern files
+      { public_id: 'daily-teaching-report/backups/production/report-export-old', created_at: new Date(now.getTime() - 100 * dayMs) },
+      { public_id: 'daily-teaching-report/backups/production/user_avatar.jpg', created_at: new Date(now.getTime() - 100 * dayMs) },
+    ];
+
+    const result = planOrphanSweep(listed, [knownId], now, { retentionDays: 60 });
+    assert.equal(result.skippedReason, null);
+    assert.equal(result.toDelete.length, 0, 'Non-backup files must not be deleted as backup orphans');
+  });
+
+  await t.test('4. Keeps recent files within retention + 7 days', () => {
+    const knownId = 'daily-teaching-report/backups/production/backup-valid';
+    const listed = [
+      { public_id: knownId, created_at: now },
+      // Orphan within 67 days (e.g. 50 days old, 66 days old)
+      { public_id: 'daily-teaching-report/backups/production/backup-orphan-recent', created_at: new Date(now.getTime() - 50 * dayMs) },
+      { public_id: 'daily-teaching-report/backups/production/backup-orphan-boundary', created_at: new Date(now.getTime() - 66 * dayMs) },
+    ];
+
+    const result = planOrphanSweep(listed, [knownId], now, { retentionDays: 60 });
+    assert.equal(result.skippedReason, null);
+    assert.equal(result.toDelete.length, 0, 'Recent orphan files must be preserved');
+  });
+
+  await t.test('5. Identifies orphans older than retention + 7 days and respects cap', () => {
+    const knownId = 'daily-teaching-report/backups/production/backup-valid';
+
+    // 25 orphan files older than 67 days
+    const listed = [
+      { public_id: knownId, created_at: now },
+    ];
+    for (let i = 1; i <= 25; i++) {
+      listed.push({
+        public_id: `daily-teaching-report/backups/production/backup-orphan-${i}`,
+        created_at: new Date(now.getTime() - 80 * dayMs),
+        bytes: 1024,
+      });
+    }
+
+    const result = planOrphanSweep(listed, [knownId], now, { retentionDays: 60, maxOrphanDeletes: 20 });
+    assert.equal(result.skippedReason, null);
+    assert.equal(result.toDelete.length, 20, 'Must cap deletions at maxOrphanDeletes (20)');
+    assert.equal(result.remainingCount, 5, 'Must report remaining excess orphans');
+    assert.equal(result.toDelete[0].public_id, 'daily-teaching-report/backups/production/backup-orphan-1');
+  });
+});
+

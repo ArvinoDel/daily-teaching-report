@@ -32,10 +32,12 @@ cloudinary.config({
 const uriArg = process.argv.find(a => a.startsWith('--uri='));
 let MONGO_URI = uriArg ? uriArg.slice(6) : process.env.MONGO_URI;
 if (!MONGO_URI || MONGO_URI === '[SENSITIVE]' || (!MONGO_URI.startsWith('mongodb://') && !MONGO_URI.startsWith('mongodb+srv://'))) {
-  MONGO_URI = 'mongodb://localhost:27017/daily_teaching_report';
+  console.error('❌ Error: Valid MONGO_URI is required via .env or --uri=<URI> (must start with mongodb:// or mongodb+srv://).');
+  process.exit(1);
 }
 
 const APPLY = process.argv.includes('--apply');
+const YES   = process.argv.includes('--yes');
 
 async function migrateViaReupload(backup, newPublicId) {
   const parsed = new URL(backup.fileUrl);
@@ -95,6 +97,12 @@ async function main() {
   const connHost = mongoose.connection.host;
   const connDb   = mongoose.connection.db.databaseName;
   console.log(`✓ Connected to MongoDB  host=${connHost}  db=${connDb}\n`);
+
+  if (APPLY && !YES) {
+    console.log('⚠ LIVE RUN (--apply): Waiting 5 seconds before making any changes. Press Ctrl+C to abort (or use --yes to skip)...');
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    console.log('Proceeding with migration...\n');
+  }
 
   const candidates = await Backup.find({
     cloudinaryId: { $ne: null },

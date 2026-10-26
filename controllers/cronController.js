@@ -64,6 +64,7 @@ exports.cronBackup = async (req, res) => {
   const startTime = Date.now();
   let backup = null;
   let backupErr = null;
+  let pruneStatus = null;
 
   try {
     backup = await backupService.performBackup(null, 'System (Automated)', 'json_gz');
@@ -80,15 +81,31 @@ exports.cronBackup = async (req, res) => {
     }).catch(() => {});
   } finally {
     try {
-      await backupService.pruneExpiredBackups();
+      const elapsed = Date.now() - startTime;
+      const maxFunctionMs = parseInt(process.env.MAX_FUNCTION_MS, 10) || 60000;
+      const safetyMarginMs = 10000;
+      const remainingBudget = Math.max(0, (maxFunctionMs - safetyMarginMs) - elapsed);
+
+      if (remainingBudget < 5000) {
+        console.warn(`[cron] Skipping retention prune: remaining budget (${remainingBudget}ms) is under 5s.`);
+        pruneStatus = 'skipped: low budget';
+      } else {
+        const pruneResult = await backupService.pruneExpiredBackups({ budgetMs: remainingBudget });
+        pruneStatus = {
+          deletedCount: pruneResult.deletedCount,
+          freedBytes:   pruneResult.freedBytes,
+          failedCount:  pruneResult.failedCount,
+        };
+      }
     } catch (e) {
       console.error('[cron] Retention cleanup error (non-fatal):', e.message);
+      pruneStatus = 'error: ' + backupService.sanitizeErrorMessage(e.message);
     }
   }
 
   const durationMs = Date.now() - startTime;
   if (backupErr) {
-    return res.status(500).json({ ok: false, message: 'Backup failed', durationMs });
+    return res.status(500).json({ ok: false, message: 'Backup failed', durationMs, pruned: pruneStatus });
   }
 
   console.log(`[cron] Automated backup completed in ${durationMs}ms (ID: ${backup._id})`);
@@ -102,6 +119,7 @@ exports.cronBackup = async (req, res) => {
     fileSizeBytes: backup.fileSizeBytes,
     checksum: backup.checksum,
     durationMs,
+    pruned: pruneStatus,
   });
 };
 

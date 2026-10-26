@@ -333,6 +333,106 @@ function serializeToFormat(format, collections, recordCounts) {
  * @param {'json_gz'|'json'|'bson_gz'} format
  * @returns {Promise<Object>} The created Backup database record
  */
+/**
+ * Resolves current environment string for backup folder partitioning.
+ * @returns {string}
+ */
+function getBackupEnv() {
+  return process.env.VERCEL_ENV || process.env.NODE_ENV || 'local';
+}
+
+/**
+ * Pipes a backup Readable stream into Cloudinary upload stream.
+ * Settles on all paths: rejects on source stream error, upload stream error, or overall timeout.
+ * On rejection, destroys streams and attempts best-effort destroy of the Cloudinary publicId.
+ *
+ * @param {Readable} stream
+ * @param {string} publicId
+ * @param {Object} [options]
+ * @param {number} [options.timeoutMs=55000]
+ * @param {Function} [options.uploadStreamFactory]
+ * @returns {Promise<Object>}
+ */
+async function uploadBackupStream(stream, publicId, {
+  timeoutMs = (parseInt(process.env.BACKUP_UPLOAD_TIMEOUT_MS, 10) || 55000),
+  uploadStreamFactory = null,
+} = {}) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer = null;
+
+    const cleanup = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    const handleReject = (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+
+      try { stream.destroy(err); } catch (_) {}
+      if (uploadStream && typeof uploadStream.destroy === 'function') {
+        try { uploadStream.destroy(err); } catch (_) {}
+      }
+
+      // Best effort destroy in case asset was created
+      try {
+        if (typeof cloudinary?.uploader?.destroy === 'function') {
+          const destroyPromise = cloudinary.uploader.destroy(publicId, {
+            resource_type: 'raw',
+            type:          'authenticated',
+            invalidate:    true,
+          });
+          if (destroyPromise && typeof destroyPromise.catch === 'function') {
+            destroyPromise.catch(() => {});
+          }
+        }
+      } catch (_) {}
+
+      reject(err);
+    };
+
+    const handleResolve = (result) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+
+    timer = setTimeout(() => {
+      handleReject(new Error(`Backup upload timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    const uploadStream = uploadStreamFactory
+      ? uploadStreamFactory((err, res) => (err ? handleReject(err) : handleResolve(res)))
+      : cloudinary.uploader.upload_stream(
+          {
+            resource_type: 'raw',
+            type:          'authenticated',
+            public_id:     publicId,
+            use_filename:  false,
+          },
+          (err, result) => (err ? handleReject(err) : handleResolve(result))
+        );
+
+    stream.on('error', handleReject);
+    uploadStream.on('error', handleReject);
+
+    stream.pipe(uploadStream);
+  });
+}
+
+/**
+ * Performs a database backup in the chosen format, streams it with sha256 hashing,
+ * and uploads it to Cloudinary as an authenticated (private) raw file.
+ * @param {string|null} userId
+ * @param {string} userName
+ * @param {'json_gz'|'json'|'bson_gz'} format
+ * @returns {Promise<Object>} The created Backup database record
+ */
 async function performBackup(userId = null, userName = 'System', format = 'json_gz') {
   if (_backupInProgress) {
     throw new Error('A backup is already in progress. Please wait and try again.');
@@ -353,26 +453,12 @@ async function performBackup(userId = null, userName = 'System', format = 'json_
     const recordCounts = await getRecordCounts(BACKUP_COLLECTIONS);
     const streamInfo = createBackupStream({ format, recordCounts, registry: BACKUP_COLLECTIONS });
 
+    const env = getBackupEnv();
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
     const randomSuffix = crypto.randomBytes(8).toString('hex');
-    const publicId = `daily-teaching-report/backups/backup-${timestamp}-${randomSuffix}`;
+    const publicId = `daily-teaching-report/backups/${env}/backup-${timestamp}-${randomSuffix}`;
 
-    const uploadResult = await new Promise((resolve, reject) => {
-      const uploadStream = cloudinary.uploader.upload_stream(
-        {
-          resource_type: 'raw',
-          type:          'authenticated', // Private file (Part C)
-          public_id:     publicId,
-          use_filename:  false,
-        },
-        (err, result) => (err ? reject(err) : resolve(result))
-      );
-
-      streamInfo.stream.on('error', (err) => uploadStream.destroy(err));
-      uploadStream.on('error', (err) => streamInfo.stream.destroy(err));
-
-      streamInfo.stream.pipe(uploadStream);
-    });
+    const uploadResult = await uploadBackupStream(streamInfo.stream, publicId);
 
     return await Backup.create({
       initiatedBy:     userId || null,
@@ -480,21 +566,107 @@ async function deleteBackupFile(backup) {
 }
 
 /**
+ * Evaluates listed Cloudinary assets against database backup records to identify orphans safely.
+ *
+ * Safety requirements:
+ *   1. knownIds must not be empty (proves database has backups).
+ *   2. At least one listed asset must match a known ID (proves we are looking at the same environment).
+ *   3. Only assets whose basename starts with 'backup-' are considered.
+ *   4. Only assets older than (retentionDays + 7) days qualify for deletion.
+ *   5. Deletes at most maxOrphanDeletes (default 20) per run.
+ *
+ * @param {Array<{ public_id: string, created_at: string|Date, bytes?: number }>} listedAssets
+ * @param {Set<string>|Array<string>} knownIds
+ * @param {Date} [now=new Date()]
+ * @param {Object} [options]
+ * @param {number} [options.retentionDays=60]
+ * @param {number} [options.maxOrphanDeletes=20]
+ * @returns {{ toDelete: Array, remainingCount: number, skippedReason: string|null }}
+ */
+function planOrphanSweep(listedAssets = [], knownIds = new Set(), now = new Date(), options = {}) {
+  const retentionDays = options.retentionDays != null
+    ? options.retentionDays
+    : (parseInt(process.env.BACKUP_RETENTION_DAYS, 10) || DEFAULT_RETENTION_DAYS);
+  const maxDeletes = options.maxOrphanDeletes != null ? options.maxOrphanDeletes : 20;
+
+  const knownSet = knownIds instanceof Set ? knownIds : new Set(knownIds || []);
+
+  // Guard (a): The Backup collection must contain at least one record with a cloudinaryId
+  if (knownSet.size === 0) {
+    return {
+      toDelete: [],
+      remainingCount: 0,
+      skippedReason: 'no_known_backups',
+    };
+  }
+
+  // Guard (b): At least one file listed from Cloudinary must match a known Backup.cloudinaryId
+  const hasMatchingAsset = listedAssets.some((asset) => asset && knownSet.has(asset.public_id));
+  if (!hasMatchingAsset) {
+    return {
+      toDelete: [],
+      remainingCount: 0,
+      skippedReason: 'no_matching_environment_asset',
+    };
+  }
+
+  // Orphan cutoff = retentionDays + 7 days
+  const cutoffMs = now.getTime() - (retentionDays + 7) * 24 * 60 * 60 * 1000;
+
+  const candidateOrphans = [];
+
+  for (const asset of listedAssets) {
+    if (!asset || !asset.public_id) continue;
+
+    // Check basename pattern: must start with 'backup-'
+    const filename = asset.public_id.split('/').pop() || '';
+    if (!filename.startsWith('backup-')) {
+      continue;
+    }
+
+    // Must not be known in DB
+    if (knownSet.has(asset.public_id)) {
+      continue;
+    }
+
+    // Check age: must be older than retentionDays + 7 days
+    const assetCreatedAt = new Date(asset.created_at).getTime();
+    if (isNaN(assetCreatedAt) || assetCreatedAt >= cutoffMs) {
+      continue;
+    }
+
+    candidateOrphans.push(asset);
+  }
+
+  // Guard (c): Delete at most maxOrphanDeletes (default 20)
+  const toDelete = candidateOrphans.slice(0, maxDeletes);
+  const remainingCount = Math.max(0, candidateOrphans.length - maxDeletes);
+
+  return {
+    toDelete,
+    remainingCount,
+    skippedReason: null,
+  };
+}
+
+/**
  * Prunes expired backups from both Cloudinary and MongoDB.
- * Also performs an orphan sweep to clean up orphaned Cloudinary assets older than 7 days.
+ * Also performs an optional safe orphan sweep to clean up orphaned Cloudinary assets.
  *
  * @param {Object} [options]
  * @param {Date} [options.now=new Date()]
  * @param {boolean} [options.dryRun=false]
  * @param {number} [options.retentionDays]
- * @param {number} [options.budgetMs]
+ * @param {number} [options.budgetMs=30000]
+ * @param {boolean} [options.sweepOrphans=false]
  * @returns {Promise<Object>} Prune summary
  */
 async function pruneExpiredBackups({
   now = new Date(),
   dryRun = false,
   retentionDays,
-  budgetMs = 45000,
+  budgetMs = 30000,
+  sweepOrphans = false,
 } = {}) {
   const startTime = Date.now();
   const backups = await Backup.find().sort({ createdAt: -1 });
@@ -509,6 +681,11 @@ async function pruneExpiredBackups({
     freedBytes: 0,
     failedCount: 0,
     orphanDeletedCount: 0,
+    orphanCount: 0,
+    orphanRemainingCount: 0,
+    orphanSkippedReason: null,
+    orphansToDelete: [],
+    expiredBackups: [],
     errors: [],
   };
 
@@ -520,83 +697,127 @@ async function pruneExpiredBackups({
       fileSizeBytes: b.fileSizeBytes,
       cloudinaryId: b.cloudinaryId,
     }));
-    return summary;
+  } else {
+    // 1. Process expired backups
+    for (const backup of expired) {
+      if (budgetMs && (Date.now() - startTime > budgetMs)) {
+        console.warn(`[retention] Time budget of ${budgetMs}ms reached. Remaining expired backups will be cleaned in next run.`);
+        break;
+      }
+
+      const delResult = await deleteBackupFile(backup);
+      if (!delResult.ok) {
+        summary.failedCount++;
+        const errMsg = delResult.error ? delResult.error.message : 'Unknown delete error';
+        summary.errors.push({ backupId: backup._id, error: errMsg });
+        console.error(`  ⚠ Failed to delete Cloudinary file for backup ${backup._id}:`, errMsg);
+
+        // Record failure on record without deleting MongoDB document
+        await Backup.findByIdAndUpdate(backup._id, {
+          deletionFailedAt: new Date(),
+          deletionError: sanitizeErrorMessage(errMsg),
+        }).catch(() => {});
+        continue;
+      }
+
+      summary.freedBytes += backup.fileSizeBytes || 0;
+      await backup.deleteOne();
+      summary.deletedCount++;
+      console.log(`🗑️ Pruned expired backup ${backup._id} (${new Date(backup.createdAt).toISOString()})`);
+    }
   }
 
-  // 1. Process expired backups
-  for (const backup of expired) {
-    if (budgetMs && (Date.now() - startTime > budgetMs)) {
-      console.warn(`[retention] Time budget of ${budgetMs}ms reached. Remaining expired backups will be cleaned in next run.`);
-      break;
-    }
+  // 2. Orphan sweep in Cloudinary (OFF by default)
+  const runSweep = sweepOrphans === true || process.env.BACKUP_SWEEP_ORPHANS === '1';
+  if (!runSweep) {
+    summary.orphanSkippedReason = 'disabled_by_default';
+  } else {
+    try {
+      const knownBackups = await Backup.find({ cloudinaryId: { $ne: null } }, { cloudinaryId: 1 }).lean();
+      const knownCloudinaryIds = new Set(knownBackups.map((b) => b.cloudinaryId).filter(Boolean));
 
-    const delResult = await deleteBackupFile(backup);
-    if (!delResult.ok) {
-      summary.failedCount++;
-      const errMsg = delResult.error ? delResult.error.message : 'Unknown delete error';
-      summary.errors.push({ backupId: backup._id, error: errMsg });
-      console.error(`  ⚠ Failed to delete Cloudinary file for backup ${backup._id}:`, errMsg);
+      const env = getBackupEnv();
+      const prefixes = [`daily-teaching-report/backups/${env}/`];
+      if (process.env.BACKUP_SWEEP_LEGACY === '1') {
+        prefixes.push('daily-teaching-report/backups/');
+      }
 
-      // Record failure on record without deleting MongoDB document
-      await Backup.findByIdAndUpdate(backup._id, {
-        deletionFailedAt: new Date(),
-        deletionError: sanitizeErrorMessage(errMsg),
-      }).catch(() => {});
-      continue;
-    }
+      const allListedAssets = [];
+      for (const prefix of prefixes) {
+        for (const storageType of ['authenticated', 'upload']) {
+          let nextCursor = null;
+          let page = 0;
+          do {
+            page++;
+            if (budgetMs && (Date.now() - startTime > budgetMs)) break;
 
-    summary.freedBytes += backup.fileSizeBytes || 0;
-    await backup.deleteOne();
-    summary.deletedCount++;
-    console.log(`🗑️ Pruned expired backup ${backup._id} (${new Date(backup.createdAt).toISOString()})`);
-  }
+            const res = await cloudinary.api.resources({
+              resource_type: 'raw',
+              type:          storageType,
+              prefix,
+              max_results:   100,
+              next_cursor:   nextCursor,
+            });
 
-  // 2. Orphan sweep in Cloudinary for raw backups older than 7 days
-  try {
-    const orphanCutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const knownCloudinaryIds = new Set(
-      (await Backup.find({ cloudinaryId: { $ne: null } }, { cloudinaryId: 1 }).lean())
-        .map((b) => b.cloudinaryId)
-    );
-
-    for (const storageType of ['authenticated', 'upload']) {
-      let nextCursor = null;
-      let page = 0;
-      do {
-        page++;
-        if (budgetMs && (Date.now() - startTime > budgetMs)) break;
-
-        const res = await cloudinary.api.resources({
-          resource_type: 'raw',
-          type:          storageType,
-          prefix:        'daily-teaching-report/backups/',
-          max_results:   100,
-          next_cursor:   nextCursor,
-        });
-
-        const resources = res.resources || [];
-        for (const resource of resources) {
-          const createdAt = new Date(resource.created_at);
-          if (createdAt.getTime() < orphanCutoff.getTime() && !knownCloudinaryIds.has(resource.public_id)) {
-            console.log(`🗑️ Deleting orphan backup asset from Cloudinary: ${resource.public_id} (${storageType})`);
-            try {
-              await cloudinary.uploader.destroy(resource.public_id, {
-                resource_type: 'raw',
-                type:          storageType,
-                invalidate:    true,
+            const resources = res.resources || [];
+            for (const resource of resources) {
+              const rest = resource.public_id.slice(prefix.length);
+              if (prefix === 'daily-teaching-report/backups/' && rest.includes('/')) {
+                // If checking legacy root, skip any assets in subfolders (e.g. env folders)
+                continue;
+              }
+              allListedAssets.push({
+                public_id:   resource.public_id,
+                created_at:  resource.created_at,
+                bytes:       resource.bytes,
+                storageType,
               });
-              summary.orphanDeletedCount++;
-            } catch (orphanErr) {
-              console.error(`  ⚠ Failed to delete orphan asset ${resource.public_id}:`, orphanErr.message);
             }
+
+            nextCursor = res.next_cursor;
+          } while (nextCursor && page < 20);
+        }
+      }
+
+      const orphanPlan = planOrphanSweep(allListedAssets, knownCloudinaryIds, now, {
+        retentionDays,
+        maxOrphanDeletes: 20,
+      });
+
+      summary.orphanSkippedReason = orphanPlan.skippedReason;
+      summary.orphanRemainingCount = orphanPlan.remainingCount;
+
+      if (orphanPlan.skippedReason) {
+        console.warn(`[retention] Orphan sweep skipped: ${orphanPlan.skippedReason}`);
+      }
+
+      if (dryRun) {
+        summary.orphansToDelete = orphanPlan.toDelete.map((o) => ({
+          public_id:  o.public_id,
+          created_at: o.created_at,
+          bytes:      o.bytes,
+        }));
+        summary.orphanCount = orphanPlan.toDelete.length;
+      } else if (orphanPlan.toDelete.length > 0) {
+        for (const orphan of orphanPlan.toDelete) {
+          if (budgetMs && (Date.now() - startTime > budgetMs)) break;
+          try {
+            await cloudinary.uploader.destroy(orphan.public_id, {
+              resource_type: 'raw',
+              type:          orphan.storageType || 'authenticated',
+              invalidate:    true,
+            });
+            summary.orphanDeletedCount++;
+            console.log(`🗑️ Deleted orphan asset: ${orphan.public_id}`);
+          } catch (orphanErr) {
+            console.error(`  ⚠ Failed to delete orphan asset ${orphan.public_id}:`, orphanErr.message);
           }
         }
-
-        nextCursor = res.next_cursor;
-      } while (nextCursor && page < 20);
+      }
+    } catch (orphanSweepErr) {
+      console.warn('[retention] Orphan sweep encountered non-fatal error:', orphanSweepErr.message);
+      summary.orphanSkippedReason = 'error: ' + sanitizeErrorMessage(orphanSweepErr.message);
     }
-  } catch (orphanSweepErr) {
-    console.warn('[retention] Orphan sweep encountered non-fatal error:', orphanSweepErr.message);
   }
 
   console.log(`✅ Retention prune complete: ${summary.deletedCount} deleted, ${summary.failedCount} failed, ${summary.orphanDeletedCount} orphans cleared.`);
@@ -669,12 +890,15 @@ module.exports = {
   FORMAT_META,
   DEFAULT_RETENTION_DAYS,
   sanitizeErrorMessage,
+  getBackupEnv,
+  uploadBackupStream,
   getRecordCounts,
   fetchRawCollections,
   createBackupStream,
   serializeToFormat,
   performBackup,
   planBackupExpiry,
+  planOrphanSweep,
   deleteBackupFile,
   pruneExpiredBackups,
   pruneOldAutomatedBackups: pruneExpiredBackups, // Backward-compatible alias
