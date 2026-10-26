@@ -24,7 +24,14 @@ const backupSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     default: {},
   },
-  errorMessage: { type: String, default: null },
+  pinned:           { type: Boolean, default: false },
+  cloudinaryType:   { type: String, default: 'upload' }, // 'upload' (legacy) or 'authenticated' (private)
+  checksum:         { type: String, default: null },     // SHA-256 hex digest of the archive
+  deletionFailedAt: { type: Date, default: null },
+  deletionError:    { type: String, default: null },
+  errorMessage:     { type: String, default: null },
 }, { timestamps: true });
+
+backupSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Backup', backupSchema);

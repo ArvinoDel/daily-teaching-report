@@ -87,8 +87,10 @@ const backupCtrl = require('../controllers/adminBackupController');
 // Backups — superadmin only
 router.get('/backups',              requireSuperAdmin, backupCtrl.backupsList);
 router.post('/backups',             requireSuperAdmin, backupCtrl.createBackup);
+router.post('/backups/prune',       requireSuperAdmin, backupCtrl.pruneBackupsManual);
 router.get('/backups/export',       requireSuperAdmin, backupCtrl.exportDirect);
 router.get('/backups/:id/download', requireSuperAdmin, backupCtrl.downloadBackup);
+router.post('/backups/:id/pin',     requireSuperAdmin, backupCtrl.togglePinBackup);
 router.delete('/backups/:id',       requireSuperAdmin, backupCtrl.deleteBackup);
 
 // Student Achievements — named routes BEFORE the main index
