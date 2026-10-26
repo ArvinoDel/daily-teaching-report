@@ -33,6 +33,9 @@ exports.backupsList = async (req, res) => {
     const dayMs = 24 * 60 * 60 * 1000;
     const warningCutoff = new Date(now.getTime() + 7 * dayMs);
 
+    const expiryPlan = backupService.planBackupExpiry(backups, now, { retentionDays });
+    const protectedMap = new Map(expiryPlan.protected.map(p => [p.id, p.reason]));
+
     let expiringSoonCount = 0;
 
     const backupsFormatted = backups.map(b => {
@@ -45,7 +48,14 @@ exports.backupsList = async (req, res) => {
 
       const createdAtDate = new Date(b.createdAt);
       obj.expiresAt = new Date(createdAtDate.getTime() + retentionDays * dayMs);
-      obj.isExpiringSoon = !b.pinned && b.status === 'success' && obj.expiresAt <= warningCutoff && obj.expiresAt > now;
+
+      const protReason = protectedMap.get(String(b._id));
+      obj.isProtectedLatest = protReason === 'latest_successful';
+      obj.isPinned = b.pinned || protReason === 'pinned';
+
+      // Pinned and latest_successful are protected and never show "Expires" or "expiring soon"
+      const isExempt = obj.isPinned || obj.isProtectedLatest;
+      obj.isExpiringSoon = !isExempt && b.status === 'success' && obj.expiresAt <= warningCutoff && obj.expiresAt > now;
       if (obj.isExpiringSoon) {
         expiringSoonCount++;
       }
@@ -142,10 +152,21 @@ exports.exportDirect = async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Type', meta.contentType);
 
+    let streamEnded = false;
+    stream.on('end', () => { streamEnded = true; });
+
     stream.on('error', (err) => {
       console.error('Direct export stream error:', err);
-      if (!res.headersSent) {
+      if (res.headersSent) {
+        res.destroy(err);
+      } else {
         res.status(500).render('error', { message: 'Export streaming error.' });
+      }
+    });
+
+    res.on('close', () => {
+      if (!streamEnded) {
+        stream.destroy();
       }
     });
 
@@ -240,27 +261,51 @@ exports.togglePinBackup = async (req, res) => {
 ═══════════════════════════════════════════════ */
 exports.pruneBackupsManual = async (req, res) => {
   try {
-    const summary = await backupService.pruneExpiredBackups();
+    const isPreview = req.query.preview === '1' || req.body.preview === true || req.body.preview === '1';
+    const sweepOrphans = req.query.sweepOrphans === '1' || req.body.sweepOrphans === true || req.body.sweepOrphans === '1';
+
+    const summary = await backupService.pruneExpiredBackups({
+      dryRun: isPreview,
+      sweepOrphans,
+    });
 
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
       return res.json({
         ok: true,
+        preview: isPreview,
         summary: {
-          deletedCount:       summary.deletedCount,
-          freedBytes:         summary.freedBytes,
+          expiredCount:        summary.expiredCount,
+          expiredBackups:      (summary.expiredBackups || []).map(b => ({
+            _id:           b._id,
+            createdAt:     b.createdAt,
+            status:        b.status,
+            sizeFormatted: formatBytes(b.fileSizeBytes),
+          })),
+          orphanCount:         summary.orphanCount || 0,
+          orphansToDelete:     (summary.orphansToDelete || []).map(o => ({
+            public_id:     o.public_id,
+            createdAt:     o.created_at,
+            sizeFormatted: formatBytes(o.bytes),
+          })),
+          orphanSkippedReason: summary.orphanSkippedReason || null,
+          orphanRemainingCount: summary.orphanRemainingCount || 0,
+          deletedCount:        summary.deletedCount,
+          freedBytes:          summary.freedBytes,
           freedBytesFormatted: formatBytes(summary.freedBytes),
-          failedCount:        summary.failedCount,
-          orphanDeletedCount: summary.orphanDeletedCount,
+          failedCount:         summary.failedCount,
+          orphanDeletedCount:  summary.orphanDeletedCount,
         },
       });
     }
 
-    req.session.flash = `Prune complete: deleted ${summary.deletedCount} backup(s), freed ${formatBytes(summary.freedBytes)}.`;
+    req.session.flash = isPreview
+      ? `Preview complete: ${summary.expiredCount} expired backup(s), ${summary.orphanCount || 0} orphan(s).`
+      : `Prune complete: deleted ${summary.deletedCount} backup(s), freed ${formatBytes(summary.freedBytes)}.`;
     res.redirect('/admin/backups');
   } catch (err) {
     console.error('Manual prune error:', err);
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
-      return res.status(500).json({ error: 'Failed to prune backups: ' + err.message });
+      return res.status(500).json({ error: 'Failed to prune backups. Please check server logs.' });
     }
     req.session.flash = 'Failed to prune backups. Please check server logs.';
     res.redirect('/admin/backups');

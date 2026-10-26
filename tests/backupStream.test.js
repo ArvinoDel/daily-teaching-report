@@ -145,3 +145,70 @@ test('Backup Stream - Streaming Serializer and SHA-256 Hashing', async (t) => {
     assert.equal(getTotalBytes(), gzBuffer.length);
   });
 });
+
+test('Backup Upload Stream - Error and Timeout Rejection', async (t) => {
+  const { PassThrough } = require('stream');
+  const { uploadBackupStream } = require('../services/backupService');
+
+  await t.test('1. Rejects and cleans up when source stream emits an error', async () => {
+    const fakeSource = new PassThrough();
+    const fakeDest = new PassThrough();
+
+    const uploadPromise = uploadBackupStream(fakeSource, 'test-public-id', {
+      timeoutMs: 5000,
+      uploadStreamFactory: (cb) => {
+        fakeDest.on('finish', () => cb(null, { bytes: 100 }));
+        fakeDest.on('error', (err) => cb(err));
+        return fakeDest;
+      },
+    });
+
+    fakeSource.emit('error', new Error('Simulated source stream failure'));
+
+    await assert.rejects(uploadPromise, {
+      message: 'Simulated source stream failure',
+    });
+    assert.ok(fakeSource.destroyed, 'Source stream must be destroyed on error');
+    assert.ok(fakeDest.destroyed, 'Upload stream must be destroyed on error');
+  });
+
+  await t.test('2. Rejects and cleans up when upload timeout elapses', async () => {
+    const fakeSource = new PassThrough();
+    const fakeDest = new PassThrough();
+
+    const uploadPromise = uploadBackupStream(fakeSource, 'test-timeout-id', {
+      timeoutMs: 30, // 30ms short timeout
+      uploadStreamFactory: () => {
+        // Never completes to simulate hung network
+        return fakeDest;
+      },
+    });
+
+    await assert.rejects(uploadPromise, {
+      message: /Backup upload timed out after 30ms/,
+    });
+    assert.ok(fakeSource.destroyed, 'Source stream must be destroyed on timeout');
+    assert.ok(fakeDest.destroyed, 'Upload stream must be destroyed on timeout');
+  });
+
+  await t.test('3. Rejects and cleans up when upload destination stream errors', async () => {
+    const fakeSource = new PassThrough();
+    const fakeDest = new PassThrough();
+
+    const uploadPromise = uploadBackupStream(fakeSource, 'test-dest-id', {
+      timeoutMs: 5000,
+      uploadStreamFactory: (cb) => {
+        fakeDest.on('error', (err) => cb(err));
+        return fakeDest;
+      },
+    });
+
+    fakeDest.emit('error', new Error('Cloudinary socket connection dropped'));
+
+    await assert.rejects(uploadPromise, {
+      message: 'Cloudinary socket connection dropped',
+    });
+    assert.ok(fakeSource.destroyed, 'Source stream must be destroyed on dest error');
+  });
+});
+
