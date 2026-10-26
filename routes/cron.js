@@ -4,5 +4,6 @@ const router  = express.Router();
 const cronController = require('../controllers/cronController');
 
 router.get('/backup', cronController.cronBackup);
+router.get('/backup-cleanup', cronController.cronCleanup);
 
 module.exports = router;

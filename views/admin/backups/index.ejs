@@ -6,6 +6,7 @@
     to   { opacity: 1; transform: translateY(0); }
   }
   .fade-in { animation: fadeSlideIn .3s ease both; }
+  details summary::-webkit-details-marker { display: none; }
 </style>
 
 <!-- Page Header -->
@@ -20,12 +21,21 @@
       </span>
     </div>
     <h1 class="text-2xl font-bold text-slate-900">Database Backups</h1>
-    <p class="text-slate-500 mt-0.5 text-sm">Export all collections to the cloud or download directly to your device.</p>
-    <p class="text-xs text-slate-400 mt-1">Note: Backups include database text, metadata, and material content. Attached Cloudinary media files remain in Cloudinary storage.</p>
+    <p class="text-slate-500 mt-0.5 text-sm">Export all collections to private cloud storage or stream directly to your device.</p>
+    <p class="text-xs text-slate-400 mt-1">Note: Backups include all database documents, content revisions, and metadata across 13 collections.</p>
   </div>
 
   <!-- Action Buttons -->
   <div class="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+
+    <!-- Delete Expired Now Button -->
+    <button type="button" id="pruneExpiredBtn"
+      class="inline-flex items-center gap-2 bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 text-sm font-semibold px-3.5 py-2.5 rounded-xl border border-rose-200 shadow-sm transition">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+      </svg>
+      Delete Expired Now
+    </button>
 
     <!-- Direct Export Dropdown -->
     <div class="relative" id="exportDropdown">
@@ -43,8 +53,8 @@
       <div id="exportMenu"
         class="hidden absolute right-0 mt-2 w-64 bg-white rounded-2xl border border-slate-100 shadow-xl z-50 overflow-hidden fade-in">
         <div class="px-4 py-2.5 border-b border-slate-100">
-          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Instant Download</p>
-          <p class="text-xs text-slate-400 mt-0.5">No cloud storage, direct to your device</p>
+          <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Instant Stream</p>
+          <p class="text-xs text-slate-400 mt-0.5">Streamed directly, no cloud storage needed</p>
         </div>
         <div class="py-1.5">
           <a href="/admin/backups/export?format=json_gz"
@@ -98,13 +108,42 @@
   </div>
 </div>
 
+<!-- Freshness Alert (if no automated backup succeeded in last 8 days) -->
+<% if (!hasRecentAutomated) { %>
+  <div class="mb-6 flex items-start gap-3 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-sm shadow-sm">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+    </svg>
+    <div>
+      <p class="font-bold">No Recent Automated Backup Detected</p>
+      <p class="text-xs text-amber-800 mt-0.5">No automated backup has completed successfully in the last 8 days. Please inspect your cron execution logs or initiate a manual cloud backup now.</p>
+    </div>
+  </div>
+<% } %>
+
+<!-- Retention Policy Info Banner -->
+<div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-slate-700 text-xs shadow-sm">
+  <div class="flex items-center gap-2">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+    </svg>
+    <span><strong>Automated Retention Policy:</strong> Backups older than <strong><%= retentionDays %> days</strong> are automatically deleted from database and cloud storage. Pinned backups and the 2 newest successful backups are always protected.</span>
+  </div>
+  <% if (expiringSoonCount > 0) { %>
+    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-800 font-semibold whitespace-nowrap">
+      <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+      <%= expiringSoonCount %> backup(s) expiring within 7 days
+    </span>
+  <% } %>
+</div>
+
 <!-- Cloud Backup Modal -->
 <div id="backupModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden">
   <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" id="backupModalOverlay"></div>
   <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md fade-in">
     <div class="px-6 pt-6 pb-2">
-      <h2 class="text-lg font-bold text-slate-900">Create Cloud Backup</h2>
-      <p class="text-sm text-slate-500 mt-1">Choose a format and upload to Cloudinary. The backup will appear in the history below.</p>
+      <h2 class="text-lg font-bold text-slate-900">Create Private Cloud Backup</h2>
+      <p class="text-sm text-slate-500 mt-1">Choose a format. The backup is streamed privately with SHA-256 verification to Cloudinary.</p>
     </div>
 
     <form method="POST" action="/admin/backups" id="backupForm" class="px-6 pt-4 pb-6">
@@ -118,7 +157,7 @@
           <input type="radio" name="format" value="json_gz" checked class="mt-0.5 accent-indigo-600">
           <div>
             <p class="text-sm font-semibold text-slate-800">JSON Gzip <code class="font-mono text-xs text-slate-400">.json.gz</code></p>
-            <p class="text-xs text-slate-400 mt-0.5">Compressed JSON — compact, best for weekly automated backups</p>
+            <p class="text-xs text-slate-400 mt-0.5">Compressed JSON — compact, best for regular backups</p>
           </div>
         </label>
 
@@ -170,7 +209,7 @@
   </div>
 <% } %>
 
-<!-- Stats -->
+<!-- Stats Cards -->
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
   <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
     <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Backups</p>
@@ -180,7 +219,7 @@
   <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
     <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Size Stored</p>
     <p class="text-3xl font-bold text-rose-600"><%= totalSize %></p>
-    <p class="text-xs text-slate-400 mt-1">on Cloudinary</p>
+    <p class="text-xs text-slate-400 mt-1">Cloudinary Storage</p>
   </div>
   <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
     <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Last Backup</p>
@@ -194,10 +233,10 @@
     <% } %>
   </div>
   <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Automated Schedule</p>
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Weekly Automated</p>
     <div class="flex items-center gap-1.5 mt-1.5">
-      <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0"></span>
-      <p class="text-sm font-bold text-slate-950">Weekly Backup Active</p>
+      <span class="w-2.5 h-2.5 rounded-full <%= hasRecentAutomated ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500' %> flex-shrink-0"></span>
+      <p class="text-sm font-bold text-slate-950"><%= hasRecentAutomated ? 'Active & Healthy' : 'Schedule Pending' %></p>
     </div>
     <p class="text-xs text-slate-400 mt-1.5 font-medium" title="<%= nextBackupDate.toISOString() %>">
       Next: <%= nextBackupDate.toLocaleDateString('en-US', { timeZone: 'Asia/Jakarta', weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) %>
@@ -207,9 +246,11 @@
 
 <!-- Backup History Table -->
 <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-  <div class="px-6 py-4 border-b border-slate-100">
-    <h2 class="text-sm font-bold text-slate-800">Cloud Backup History</h2>
-    <p class="text-xs text-slate-400 mt-0.5">Most recent 50 records. Download links proxy through the server.</p>
+  <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+    <div>
+      <h2 class="text-sm font-bold text-slate-800">Cloud Backup History</h2>
+      <p class="text-xs text-slate-400 mt-0.5">All backed-up records across 13 collections. Protected downloads proxy through server.</p>
+    </div>
   </div>
 
   <% if (!backups.length) { %>
@@ -228,8 +269,8 @@
             <th class="px-6 py-3 text-left">Date & Time</th>
             <th class="px-6 py-3 text-left">Initiated By</th>
             <th class="px-6 py-3 text-left">Format</th>
-            <th class="px-6 py-3 text-left">Status</th>
-            <th class="px-6 py-3 text-left hidden md:table-cell">Records</th>
+            <th class="px-6 py-3 text-left">Status & Retention</th>
+            <th class="px-6 py-3 text-left hidden md:table-cell">Collections & Records</th>
             <th class="px-6 py-3 text-left hidden sm:table-cell">Size</th>
             <th class="px-6 py-3 text-right">Actions</th>
           </tr>
@@ -250,7 +291,10 @@
 
               <!-- Initiated By -->
               <td class="px-6 py-3.5 text-slate-700 font-medium whitespace-nowrap">
-                <%= b.initiatedByName %>
+                <span class="text-xs"><%= b.initiatedByName %></span>
+                <% if (b.cloudinaryType === 'authenticated') { %>
+                  <span class="inline-block ml-1 text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200" title="Private Authenticated Cloudinary Storage">Private</span>
+                <% } %>
               </td>
 
               <!-- Format Badge -->
@@ -260,34 +304,82 @@
                   <%= fmt === 'bson_gz' ? 'bg-violet-100 text-violet-700' : fmt === 'json' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700' %>">
                   <%= b.formatLabel || 'JSON Gzip' %>
                 </span>
-              </td>
-
-              <!-- Status -->
-              <td class="px-6 py-3.5">
-                <% if (b.status === 'success') { %>
-                  <span class="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 text-xs font-semibold px-2.5 py-1 rounded-full">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                    </svg>
-                    Success
-                  </span>
-                <% } else { %>
-                  <span class="inline-flex items-center gap-1 text-red-700 bg-red-50 border border-red-200 text-xs font-semibold px-2.5 py-1 rounded-full" title="<%= b.errorMessage || '' %>">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
-                    </svg>
-                    Failed
+                <% if (b.checksum) { %>
+                  <span class="block text-[10px] text-slate-400 font-mono mt-0.5 truncate max-w-[100px]" title="SHA-256: <%= b.checksum %>">
+                    #<%= b.checksum.substring(0, 8) %>…
                   </span>
                 <% } %>
               </td>
 
-              <!-- Records -->
+              <!-- Status & Retention -->
+              <td class="px-6 py-3.5 whitespace-nowrap">
+                <div class="flex flex-col gap-1">
+                  <div class="flex items-center gap-1.5">
+                    <% if (b.status === 'success') { %>
+                      <span class="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 text-xs font-semibold px-2 py-0.5 rounded-full">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                        </svg>
+                        Success
+                      </span>
+                    <% } else { %>
+                      <span class="inline-flex items-center gap-1 text-red-700 bg-red-50 border border-red-200 text-xs font-semibold px-2 py-0.5 rounded-full" title="<%= b.errorMessage || '' %>">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                        </svg>
+                        Failed
+                      </span>
+                    <% } %>
+
+                    <!-- Pinned Badge -->
+                    <span class="badge-pinned inline-flex items-center gap-0.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 <%= b.pinned ? '' : 'hidden' %>">
+                      📌 Pinned
+                    </span>
+                  </div>
+
+                  <!-- Retention / Expiry Info -->
+                  <% if (b.pinned) { %>
+                    <span class="text-[11px] text-slate-400">Never expires</span>
+                  <% } else if (b.status === 'success') { %>
+                    <span class="text-[11px] <%= b.isExpiringSoon ? 'text-amber-600 font-bold' : 'text-slate-400' %>">
+                      <%= b.isExpiringSoon ? '⚠️ Expiring' : 'Expires' %>
+                      <%= b.expiresAt.toLocaleDateString('en-US', { day: '2-digit', month: 'short' }) %>
+                    </span>
+                  <% } else { %>
+                    <span class="text-[11px] text-red-400">Pruned after <%= b.expiresAt.toLocaleDateString('en-US', { day: '2-digit', month: 'short' }) %></span>
+                  <% } %>
+                </div>
+              </td>
+
+              <!-- Records (Detailed 13-collection expandable) -->
               <td class="px-6 py-3.5 hidden md:table-cell">
                 <% if (b.status === 'success' && b.recordCounts && b.totalRecords > 0) { %>
-                  <p class="text-slate-700 font-semibold text-xs"><%= b.totalRecords %> total</p>
-                  <p class="text-slate-400 text-xs leading-relaxed">
-                    <% const rc = b.recordCounts; %>
-                    <%= rc.users || 0 %> users · <%= rc.reports || 0 %> reports · <%= rc.groups || 0 %> groups
+                  <% const rc = b.recordCounts; %>
+                  <details class="group cursor-pointer">
+                    <summary class="list-none flex items-center gap-1 text-slate-700 font-semibold text-xs hover:text-indigo-600 transition">
+                      <span><%= b.totalRecords.toLocaleString() %> total records</span>
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-slate-400 group-open:rotate-180 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                      </svg>
+                    </summary>
+                    <div class="mt-2 p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-[11px] text-slate-600 grid grid-cols-2 gap-x-3 gap-y-1 w-64 shadow-xs">
+                      <div>Users: <strong><%= rc.users || 0 %></strong></div>
+                      <div>Reports: <strong><%= rc.reports || 0 %></strong></div>
+                      <div>Groups: <strong><%= rc.groups || 0 %></strong></div>
+                      <div>Audit Logs: <strong><%= rc.auditLogs || 0 %></strong></div>
+                      <div>Feedbacks: <strong><%= rc.feedbacks || 0 %></strong></div>
+                      <div>Salaries: <strong><%= rc.salaries || 0 %></strong></div>
+                      <div>Students: <strong><%= rc.students || 0 %></strong></div>
+                      <div>AC Trans: <strong><%= rc.acTransactions || 0 %></strong></div>
+                      <div>Notifications: <strong><%= rc.notifications || 0 %></strong></div>
+                      <div>Materials: <strong><%= rc.materials || 0 %></strong></div>
+                      <div>Aliases: <strong><%= rc.materialAliases || 0 %></strong></div>
+                      <div>Contents: <strong><%= rc.materialContents || 0 %></strong></div>
+                      <div>Revisions: <strong><%= rc.materialContentRevisions || 0 %></strong></div>
+                    </div>
+                  </details>
+                  <p class="text-slate-400 text-[11px] leading-tight mt-0.5 truncate max-w-[200px]">
+                    <%= rc.users || 0 %> users · <%= rc.reports || 0 %> reports · <%= rc.salaries || 0 %> salaries…
                   </p>
                 <% } else if (b.status === 'failed') { %>
                   <span class="text-slate-300 text-xs">—</span>
@@ -308,19 +400,31 @@
               <!-- Actions -->
               <td class="px-6 py-3.5 text-right whitespace-nowrap">
                 <div class="inline-flex items-center gap-1">
-                  <% if (b.status === 'success' && b.fileUrl) { %>
+                  <!-- Pin/Unpin Toggle -->
+                  <button type="button"
+                    class="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition btn-pin-backup"
+                    data-id="<%= b._id %>"
+                    data-pinned="<%= b.pinned ? 'true' : 'false' %>"
+                    title="<%= b.pinned ? 'Unpin (allow auto-expiry)' : 'Pin backup (prevent auto-expiry)' %>">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 <%= b.pinned ? 'text-amber-600 fill-amber-600' : '' %>" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m3 3 1.664 1.664M21 21l-1.5-1.5m-5.485-1.242L12 17.25 4.5 21V8.25m14.25 5.25V5.25A2.25 2.25 0 0 0 16.5 3h-9" />
+                    </svg>
+                  </button>
+
+                  <% if (b.status === 'success' && (b.fileUrl || b.cloudinaryId)) { %>
                     <a href="/admin/backups/<%= b._id %>/download"
-                      title="Download <%= b.formatLabel || 'backup' %>"
-                      class="p-1.5 rounded-lg text-slate-300 hover:text-sky-500 hover:bg-sky-50 transition">
+                      title="Download <%= b.formatLabel || 'backup' %> (proxied)"
+                      class="p-1.5 rounded-lg text-slate-400 hover:text-sky-500 hover:bg-sky-50 transition">
                       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
                       </svg>
                     </a>
                   <% } %>
+
                   <button type="button"
-                    class="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition btn-delete-backup"
+                    class="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition btn-delete-backup"
                     data-id="<%= b._id %>"
-                    title="Delete this backup record">
+                    title="Delete backup record and storage file">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                       <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
                     </svg>
@@ -335,19 +439,19 @@
   <% } %>
 </div>
 
-<!-- Info note -->
+<!-- Info notes footer -->
 <div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
   <div class="flex items-start gap-3 bg-sky-50 border border-sky-100 rounded-xl px-4 py-3 text-xs text-sky-700">
     <span class="font-bold whitespace-nowrap">.json.gz</span>
-    <span>Decompress with <code class="font-mono bg-sky-100 px-1 rounded">gunzip</code>, then re-import with <code class="font-mono bg-sky-100 px-1 rounded">mongoimport</code> or a Node script.</span>
+    <span>Gzip compressed JSON envelope. Decompress with <code class="font-mono bg-sky-100 px-1 rounded">gunzip</code> or Node <code class="font-mono bg-sky-100 px-1 rounded">zlib</code>.</span>
   </div>
   <div class="flex items-start gap-3 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-xs text-emerald-700">
     <span class="font-bold whitespace-nowrap">.json</span>
-    <span>Open directly in any text editor or parse with <code class="font-mono bg-emerald-100 px-1 rounded">JSON.parse()</code>.</span>
+    <span>Plain readable JSON covering all 13 collections. Inspect in any editor.</span>
   </div>
   <div class="flex items-start gap-3 bg-violet-50 border border-violet-100 rounded-xl px-4 py-3 text-xs text-violet-700">
     <span class="font-bold whitespace-nowrap">.bson.gz</span>
-    <span>Preserves ObjectIds & Dates. Use <code class="font-mono bg-violet-100 px-1 rounded">mongorestore</code> or BSON driver to read.</span>
+    <span>MongoDB binary stream preserving exact BSON types. Compatible with <code class="font-mono bg-violet-100 px-1 rounded">mongorestore</code>.</span>
   </div>
 </div>
 
@@ -358,34 +462,135 @@
   var cancelBtn    = document.getElementById('cancelBackupBtn');
   var modalOverlay = document.getElementById('backupModalOverlay');
 
-  openBtn.addEventListener('click', function () { modal.classList.remove('hidden'); });
-  cancelBtn.addEventListener('click', function () { modal.classList.add('hidden'); });
-  modalOverlay.addEventListener('click', function () { modal.classList.add('hidden'); });
+  if (openBtn) openBtn.addEventListener('click', function () { modal.classList.remove('hidden'); });
+  if (cancelBtn) cancelBtn.addEventListener('click', function () { modal.classList.add('hidden'); });
+  if (modalOverlay) modalOverlay.addEventListener('click', function () { modal.classList.add('hidden'); });
 
-  document.getElementById('backupForm').addEventListener('submit', function () {
-    var btn   = document.getElementById('backupBtn');
-    var label = document.getElementById('backupBtnLabel');
-    btn.disabled  = true;
-    label.textContent = 'Creating…';
-  });
+  var backupForm = document.getElementById('backupForm');
+  if (backupForm) {
+    backupForm.addEventListener('submit', function () {
+      var btn   = document.getElementById('backupBtn');
+      var label = document.getElementById('backupBtnLabel');
+      if (btn) btn.disabled = true;
+      if (label) label.textContent = 'Creating & Uploading…';
+    });
+  }
 
   // ── Direct Export Dropdown ───────────────────────────────────────
   var exportMenu = document.getElementById('exportMenu');
   var exportBtn  = document.getElementById('exportDropdownBtn');
 
-  exportBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    exportMenu.classList.toggle('hidden');
-  });
-  document.addEventListener('click', function () { exportMenu.classList.add('hidden'); });
+  if (exportBtn && exportMenu) {
+    exportBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      exportMenu.classList.toggle('hidden');
+    });
+    document.addEventListener('click', function () { exportMenu.classList.add('hidden'); });
+  }
 
-  // ── Delete backup AJAX ───────────────────────────────────────────
+  // ── Pin / Unpin Backup AJAX ──────────────────────────────────────
+  document.querySelectorAll('.btn-pin-backup').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      var id = this.dataset.id;
+      try {
+        var res = await fetch('/admin/backups/' + id + '/pin', {
+          method:  'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'x-csrf-token':     '<%= csrfToken %>',
+          },
+        });
+        var data = await res.json();
+        if (data.ok) {
+          this.dataset.pinned = data.pinned ? 'true' : 'false';
+          var row = document.querySelector('tr[data-backup-id="' + id + '"]');
+          if (row) {
+            var badge = row.querySelector('.badge-pinned');
+            if (badge) {
+              if (data.pinned) badge.classList.remove('hidden');
+              else badge.classList.add('hidden');
+            }
+          }
+          this.title = data.pinned ? 'Unpin (allow auto-expiry)' : 'Pin backup (prevent auto-expiry)';
+          var icon = this.querySelector('svg');
+          if (icon) {
+            if (data.pinned) {
+              icon.classList.add('text-amber-600', 'fill-amber-600');
+            } else {
+              icon.classList.remove('text-amber-600', 'fill-amber-600');
+            }
+          }
+        } else {
+          Swal.fire('Error', data.error || 'Failed to toggle pin.', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Error', 'Request failed.', 'error');
+      }
+    });
+  });
+
+  // ── Delete Expired Now Button ────────────────────────────────────
+  var pruneBtn = document.getElementById('pruneExpiredBtn');
+  if (pruneBtn) {
+    pruneBtn.addEventListener('click', async function () {
+      var confirmed = await Swal.fire({
+        title:              'Delete Expired Backups?',
+        text:               'This will delete all unpinned backups older than <%= retentionDays %> days from MongoDB and Cloudinary. Pinned backups and the 2 newest successful backups are always protected.',
+        icon:               'warning',
+        showCancelButton:   true,
+        confirmButtonColor: '#e11d48',
+        cancelButtonColor:  '#64748b',
+        confirmButtonText:  'Yes, Delete Expired',
+        cancelButtonText:   'Cancel',
+        reverseButtons:     true,
+      });
+
+      if (!confirmed.isConfirmed) return;
+
+      Swal.fire({
+        title: 'Pruning Expired Backups...',
+        text:  'Cleaning MongoDB records and removing Cloudinary assets.',
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); },
+      });
+
+      try {
+        var res = await fetch('/admin/backups/prune', {
+          method:  'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'x-csrf-token':     '<%= csrfToken %>',
+          },
+        });
+        var data = await res.json();
+        if (data.ok) {
+          var s = data.summary || {};
+          await Swal.fire({
+            title: 'Cleanup Complete',
+            html: '<div class="text-left text-sm space-y-1 mt-2">' +
+                  '<p>• Deleted records: <strong>' + (s.deletedCount || 0) + '</strong></p>' +
+                  '<p>• Freed storage: <strong>' + (s.freedBytesFormatted || '0 B') + '</strong></p>' +
+                  '<p>• Orphan assets removed: <strong>' + (s.orphanDeletedCount || 0) + '</strong></p>' +
+                  '</div>',
+            icon: 'success',
+          });
+          window.location.reload();
+        } else {
+          Swal.fire('Error', data.error || 'Failed to prune backups.', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Error', 'Prune request failed.', 'error');
+      }
+    });
+  }
+
+  // ── Delete Single Backup AJAX ────────────────────────────────────
   document.querySelectorAll('.btn-delete-backup').forEach(function (btn) {
     btn.addEventListener('click', async function () {
-      const id = this.dataset.id;
-      const confirmed = await Swal.fire({
+      var id = this.dataset.id;
+      var confirmed = await Swal.fire({
         title:              'Delete this backup?',
-        text:               'This will also remove the file from Cloudinary.',
+        text:               'This will delete the database record and destroy the file in Cloudinary.',
         icon:               'warning',
         showCancelButton:   true,
         confirmButtonColor: '#ef4444',
@@ -397,22 +602,22 @@
       if (!confirmed.isConfirmed) return;
 
       try {
-        const res = await fetch('/admin/backups/' + id, {
+        var res = await fetch('/admin/backups/' + id, {
           method:  'DELETE',
           headers: {
             'X-Requested-With': 'XMLHttpRequest',
             'x-csrf-token':     '<%= csrfToken %>',
           },
         });
-        const data = await res.json();
+        var data = await res.json();
         if (data.ok) {
-          const row = document.querySelector(`tr[data-backup-id="${id}"]`);
+          var row = document.querySelector('tr[data-backup-id="' + id + '"]');
           if (row) row.remove();
         } else {
-          Swal.fire('Error', data.error || 'Failed to delete.', 'error');
+          Swal.fire('Error', data.error || 'Failed to delete backup.', 'error');
         }
       } catch (err) {
-        Swal.fire('Error', 'Request failed.', 'error');
+        Swal.fire('Error', 'Delete request failed.', 'error');
       }
     });
   });
