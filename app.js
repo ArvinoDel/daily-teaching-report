@@ -20,6 +20,8 @@ const notificationRoutes = require('./routes/notifications');
 const publicCardRoutes   = require('./routes/publicCard');
 const cronRoutes         = require('./routes/cron');
 const materialRoutes     = require('./routes/materials');
+const onboardingRoutes   = require('./routes/onboarding');
+const { trackOnboardingVisit, getNavOnboardingRemainingCount } = require('./services/onboardingService');
 const User           = require('./models/User');
 const Notification   = require('./models/Notification');
 const Feedback = require('./models/Feedback');
@@ -194,9 +196,9 @@ app.use(async (req, res, next) => {
           req.session.user._id,
           { lastActiveAt: new Date(now) },
           { new: true }
-        ).select('username displayName role joinDate commission profilePicture lastActiveAt')
+        ).select('username displayName role joinDate commission profilePicture lastActiveAt onboarding createdAt')
       : User.findById(req.session.user._id)
-          .select('username displayName role joinDate commission profilePicture lastActiveAt');
+          .select('username displayName role joinDate commission profilePicture lastActiveAt onboarding createdAt');
 
     if (needsTrackUpdate) {
       req.session._lastTracked = now;
@@ -210,6 +212,7 @@ app.use(async (req, res, next) => {
     ]);
 
     res.locals.currentUser = user || null;
+    res.locals.onboardingRemainingCount = getNavOnboardingRemainingCount(user);
 
     if (needsNotifRefresh && notifResult !== null) {
       req.session._cachedUnreadCount = notifResult || 0;
@@ -218,6 +221,7 @@ app.use(async (req, res, next) => {
     res.locals.unreadNotificationCount = req.session._cachedUnreadCount || 0;
   } catch (e) {
     res.locals.currentUser = req.session.user || null;
+    res.locals.onboardingRemainingCount = null;
     res.locals.unreadNotificationCount = 0;
   }
   next();
@@ -238,7 +242,8 @@ app.use('/admin',   adminRoutes);
 app.use('/feedback', feedbackRoutes);
 // Public (unauthenticated) routes — student card view via QR/camera scan
 app.use('/', publicCardRoutes);
-app.get('/score-calculator', requireAuth, (req, res) => res.render('score-calculator'));
+app.use('/', onboardingRoutes);
+app.get('/score-calculator', requireAuth, trackOnboardingVisit('calculator'), (req, res) => res.render('score-calculator'));
 app.get('/', (req, res) => res.redirect('/reports'));
 
 

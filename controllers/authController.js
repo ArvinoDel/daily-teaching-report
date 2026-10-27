@@ -114,6 +114,13 @@ exports.register = async (req, res) => {
       displayName,
       joinDate,
       lastActiveAt: regNow,
+      onboarding: {
+        version: 1,
+        legacy: false,
+        startedAt: regNow,
+        dismissedAt: null,
+        completedAt: null,
+      },
     });
 
     // Send welcome notification instructing teacher to fill teaching reward amount

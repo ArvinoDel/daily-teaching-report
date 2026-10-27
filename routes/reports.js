@@ -3,6 +3,7 @@ const router = express.Router();
 const ctrl        = require('../controllers/reportsController');
 const crosscheck  = require('../controllers/rewardCrosscheckController');
 const teacherSalaryCtrl = require('../controllers/teacherSalaryController');
+const { trackOnboardingVisit } = require('../services/onboardingService');
 
 router.get('/', ctrl.index);
 router.get('/new', ctrl.newForm);
@@ -11,8 +12,8 @@ router.post('/bulk', ctrl.createBulk);
 router.get('/export', ctrl.exportExcel);
 
 // Teacher salary portal — must be before /:id wildcard
-router.get('/my-salary',          teacherSalaryCtrl.mySalaryIndex);
-router.get('/my-salary/:id/slip', teacherSalaryCtrl.mySalarySlip);
+router.get('/my-salary',          trackOnboardingVisit('my_salary'), teacherSalaryCtrl.mySalaryIndex);
+router.get('/my-salary/:id/slip', trackOnboardingVisit('my_salary'), teacherSalaryCtrl.mySalarySlip);
 
 // Reward crosscheck routes (must be before /:id wildcard)
 router.get('/reward-crosscheck',         crosscheck.renderPage);

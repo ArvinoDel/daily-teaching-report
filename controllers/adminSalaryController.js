@@ -21,6 +21,7 @@ const User        = require('../models/User');
 const AuditLog    = require('../models/AuditLog');
 const salaryService = require('../services/salaryService');
 const notificationService = require('../services/notificationService');
+const { getTeachersWithoutRewards } = require('../services/onboardingService');
 const ExcelJS     = require('exceljs');
 
 /* ── Shared helpers ── */
@@ -163,6 +164,9 @@ exports.salaryIndex = async (req, res) => {
     const flash = req.session.flash || null;
     delete req.session.flash;
 
+    const activeTeachers = await User.find({ role: 'teacher' }).select('displayName username commission').lean();
+    const teachersWithoutRewards = getTeachersWithoutRewards(activeTeachers);
+
     res.render('admin/salaries/index', {
       rows, year, month,
       monthLabel, prevMonth, nextMonth, isCurrentMonth, selectedMonthStr,
@@ -174,6 +178,7 @@ exports.salaryIndex = async (req, res) => {
       flash,
       firstDraftId,
       firstRowId,
+      teachersWithoutRewards,
     });
   } catch (err) {
     console.error('[salary] index error:', err);
@@ -236,7 +241,15 @@ exports.salaryGenerate = async (req, res) => {
       meta: { month: m, year: y, count: saved.length },
     });
 
-    req.session.flash = { type: 'success', msg: `Generated ${saved.length} salary drafts for ${pl}.` };
+    const activeTeachers = await User.find({ role: 'teacher' }).select('displayName username commission').lean();
+    const withoutRewards = getTeachersWithoutRewards(activeTeachers);
+
+    let flashMsg = `Generated ${saved.length} salary drafts for ${pl}.`;
+    if (withoutRewards.count > 0) {
+      flashMsg += ` Note: ${withoutRewards.count} teacher${withoutRewards.count > 1 ? 's have' : ' has'} no reward amounts set.`;
+    }
+
+    req.session.flash = { type: 'success', msg: flashMsg };
     res.redirect(`/admin/salaries?month=${y}-${String(m).padStart(2,'0')}`);
   } catch (err) {
     console.error('[salary] generate error:', err);

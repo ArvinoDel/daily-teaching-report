@@ -4,6 +4,7 @@ const User     = require('../models/User');
 const Group    = require('../models/Group'); // 🟢 Added for autocomplete
 const Material = require('../models/Material'); // 🟢 Added for material autocomplete
 const { normalizeMaterialName, formatMaterialDisplayName } = require('../models/Material');
+const onboardingService = require('../services/onboardingService');
 const {
   normalizeClassFields,
   validateCompetition,
@@ -287,6 +288,22 @@ exports.index = async (req, res) => {
     const successMessage = req.session.flash || null;
     delete req.session.flash;
 
+    // Compute onboarding state for teachers (reusing hasCommission and totalReports)
+    let onboardingState = null;
+    if (req.session.user?.role === 'teacher') {
+      const userDoc = res.locals.currentUser || await User.findById(req.session.user._id);
+      const facts = {
+        hasProfilePicture: Boolean(userDoc?.profilePicture),
+        hasDisplayName: Boolean(userDoc?.displayName && String(userDoc.displayName).trim().length > 0),
+        hasCommission,
+        reportCount: totalReports,
+      };
+      onboardingState = onboardingService.computeOnboardingState(userDoc, facts);
+      if (userDoc) {
+        await onboardingService.persistDerivedSteps(userDoc, onboardingState);
+      }
+    }
+
     res.render('reports/index', {
       reports, teachingTypes: TEACHING_TYPES, selectedType: teaching_type || '', typeBadgeColor,
       selectedMode: session_mode || '',
@@ -315,6 +332,7 @@ exports.index = async (req, res) => {
         })),
       }))),
       hasCommission, commissionTable, commissionTotal, commissionTotalFormatted, totalSessions,
+      onboardingState,
     });
   } catch (err) {
     console.error(err);

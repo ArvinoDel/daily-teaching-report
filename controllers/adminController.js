@@ -269,13 +269,31 @@ exports.usersList = async (req, res) => {
     const countMap = {};
     reportCounts.forEach(r => { countMap[String(r._id)] = r.count; });
 
-    const usersData = users.map(u => ({
-      ...u.toObject({ virtuals: true }),
-      isOnline:    !!(u.lastActiveAt && new Date(u.lastActiveAt).getTime() >= fiveMinAgo.getTime()),
-      reportCount: countMap[String(u._id)] || 0,
-    }));
+    let noRewardsCount = 0;
+    const allUsersData = users.map(u => {
+      const comm = u.commission || {};
+      const hasRewards = [comm.primeFull, comm.primeAssisted, comm.halfPrime, comm.assistant].some(v => (Number(v) || 0) > 0);
+      const rewardsNotSet = u.role === 'teacher' && !hasRewards;
+      if (rewardsNotSet) noRewardsCount++;
+      return {
+        ...u.toObject({ virtuals: true }),
+        isOnline:    !!(u.lastActiveAt && new Date(u.lastActiveAt).getTime() >= fiveMinAgo.getTime()),
+        reportCount: countMap[String(u._id)] || 0,
+        rewardsNotSet,
+      };
+    });
 
-    res.render('admin/users/index', { users: usersData });
+    const filter = req.query.filter || '';
+    const displayedUsers = filter === 'no-rewards'
+      ? allUsersData.filter(u => u.rewardsNotSet)
+      : allUsersData;
+
+    res.render('admin/users/index', {
+      users: displayedUsers,
+      totalUsersCount: allUsersData.length,
+      noRewardsCount,
+      filter,
+    });
   } catch (err) {
     console.error(err);
     res.render('error', { message: 'Failed to load users.' });
