@@ -171,22 +171,23 @@ function computeOnboardingState(user, facts = {}, now = new Date()) {
   const nextStep = evaluatedSteps.find(s => s.status === 'todo') || null;
 
   const isDismissed = Boolean(user.onboarding?.dismissedAt);
-  const isAlreadyCompleted = Boolean(user.onboarding?.completedAt);
+  const completedAt = user.onboarding?.completedAt || null;
 
   let visible = false;
   if (legacy) {
-    // Legacy teachers: only get rewards step and only while rates are missing; otherwise visible is false
+    // Legacy teachers: only get rewards step and only while rates are missing
     const rewardsStep = evaluatedSteps.find(s => s.key === 'rewards');
     const rewardsDone = rewardsStep?.status === 'done';
-    visible = !rewardsDone && !isDismissed;
+    visible = !rewardsDone;
   } else {
-    // Normal teachers: visible when role is teacher AND not dismissed AND not complete
-    visible = !isDismissed && !isAlreadyCompleted && !isComplete;
+    // Normal teachers: visible while incomplete, automatically gone when completed
+    visible = !isComplete;
   }
 
   return {
     visible,
     isLegacy: legacy,
+    isDismissed,
     steps: evaluatedSteps,
     doneCount,
     totalCount,
@@ -371,16 +372,15 @@ async function ensureOnboardingForNewUser(userId, now = new Date()) {
 
 /**
  * Express middleware for tracking visit steps.
- * Hooks into res.render to trigger only when the page renders successfully (status < 400, not an error view).
- * Non-blocking, only for teachers, swallows errors safely.
+ * Hooks into res.on('finish') to trigger only when the response completes successfully (status < 400).
+ * Non-blocking, only for teachers, swallows and logs errors safely.
  */
 function trackOnboardingVisit(key) {
   return function (req, res, next) {
-    const user = req.session?.user;
+    const user = req.session?.user || req.user;
     if (user && user.role === 'teacher') {
-      const origRender = res.render;
-      res.render = function (view, options, callback) {
-        if (typeof view === 'string' && !view.includes('error') && (!res.statusCode || res.statusCode < 400)) {
+      res.on('finish', () => {
+        if (typeof res.statusCode === 'number' && res.statusCode < 400) {
           User.updateOne(
             {
               _id: user._id,
@@ -394,8 +394,7 @@ function trackOnboardingVisit(key) {
             console.error(`[onboarding] track visit error for ${key}:`, err.message);
           });
         }
-        return origRender.call(this, view, options, callback);
-      };
+      });
     }
     next();
   };
@@ -460,9 +459,100 @@ function getNavOnboardingRemainingCount(user) {
   return state.totalCount - state.doneCount;
 }
 
+const ALLOWED_TOURS = ['reportForm'];
+
+/**
+ * Pure helper: determine if a tour offer should be shown.
+ * True only for non-legacy teachers with an active onboarding (not dismissed)
+ * who have never seen/completed/dismissed this tour; false otherwise.
+ *
+ * @param {Object} user
+ * @param {string} tourKey
+ * @param {Date} [now]
+ * @returns {boolean}
+ */
+function shouldOfferTour(user, tourKey, now = new Date()) {
+  if (!user || user.role !== 'teacher') return false;
+  if (!ALLOWED_TOURS.includes(tourKey)) return false;
+  if (user.onboarding?.legacy) return false;
+  if (user.onboarding?.dismissedAt) return false;
+
+  let tourRecord = null;
+  if (user.onboarding?.tours instanceof Map) {
+    tourRecord = user.onboarding.tours.get(tourKey);
+  } else if (user.onboarding?.tours) {
+    tourRecord = user.onboarding.tours[tourKey];
+  }
+
+  if (!tourRecord) return true;
+  if (tourRecord.seenAt || tourRecord.completedAt || tourRecord.dismissedAt) return false;
+  return true;
+}
+
+/**
+ * Record that a tour has been seen (mid-tour close or started).
+ */
+async function recordTourSeen(userId, tourKey, now = new Date()) {
+  if (!ALLOWED_TOURS.includes(tourKey)) {
+    const err = new Error('Invalid tour key');
+    err.status = 400;
+    throw err;
+  }
+  await User.updateOne(
+    {
+      _id: userId,
+      $or: [
+        { [`onboarding.tours.${tourKey}.seenAt`]: null },
+        { [`onboarding.tours.${tourKey}.seenAt`]: { $exists: false } },
+      ],
+    },
+    { $set: { [`onboarding.tours.${tourKey}.seenAt`]: now } }
+  );
+}
+
+/**
+ * Record that a tour has been completed.
+ */
+async function recordTourCompleted(userId, tourKey, now = new Date()) {
+  if (!ALLOWED_TOURS.includes(tourKey)) {
+    const err = new Error('Invalid tour key');
+    err.status = 400;
+    throw err;
+  }
+  await User.updateOne(
+    { _id: userId },
+    {
+      $set: {
+        [`onboarding.tours.${tourKey}.completedAt`]: now,
+        [`onboarding.tours.${tourKey}.seenAt`]: now,
+      },
+    }
+  );
+}
+
+/**
+ * Record that a tour has been dismissed (declined via "No thanks").
+ */
+async function recordTourDismissed(userId, tourKey, now = new Date()) {
+  if (!ALLOWED_TOURS.includes(tourKey)) {
+    const err = new Error('Invalid tour key');
+    err.status = 400;
+    throw err;
+  }
+  await User.updateOne(
+    { _id: userId },
+    {
+      $set: {
+        [`onboarding.tours.${tourKey}.dismissedAt`]: now,
+      },
+    }
+  );
+}
+
 module.exports = {
   STEPS,
   STEP_MAP,
+  ALLOWED_TOURS,
   isUserLegacy,
   computeOnboardingState,
   getFacts,
@@ -475,4 +565,8 @@ module.exports = {
   trackOnboardingVisit,
   getTeachersWithoutRewards,
   getNavOnboardingRemainingCount,
+  shouldOfferTour,
+  recordTourSeen,
+  recordTourCompleted,
+  recordTourDismissed,
 };

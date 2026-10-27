@@ -288,18 +288,14 @@ exports.index = async (req, res) => {
     const successMessage = req.session.flash || null;
     delete req.session.flash;
 
-    // Compute onboarding state for teachers (reusing hasCommission and totalReports)
+    // Compute onboarding state for teachers using getFacts (excludes auto-generated partner copies)
     let onboardingState = null;
     if (req.session.user?.role === 'teacher') {
       const userDoc = res.locals.currentUser || await User.findById(req.session.user._id);
-      const facts = {
-        hasProfilePicture: Boolean(userDoc?.profilePicture),
-        hasDisplayName: Boolean(userDoc?.displayName && String(userDoc.displayName).trim().length > 0),
-        hasCommission,
-        reportCount: totalReports,
-      };
-      onboardingState = onboardingService.computeOnboardingState(userDoc, facts);
       if (userDoc) {
+        const facts = await onboardingService.getFacts(userDoc);
+        facts.hasCommission = hasCommission;
+        onboardingState = onboardingService.computeOnboardingState(userDoc, facts);
         await onboardingService.persistDerivedSteps(userDoc, onboardingState);
       }
     }
@@ -343,6 +339,7 @@ exports.index = async (req, res) => {
 // 🟢 Now async — fetches groups + teachers + materials for autocomplete
 exports.newForm = async (req, res) => {
   try {
+    const isTeacher = req.session.user && req.session.user.role === 'teacher';
     const isAdmin = req.session.user && (req.session.user.role === 'admin' || req.session.user.role === 'superadmin');
     // ⚡ getTeachersData() returns both JSON (for autocomplete) and docs (for admin select)
     //    in one cached call — no second User.find() needed for admins
@@ -352,9 +349,14 @@ exports.newForm = async (req, res) => {
       getMaterialsJson(),
     ]);
     const teachers = isAdmin ? teacherDocs : [];
-    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson, teachersJson, teachers, materialsJson });
+    let shouldOfferTour = false;
+    if (isTeacher) {
+      const userDoc = res.locals.currentUser || await User.findById(req.session.user._id);
+      shouldOfferTour = onboardingService.shouldOfferTour(userDoc, 'reportForm');
+    }
+    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson, teachersJson, teachers, materialsJson, shouldOfferTour });
   } catch (err) {
-    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson: '[]', teachersJson: '[]', teachers: [], materialsJson: '[]' });
+    res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors: [], formData: {}, groupsJson: '[]', teachersJson: '[]', teachers: [], materialsJson: '[]', shouldOfferTour: false });
   }
 };
 
@@ -703,7 +705,7 @@ exports.editForm = async (req, res) => {
       getMaterialsJson(),
     ]);
     if (!report) return res.render('error', { message: 'Report not found.' });
-    res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [], groupsJson, teachersJson, materialsJson });
+    res.render('reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: [], groupsJson, teachersJson, materialsJson, shouldOfferTour: false });
   } catch (err) {
     res.render('error', { message: 'Report not found.' });
   }

@@ -5,6 +5,10 @@ const assert = require('node:assert/strict');
 const path = require('path');
 const ejs = require('ejs');
 
+const { JSDOM } = require('jsdom');
+const EventEmitter = require('events');
+const User = require('../models/User');
+
 const {
   STEPS,
   STEP_MAP,
@@ -14,6 +18,9 @@ const {
   skipStep,
   getTeachersWithoutRewards,
   getNavOnboardingRemainingCount,
+  shouldOfferTour,
+  trackOnboardingVisit,
+  ALLOWED_TOURS,
 } = require('../services/onboardingService');
 
 test('Teacher Onboarding - computeOnboardingState pure function', async (t) => {
@@ -182,22 +189,24 @@ test('Teacher Onboarding - computeOnboardingState pure function', async (t) => {
     assert.equal(state.visible, false);
   });
 
-  await t.test('dismissed hides card (visible false) but /getting-started still computes all steps', () => {
+  await t.test('complete teacher hides card (visible false) but /getting-started still computes all steps', () => {
+    const userSteps = new Map();
+    STEPS.forEach(s => userSteps.set(s.key, { doneAt: new Date() }));
     const user = {
       _id: '670000000000000000000001',
       role: 'teacher',
       displayName: 'Teacher Jane',
-      profilePicture: null,
-      commission: { primeFull: 0 },
+      profilePicture: 'pic.jpg',
+      commission: { primeFull: 10000 },
       onboarding: {
-        dismissedAt: new Date(),
-        completedAt: null,
-        steps: new Map(),
+        completedAt: new Date(),
+        steps: userSteps,
       },
     };
-    const facts = { hasProfilePicture: false, hasDisplayName: true, hasCommission: false, reportCount: 0 };
+    const facts = { hasProfilePicture: true, hasDisplayName: true, hasCommission: true, reportCount: 1 };
     const state = computeOnboardingState(user, facts);
 
+    assert.equal(state.isComplete, true);
     assert.equal(state.visible, false);
     assert.equal(state.totalCount, 6);
     assert.equal(state.steps.length, 6);
@@ -436,9 +445,9 @@ test('Teacher Onboarding - EJS Template Rendering', async (t) => {
     assert.ok(html.includes('id="onboarding-live-region"'), 'Must include live announcement region');
   });
 
-  await t.test('dashboard card renders nothing when onboarding is complete', async () => {
+  await t.test('dashboard card renders nothing when onboarding is complete (auto-gone)', async () => {
     const state = {
-      visible: true,
+      visible: false,
       doneCount: 6,
       totalCount: 6,
       percent: 100,
@@ -476,3 +485,351 @@ test('Teacher Onboarding - EJS Template Rendering', async (t) => {
     assert.ok(html.includes('/profile/edit#commission-section'), 'Must include CTA link to commission section');
   });
 });
+
+test('Teacher Onboarding - auto-disappear when complete visibility rules', async (t) => {
+  const allFacts = { hasProfilePicture: true, hasDisplayName: true, hasCommission: true, reportCount: 1 };
+  const doneSteps = new Map();
+  STEPS.forEach(s => doneSteps.set(s.key, { doneAt: new Date() }));
+
+  await t.test('new teacher incomplete -> visible is true', () => {
+    const user = {
+      role: 'teacher',
+      displayName: 'Jane',
+      profilePicture: null,
+      commission: {},
+      onboarding: { legacy: false, steps: new Map() },
+    };
+    const incompleteFacts = { hasProfilePicture: false, hasDisplayName: false, hasCommission: false, reportCount: 0 };
+    const state = computeOnboardingState(user, incompleteFacts);
+    assert.equal(state.isComplete, false);
+    assert.equal(state.visible, true);
+  });
+
+  await t.test('new teacher complete -> visible is false (auto-disappears from dashboard)', () => {
+    const user = {
+      role: 'teacher',
+      displayName: 'Jane',
+      profilePicture: 'pic.jpg',
+      commission: { primeFull: 1000 },
+      onboarding: {
+        legacy: false,
+        completedAt: new Date(),
+        steps: doneSteps,
+      },
+    };
+    const state = computeOnboardingState(user, allFacts);
+    assert.equal(state.isComplete, true);
+    assert.equal(state.visible, false);
+  });
+
+  await t.test('legacy teacher complete -> visible is false', () => {
+    const user = {
+      role: 'teacher',
+      displayName: 'Legacy Jane',
+      profilePicture: 'pic.jpg',
+      commission: { primeFull: 1000 },
+      onboarding: {
+        legacy: true,
+        steps: doneSteps,
+      },
+    };
+    const state = computeOnboardingState(user, allFacts);
+    assert.equal(state.isComplete, true);
+    assert.equal(state.visible, false);
+  });
+});
+
+test('Teacher Onboarding - trackOnboardingVisit with fake req/res', async (t) => {
+  let updateCalledWith = null;
+  const origUpdateOne = User.updateOne;
+  t.after(() => {
+    User.updateOne = origUpdateOne;
+  });
+  User.updateOne = async (filter, update) => {
+    updateCalledWith = { filter, update };
+    return { modifiedCount: 1 };
+  };
+
+  await t.test('calls User.updateOne on finish when statusCode < 400', () => {
+    updateCalledWith = null;
+    const req = {
+      user: {
+        _id: '507f1f77bcf86cd799439011',
+        role: 'teacher',
+      },
+    };
+    const res = new EventEmitter();
+    res.statusCode = 200;
+    let nextCalled = false;
+
+    const mw = trackOnboardingVisit('open_material');
+    mw(req, res, () => { nextCalled = true; });
+    assert.equal(nextCalled, true);
+
+    res.emit('finish');
+    assert.ok(updateCalledWith);
+    assert.equal(updateCalledWith.filter._id, req.user._id);
+    assert.ok(updateCalledWith.update.$set['onboarding.steps.open_material.doneAt']);
+  });
+
+  await t.test('does not call User.updateOne when statusCode >= 400', () => {
+    updateCalledWith = null;
+    const req = {
+      user: {
+        _id: '507f1f77bcf86cd799439011',
+        role: 'teacher',
+      },
+    };
+    const res = new EventEmitter();
+    res.statusCode = 500;
+    const mw = trackOnboardingVisit('open_material');
+    mw(req, res, () => {});
+    res.emit('finish');
+    assert.equal(updateCalledWith, null);
+  });
+});
+
+test('Report Form Tour - shouldOfferTour rules', async (t) => {
+  const baseTeacher = {
+    role: 'teacher',
+    onboarding: {
+      legacy: false,
+      dismissedAt: null,
+      tours: new Map(),
+    },
+  };
+
+  await t.test('new eligible teacher without seen/completed/dismissed -> true', () => {
+    assert.equal(shouldOfferTour(baseTeacher, 'reportForm'), true);
+  });
+
+  await t.test('admin user -> false', () => {
+    const admin = { ...baseTeacher, role: 'admin' };
+    assert.equal(shouldOfferTour(admin, 'reportForm'), false);
+  });
+
+  await t.test('superadmin user -> false', () => {
+    const superadmin = { ...baseTeacher, role: 'superadmin' };
+    assert.equal(shouldOfferTour(superadmin, 'reportForm'), false);
+  });
+
+  await t.test('legacy teacher -> false', () => {
+    const legacyTeacher = {
+      ...baseTeacher,
+      onboarding: { ...baseTeacher.onboarding, legacy: true },
+    };
+    assert.equal(shouldOfferTour(legacyTeacher, 'reportForm'), false);
+  });
+
+  await t.test('teacher with dismissed onboarding -> false', () => {
+    const dismissedTeacher = {
+      ...baseTeacher,
+      onboarding: { ...baseTeacher.onboarding, dismissedAt: new Date() },
+    };
+    assert.equal(shouldOfferTour(dismissedTeacher, 'reportForm'), false);
+  });
+
+  await t.test('teacher who already saw tour -> false', () => {
+    const tours = new Map();
+    tours.set('reportForm', { seenAt: new Date() });
+    const seenTeacher = {
+      ...baseTeacher,
+      onboarding: { ...baseTeacher.onboarding, tours },
+    };
+    assert.equal(shouldOfferTour(seenTeacher, 'reportForm'), false);
+  });
+
+  await t.test('teacher who completed tour -> false', () => {
+    const tours = new Map();
+    tours.set('reportForm', { completedAt: new Date() });
+    const completedTeacher = {
+      ...baseTeacher,
+      onboarding: { ...baseTeacher.onboarding, tours },
+    };
+    assert.equal(shouldOfferTour(completedTeacher, 'reportForm'), false);
+  });
+
+  await t.test('teacher who dismissed tour -> false', () => {
+    const tours = new Map();
+    tours.set('reportForm', { dismissedAt: new Date() });
+    const dismissedTourTeacher = {
+      ...baseTeacher,
+      onboarding: { ...baseTeacher.onboarding, tours },
+    };
+    assert.equal(shouldOfferTour(dismissedTourTeacher, 'reportForm'), false);
+  });
+
+  await t.test('unknown tourKey -> false', () => {
+    assert.equal(shouldOfferTour(baseTeacher, 'unknownTour'), false);
+  });
+});
+
+test('Report Form Tour - tour config validation', async (t) => {
+  const steps = require('../public/js/tours/report-form-tour');
+  assert.ok(Array.isArray(steps), 'Steps must be an array');
+  assert.equal(steps.length, 9, 'Must have exactly 9 steps');
+
+  for (const step of steps) {
+    await t.test(`step "${step.id}" validation`, () => {
+      assert.equal(typeof step.selector, 'string', 'step.selector must be a string');
+      assert.ok(step.selector.startsWith('#'), 'step.selector must be an ID selector starting with #');
+      assert.equal(typeof step.title, 'string', 'step.title must be a string');
+      assert.ok(step.title.length > 0, 'step.title must not be empty');
+      assert.equal(typeof step.description, 'string', 'step.description must be a string');
+      assert.ok(step.description.length <= 160, `step description must be <= 160 chars, got ${step.description.length}`);
+      assert.ok(!/<[^>]+>/.test(step.title), 'step.title must not contain HTML tags');
+      assert.ok(!/<[^>]+>/.test(step.description), 'step.description must not contain HTML tags');
+    });
+  }
+});
+
+test('Report Form Tour - DOM selector regression test', async (t) => {
+  const origLoader = ejs.fileLoader;
+  t.after(() => {
+    ejs.fileLoader = origLoader;
+  });
+
+  ejs.fileLoader = function (filePath) {
+    if (filePath.includes('partials/header') || filePath.includes('partials\\header')) {
+      return '<!-- STUBBED_HEADER -->';
+    }
+    if (filePath.includes('partials/footer') || filePath.includes('partials\\footer')) {
+      return '<!-- STUBBED_FOOTER -->';
+    }
+    return origLoader(filePath);
+  };
+
+  const newReportPath = path.resolve('views/reports/new.ejs');
+  const templateData = {
+    csrfToken: 'test-token',
+    currentUser: { _id: '507f1f77bcf86cd799439011', displayName: 'Teacher John', role: 'teacher' },
+    errors: [],
+    formData: {},
+    groupsJson: '[]',
+    materialsJson: '[]',
+    teachingTypes: ['Regular Teaching', 'Assistant Teacher', '1/2 Prime Teacher'],
+    teachers: [],
+    teachersJson: '[]',
+    shouldOfferTour: true,
+  };
+
+  const html = await ejs.renderFile(newReportPath, templateData);
+  const dom = new JSDOM(html);
+  const doc = dom.window.document;
+
+  const steps = require('../public/js/tours/report-form-tour');
+  for (const step of steps) {
+    await t.test(`selector ${step.selector} exists in DOM or is declared conditional`, () => {
+      const el = doc.querySelector(step.selector);
+      if (!el) {
+        assert.ok(step.conditional, `Selector "${step.selector}" missing from rendered form and NOT marked conditional`);
+      } else {
+        assert.ok(el, `Element for selector "${step.selector}" must exist`);
+      }
+    });
+  }
+});
+
+test('Report Form Tour - Render tests in new.ejs', async (t) => {
+  const origLoader = ejs.fileLoader;
+  t.after(() => {
+    ejs.fileLoader = origLoader;
+  });
+
+  ejs.fileLoader = function (filePath) {
+    if (filePath.includes('partials/header') || filePath.includes('partials\\header')) {
+      return '<!-- STUBBED_HEADER -->';
+    }
+    if (filePath.includes('partials/footer') || filePath.includes('partials\\footer')) {
+      return '<!-- STUBBED_FOOTER -->';
+    }
+    return origLoader(filePath);
+  };
+
+  const newReportPath = path.resolve('views/reports/new.ejs');
+
+  await t.test('teacher sees "?" button and tour scripts', async () => {
+    const html = await ejs.renderFile(newReportPath, {
+      csrfToken: 'token',
+      currentUser: { role: 'teacher', displayName: 'Teacher' },
+      errors: [],
+      formData: {},
+      groupsJson: '[]',
+      materialsJson: '[]',
+      teachingTypes: [],
+      teachers: [],
+      teachersJson: '[]',
+      shouldOfferTour: true,
+    });
+
+    assert.ok(html.includes('id="tour-help-btn"'), 'Teacher must see ? button');
+    assert.ok(html.includes('driver.js'), 'Teacher must load driver.js');
+    assert.ok(html.includes('tour-runner.js'), 'Teacher must load tour-runner.js');
+    assert.ok(html.includes('report-form-tour.js'), 'Teacher must load report-form-tour.js');
+  });
+
+  await t.test('admin does NOT see "?" button and tour scripts', async () => {
+    const html = await ejs.renderFile(newReportPath, {
+      csrfToken: 'token',
+      currentUser: { role: 'admin', displayName: 'Admin' },
+      errors: [],
+      formData: {},
+      groupsJson: '[]',
+      materialsJson: '[]',
+      teachingTypes: [],
+      teachers: [],
+      teachersJson: '[]',
+      shouldOfferTour: false,
+    });
+
+    assert.ok(!html.includes('id="tour-help-btn"'), 'Admin must not see ? button');
+    assert.ok(!html.includes('driver.js'), 'Admin must not load driver.js');
+    assert.ok(!html.includes('tour-runner.js'), 'Admin must not load tour-runner.js');
+  });
+});
+
+test('Navigation - Getting started link removed from navbar', async (t) => {
+  const navLinksPath = path.resolve('views/partials/nav/nav-links.ejs');
+  const mobileMenuPath = path.resolve('views/partials/nav/mobile-menu.ejs');
+
+  await t.test('teacher does not see Getting started in nav-links or mobile-menu', async () => {
+    const locals = {
+      currentUser: { role: 'teacher', displayName: 'Teacher Jane' },
+      onboardingRemainingCount: 3,
+      csrfToken: 'test-token',
+      title: 'Dashboard',
+    };
+
+    const navHtml = await ejs.renderFile(navLinksPath, locals);
+    const mobileHtml = await ejs.renderFile(mobileMenuPath, {
+      ...locals,
+      _expStr: null,
+      _isOnline: false,
+      unreadNotificationCount: 0,
+    });
+
+    assert.ok(!navHtml.includes('Getting started'), 'nav-links must not show Getting started');
+    assert.ok(!mobileHtml.includes('Getting started'), 'mobile-menu must not show Getting started');
+  });
+
+  await t.test('admin does not see Getting started in nav-links or mobile-menu', async () => {
+    const locals = {
+      currentUser: { role: 'admin', displayName: 'Admin User' },
+      onboardingRemainingCount: 3,
+      csrfToken: 'test-token',
+      title: 'Dashboard',
+    };
+
+    const navHtml = await ejs.renderFile(navLinksPath, locals);
+    const mobileHtml = await ejs.renderFile(mobileMenuPath, {
+      ...locals,
+      _expStr: null,
+      _isOnline: false,
+      unreadNotificationCount: 0,
+    });
+
+    assert.ok(!navHtml.includes('Getting started'), 'admin nav-links must not show Getting started');
+    assert.ok(!mobileHtml.includes('Getting started'), 'admin mobile-menu must not show Getting started');
+  });
+});
+

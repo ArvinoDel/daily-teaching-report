@@ -100,6 +100,15 @@ const userSchema = new mongoose.Schema({
       }, { _id: false }),
       default: () => new Map(),
     },
+    tours: {
+      type: Map,
+      of: new mongoose.Schema({
+        seenAt:      { type: Date, default: null },
+        completedAt: { type: Date, default: null },
+        dismissedAt: { type: Date, default: null },
+      }, { _id: false }),
+      default: () => new Map(),
+    },
   },
 }, { timestamps: true });
 

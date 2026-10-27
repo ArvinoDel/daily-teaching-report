@@ -259,6 +259,10 @@ app.use((req, res) => {
 
 // Multer & General error handler
 app.use(async (err, req, res, next) => {
+  if (res.headersSent) {
+    return next(err);
+  }
+
   res.locals.currentUser = res.locals.currentUser || null;
   res.locals.csrfToken = res.locals.csrfToken || (req.session && req.session.csrfToken) || '';
 

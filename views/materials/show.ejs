@@ -3,7 +3,10 @@
 <%
   const mat = material;
   const mc  = content || {};
-  const renderedBody = (typeof renderMaterialBody === 'function' ? renderMaterialBody(mc.body) : (mc.body || ''));
+  let renderedBody = (typeof renderMaterialBody === 'function' ? renderMaterialBody(mc.body) : (mc.body || ''));
+  if (renderedBody) {
+    renderedBody = renderedBody.replace(/&nbsp;/g, ' ').replace(/\u00A0/g, ' ');
+  }
   const hasBody  = renderedBody && renderedBody.trim().length > 0;
   const allResources = mc.resources || [];
   const fileResources = allResources.filter(r => r.kind === 'file');
@@ -53,6 +56,12 @@
   line-height: 1.7;
   color: #334155;
   max-width: 68ch;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.mc-notes * {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .mc-notes h1, .mc-notes h2, .mc-notes h3, .mc-notes h4 {
   font-weight: 700;
@@ -75,8 +84,8 @@
 .mc-notes blockquote { border-left: 3px solid #cbd5e1; padding-left: 1rem; color: #64748b; font-style: italic; margin: 1.25em 0; }
 .mc-notes hr { border: 0; border-top: 1px solid #e2e8f0; margin: 1.5em 0; }
 .mc-notes code { font-family: ui-monospace, monospace; background: #f1f5f9; padding: 2px 6px; border-radius: 6px; font-size: 0.9em; color: #0f172a; }
-.mc-notes pre { font-family: ui-monospace, monospace; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; overflow-x: auto; margin: 1em 0; font-size: 0.9em; }
-.mc-notes table { width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 0.9rem; }
+.mc-notes pre { font-family: ui-monospace, monospace; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; overflow-x: auto; margin: 1em 0; font-size: 0.9em; max-width: 100%; white-space: pre-wrap; word-break: break-word; }
+.mc-notes table { width: 100%; max-width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 0.9rem; display: block; overflow-x: auto; }
 .mc-notes th, .mc-notes td { border: 1px solid #e2e8f0; padding: 8px 12px; text-align: left; }
 .mc-notes th { background: #f8fafc; font-weight: 600; color: #334155; }
 </style>
@@ -220,8 +229,8 @@
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
 
       <!-- Left Column: Reading notes & guide (col-span-8, max-w-[68ch]) -->
-      <main class="lg:col-span-8 space-y-6">
-        <article class="bg-white rounded-2xl border border-slate-200/80 p-6 sm:p-8 shadow-xs">
+      <div class="lg:col-span-8 space-y-6 min-w-0">
+        <article class="bg-white rounded-2xl border border-slate-200/80 p-6 sm:p-8 shadow-xs min-w-0 break-words">
           <% if (hasBody) { %>
             <div class="mc-notes">
               <%- renderedBody %>
@@ -233,10 +242,10 @@
             </div>
           <% } %>
         </article>
-      </main>
+      </div>
 
       <!-- Right Column: Files & Links Panel (Desktop Sticky) -->
-      <aside class="hidden lg:block lg:col-span-4 sticky top-20 self-start space-y-4">
+      <aside class="hidden lg:block lg:col-span-4 sticky top-20 self-start space-y-4 min-w-0">
         <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
           <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
             <h2 class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">

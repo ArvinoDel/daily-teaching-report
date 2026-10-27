@@ -68,7 +68,10 @@
   // Real-time visibility check for dashboard card (auto-disappears once complete)
   const dashboardCard = document.getElementById('onboarding-card');
   if (dashboardCard) {
+    let intervalId = null;
+
     function removeCardSmoothly() {
+      if (intervalId) clearInterval(intervalId);
       dashboardCard.style.transition = 'opacity 300ms ease, transform 300ms ease, max-height 400ms ease, margin 400ms ease, padding 400ms ease';
       dashboardCard.style.opacity = '0';
       dashboardCard.style.transform = 'translateY(-10px)';
@@ -92,12 +95,14 @@
       }
     }
 
+    intervalId = setInterval(checkCompletionRealtime, 6000);
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'visible') {
         checkCompletionRealtime();
       }
     });
     window.addEventListener('focus', checkCompletionRealtime);
+    document.addEventListener('live:refreshed', checkCompletionRealtime);
   }
 
   // Delegated click handler for onboarding actions
@@ -135,6 +140,47 @@
             }
           }
           window.location.reload();
+        } else {
+          btn.disabled = false;
+        }
+      } else if (action === 'dismiss') {
+        btn.disabled = true;
+        const res = await fetch('/onboarding/dismiss', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'x-csrf-token': csrf,
+          },
+        });
+        if (res.ok) {
+          announce('Onboarding card hidden.');
+          const card = document.getElementById('onboarding-card');
+          if (card) {
+            card.style.transition = 'opacity 300ms ease, transform 300ms ease, max-height 400ms ease, margin 400ms ease, padding 400ms ease';
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(-10px)';
+            setTimeout(() => card.remove(), 350);
+          }
+        } else {
+          btn.disabled = false;
+        }
+      } else if (action === 'restore') {
+        btn.disabled = true;
+        const res = await fetch('/onboarding/restore', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'x-csrf-token': csrf,
+          },
+        });
+        if (res.ok) {
+          announce('Checklist restored to your dashboard.');
+          const wrap = document.getElementById('onboarding-restore-wrap');
+          if (wrap) {
+            wrap.innerHTML = '<span class="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl"><svg class="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>Restored to dashboard</span>';
+          }
         } else {
           btn.disabled = false;
         }
