@@ -22,6 +22,11 @@ const {
   shouldOfferTour,
   trackOnboardingVisit,
   ALLOWED_TOURS,
+  STEP_REMINDER_MESSAGES,
+  planOnboardingReminder,
+  maybeSendOnboardingReminder,
+  canAdminSendReminder,
+  buildOnboardingReport,
 } = require('../services/onboardingService');
 
 test('Teacher Onboarding - computeOnboardingState pure function', async (t) => {
@@ -1106,5 +1111,626 @@ test('Teacher Onboarding - Throttled State Checker', async (t) => {
     await firstCheck;
   });
 });
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Phase 3 Tests: Reminders (Part A), Material Tours (Part B), Admin Report (Part C)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+test('Phase 3 Part A - planOnboardingReminder matrix and rules', async (t) => {
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  const t0 = new Date('2026-10-01T00:00:00.000Z');
+
+  const baseTeacher = {
+    _id: '670000000000000000000001',
+    role: 'teacher',
+    onboarding: {
+      startedAt: t0,
+      legacy: false,
+      reminders: { count: 0, lastSentAt: null },
+    },
+  };
+
+  const activeState = {
+    visible: true,
+    isComplete: false,
+    isLegacy: false,
+    nextStep: {
+      key: 'rewards',
+      title: 'Set your teaching reward amounts',
+      cta: { label: 'Set amounts', href: '/profile/edit#commission-section' },
+    },
+  };
+
+  await t.test('new teacher day 1 -> send is false (first_reminder_delay)', () => {
+    const day1 = new Date(t0.getTime() + 1 * MS_PER_DAY);
+    const plan = planOnboardingReminder(baseTeacher, activeState, day1);
+    assert.equal(plan.send, false);
+    assert.equal(plan.reason, 'first_reminder_delay');
+  });
+
+  await t.test('new teacher day 2 -> send is true (reminder_due)', () => {
+    const day2 = new Date(t0.getTime() + 2 * MS_PER_DAY);
+    const plan = planOnboardingReminder(baseTeacher, activeState, day2);
+    assert.equal(plan.send, true);
+    assert.equal(plan.reason, 'reminder_due');
+    assert.equal(plan.step, 'rewards');
+    assert.equal(plan.notification.title, 'Finish your setup');
+    assert.equal(plan.notification.message, STEP_REMINDER_MESSAGES.rewards);
+    assert.equal(plan.notification.link, '/profile/edit#commission-section');
+    assert.ok(plan.notification.message.length <= 140, 'Message <= 140 chars');
+  });
+
+  await t.test('day 4 after a reminder on day 2 -> send is false (interval_not_elapsed)', () => {
+    const day2 = new Date(t0.getTime() + 2 * MS_PER_DAY);
+    const day4 = new Date(t0.getTime() + 4 * MS_PER_DAY);
+    const teacher = {
+      ...baseTeacher,
+      onboarding: {
+        ...baseTeacher.onboarding,
+        reminders: { count: 1, lastSentAt: day2 },
+      },
+    };
+    const plan = planOnboardingReminder(teacher, activeState, day4);
+    assert.equal(plan.send, false);
+    assert.equal(plan.reason, 'interval_not_elapsed');
+  });
+
+  await t.test('day 5 after a reminder on day 2 -> send is true (reminder_due)', () => {
+    const day2 = new Date(t0.getTime() + 2 * MS_PER_DAY);
+    const day5 = new Date(t0.getTime() + 5 * MS_PER_DAY);
+    const teacher = {
+      ...baseTeacher,
+      onboarding: {
+        ...baseTeacher.onboarding,
+        reminders: { count: 1, lastSentAt: day2 },
+      },
+    };
+    const plan = planOnboardingReminder(teacher, activeState, day5);
+    assert.equal(plan.send, true);
+    assert.equal(plan.reason, 'reminder_due');
+  });
+
+  await t.test('fourth attempt (count >= max 3) -> send is false (max_reached)', () => {
+    const day15 = new Date(t0.getTime() + 15 * MS_PER_DAY);
+    const day10 = new Date(t0.getTime() + 10 * MS_PER_DAY);
+    const teacher = {
+      ...baseTeacher,
+      onboarding: {
+        ...baseTeacher.onboarding,
+        reminders: { count: 3, lastSentAt: day10 },
+      },
+    };
+    const plan = planOnboardingReminder(teacher, activeState, day15);
+    assert.equal(plan.send, false);
+    assert.equal(plan.reason, 'max_reached');
+  });
+
+  await t.test('complete teacher -> send is false', () => {
+    const day5 = new Date(t0.getTime() + 5 * MS_PER_DAY);
+    const completeState = { ...activeState, visible: false, isComplete: true };
+    const plan = planOnboardingReminder(baseTeacher, completeState, day5);
+    assert.equal(plan.send, false);
+  });
+
+  await t.test('legacy teacher interval 7 days and max 2', () => {
+    const legacyTeacher = {
+      _id: '670000000000000000000002',
+      role: 'teacher',
+      createdAt: t0,
+      onboarding: {
+        legacy: true,
+        startedAt: null,
+        reminders: { count: 0, lastSentAt: null },
+      },
+    };
+    const legacyState = {
+      visible: true,
+      isComplete: false,
+      isLegacy: true,
+      nextStep: { key: 'rewards', cta: { href: '/profile/edit#commission-section' } },
+    };
+
+    // Day 6: 6 days < 7 days interval -> false
+    const day6 = new Date(t0.getTime() + 6 * MS_PER_DAY);
+    assert.equal(planOnboardingReminder(legacyTeacher, legacyState, day6).send, false);
+
+    // Day 7: 7 days >= 7 days interval -> true
+    const day7 = new Date(t0.getTime() + 7 * MS_PER_DAY);
+    assert.equal(planOnboardingReminder(legacyTeacher, legacyState, day7).send, true);
+
+    // After reminder on Day 7, Day 10 (3 days later) -> false
+    const teacherAfter1 = {
+      ...legacyTeacher,
+      onboarding: { ...legacyTeacher.onboarding, reminders: { count: 1, lastSentAt: day7 } },
+    };
+    const day10 = new Date(t0.getTime() + 10 * MS_PER_DAY);
+    assert.equal(planOnboardingReminder(teacherAfter1, legacyState, day10).send, false);
+
+    // Day 14 (7 days after day 7) -> true
+    const day14 = new Date(t0.getTime() + 14 * MS_PER_DAY);
+    assert.equal(planOnboardingReminder(teacherAfter1, legacyState, day14).send, true);
+
+    // After 2 reminders (max 2) -> false
+    const teacherAfter2 = {
+      ...legacyTeacher,
+      onboarding: { ...legacyTeacher.onboarding, reminders: { count: 2, lastSentAt: day14 } },
+    };
+    const day25 = new Date(t0.getTime() + 25 * MS_PER_DAY);
+    assert.equal(planOnboardingReminder(teacherAfter2, legacyState, day25).send, false);
+  });
+
+  await t.test('admin and superadmin -> send is false (not_teacher)', () => {
+    const admin = { role: 'admin', onboarding: {} };
+    const superadmin = { role: 'superadmin', onboarding: {} };
+    assert.equal(planOnboardingReminder(admin, activeState).send, false);
+    assert.equal(planOnboardingReminder(superadmin, activeState).send, false);
+  });
+
+  await t.test('message content across all steps is <= 140 chars, sentence case, plain text', () => {
+    for (const [key, msg] of Object.entries(STEP_REMINDER_MESSAGES)) {
+      assert.ok(msg.length <= 140, `Step ${key} message must be <= 140 chars, got ${msg.length}`);
+      assert.ok(!/<[^>]+>/.test(msg), `Step ${key} message must not contain HTML tags`);
+      assert.ok(msg[0] === msg[0].toUpperCase(), `Step ${key} message should start with uppercase`);
+    }
+  });
+});
+
+test('Phase 3 Part A - maybeSendOnboardingReminder claim and existing unread skip', async (t) => {
+  const Notification = require('../models/Notification');
+  const origNotificationFindOne = Notification.findOne;
+  const origNotificationCreate = Notification.create;
+  const origUserFindOneAndUpdate = User.findOneAndUpdate;
+
+  t.after(() => {
+    Notification.findOne = origNotificationFindOne;
+    Notification.create = origNotificationCreate;
+    User.findOneAndUpdate = origUserFindOneAndUpdate;
+  });
+
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  const t0 = new Date('2026-10-01T00:00:00.000Z');
+  const now = new Date(t0.getTime() + 3 * MS_PER_DAY);
+
+  const teacher = {
+    _id: '670000000000000000000010',
+    role: 'teacher',
+    onboarding: {
+      startedAt: t0,
+      legacy: false,
+      reminders: { count: 0, lastSentAt: null },
+    },
+  };
+
+  const activeState = {
+    visible: true,
+    isComplete: false,
+    isLegacy: false,
+    nextStep: {
+      key: 'rewards',
+      title: 'Set your teaching reward amounts',
+      cta: { label: 'Set amounts', href: '/profile/edit#commission-section' },
+    },
+  };
+
+  await t.test('skip without counting when teacher already has an unread onboarding_reminder', async () => {
+    let updateCalled = false;
+    Notification.findOne = async (query) => {
+      if (query.type === 'onboarding_reminder' && query.isRead === false) {
+        return { _id: 'notif-unread-1', isRead: false };
+      }
+      return null;
+    };
+    User.findOneAndUpdate = async () => {
+      updateCalled = true;
+      return null;
+    };
+
+    const res = await maybeSendOnboardingReminder(teacher, activeState, now);
+    assert.equal(res.sent, false);
+    assert.equal(res.reason, 'existing_unread_reminder');
+    assert.equal(updateCalled, false, 'Must not claim or increment count when unread reminder exists');
+  });
+
+  await t.test('atomic claim: two concurrent calls result in only one notification created', async () => {
+    let claimCount = 0;
+    let notifCount = 0;
+
+    Notification.findOne = async () => null; // no unread
+    Notification.create = async (doc) => {
+      notifCount++;
+      return { _id: `notif-${notifCount}`, ...doc };
+    };
+
+    // Simulate atomic DB findOneAndUpdate: only the first call matches and returns updated doc; second returns null
+    User.findOneAndUpdate = async () => {
+      claimCount++;
+      if (claimCount === 1) {
+        return {
+          _id: teacher._id,
+          onboarding: {
+            reminders: { count: 1, lastSentAt: now },
+          },
+        };
+      }
+      return null; // concurrent query matched 0 documents
+    };
+
+    const [res1, res2] = await Promise.all([
+      maybeSendOnboardingReminder(teacher, activeState, now),
+      maybeSendOnboardingReminder(teacher, activeState, now),
+    ]);
+
+    assert.equal(notifCount, 1, 'Exactly one notification created across two concurrent calls');
+    const successful = [res1, res2].filter(r => r.sent === true);
+    const failed = [res1, res2].filter(r => r.sent === false);
+    assert.equal(successful.length, 1);
+    assert.equal(failed.length, 1);
+    assert.equal(failed[0].reason, 'claim_failed');
+  });
+});
+
+test('Phase 3 Part B - Material Tours config validation & shouldOfferTour', async (t) => {
+  const materialsSteps = require('../public/js/tours/materials-tour');
+  const materialPageSteps = require('../public/js/tours/material-page-tour');
+
+  await t.test('materials-tour.js config validation', () => {
+    assert.equal(materialsSteps.length, 4, 'Must have exactly 4 steps');
+    for (const step of materialsSteps) {
+      assert.ok(step.selector.startsWith('[data-tour="') && step.selector.endsWith('"]'), `Selector must be a data-tour attribute selector: ${step.selector}`);
+      assert.ok(!step.selector.includes('#') && !step.selector.includes('.'), `Selector must not use IDs or classes: ${step.selector}`);
+      assert.ok(step.title.length > 0 && step.title.length <= 60);
+      assert.ok(step.description.length > 0 && step.description.length <= 160);
+      assert.ok(!/<[^>]+>/.test(step.title), 'Title must not contain HTML');
+      assert.ok(!/<[^>]+>/.test(step.description), 'Description must not contain HTML');
+    }
+  });
+
+  await t.test('material-page-tour.js config validation', () => {
+    assert.equal(materialPageSteps.length, 5, 'Must have exactly 5 steps');
+    for (const step of materialPageSteps) {
+      assert.ok(step.selector.startsWith('[data-tour="') && step.selector.endsWith('"]'), `Selector must be a data-tour attribute selector: ${step.selector}`);
+      assert.ok(!step.selector.includes('#') && !step.selector.includes('.'), `Selector must not use IDs or classes: ${step.selector}`);
+      assert.ok(step.title.length > 0);
+      assert.ok(step.description.length > 0 && step.description.length <= 160);
+      assert.ok(!/<[^>]+>/.test(step.title), 'Title must not contain HTML');
+      assert.ok(!/<[^>]+>/.test(step.description), 'Description must not contain HTML');
+    }
+  });
+
+  await t.test('ALLOWED_TOURS contains reportForm, materials, and materialPage', () => {
+    assert.deepEqual(ALLOWED_TOURS, ['reportForm', 'materials', 'materialPage']);
+  });
+
+  await t.test('shouldOfferTour works for materials and materialPage', () => {
+    const teacher = {
+      role: 'teacher',
+      onboarding: { startedAt: new Date(), legacy: false, tours: new Map() },
+    };
+    assert.equal(shouldOfferTour(teacher, 'materials'), true);
+    assert.equal(shouldOfferTour(teacher, 'materialPage'), true);
+
+    const seenTeacher = {
+      role: 'teacher',
+      onboarding: {
+        startedAt: new Date(),
+        legacy: false,
+        tours: { materials: { seenAt: new Date() } },
+      },
+    };
+    assert.equal(shouldOfferTour(seenTeacher, 'materials'), false);
+    assert.equal(shouldOfferTour(seenTeacher, 'materialPage'), true);
+  });
+});
+
+test('Phase 3 Part B - DOM selector regression test for material pages', async (t) => {
+  const origLoader = ejs.fileLoader;
+  t.after(() => {
+    ejs.fileLoader = origLoader;
+  });
+
+  ejs.fileLoader = function (filePath) {
+    if (filePath.includes('partials/header') || filePath.includes('partials\\header')) {
+      return '<!-- STUBBED_HEADER -->';
+    }
+    if (filePath.includes('partials/footer') || filePath.includes('partials\\footer')) {
+      return '<!-- STUBBED_FOOTER -->';
+    }
+    return origLoader(filePath);
+  };
+
+  await t.test('views/materials/index.ejs contains all non-conditional step selectors', async () => {
+    const indexPath = path.resolve('views/materials/index.ejs');
+    const data = {
+      title: 'Materials Library',
+      materials: [
+        { _id: '670000000000000000000001', name: 'Math Level 1', level: 'PRIMARY', hasContent: true },
+      ],
+      contentMap: {},
+      page: 1,
+      totalPages: 1,
+      totalMatching: 1,
+      availableLevels: ['PRIMARY'],
+      selectedLevel: '',
+      searchQuery: '',
+      status: 'all',
+      countAll: 1,
+      countWithContent: 1,
+      countNoContent: 0,
+      userIsAdmin: false,
+      currentUser: { _id: '670000000000000000000001', role: 'teacher' },
+      shouldOfferTour: true,
+      renderMaterialBody: s => s,
+      safeJson: o => JSON.stringify(o),
+    };
+
+    const html = await ejs.renderFile(indexPath, data);
+    const dom = new JSDOM(html);
+    const doc = dom.window.document;
+
+    const materialsSteps = require('../public/js/tours/materials-tour');
+    for (const step of materialsSteps) {
+      if (!step.conditional) {
+        const el = doc.querySelector(step.selector);
+        assert.ok(el, `Expected selector "${step.selector}" to exist in views/materials/index.ejs`);
+      }
+    }
+
+    assert.ok(doc.querySelector('[data-tour="help"]'), 'Teacher sees "?" help button');
+    assert.ok(doc.querySelector('script[data-tour-key="materials"]'), 'Teacher loads materials tour script');
+  });
+
+  await t.test('views/materials/show.ejs contains all non-conditional step selectors', async () => {
+    const showPath = path.resolve('views/materials/show.ejs');
+    const data = {
+      title: 'Math Level 1 — Material',
+      material: {
+        _id: '670000000000000000000001',
+        name: 'Math Level 1',
+        level: 'PRIMARY',
+        hasContent: true,
+      },
+      content: {
+        version: 1,
+        body: '<p>Guide notes for Math Level 1</p>',
+        resources: [
+          { _id: 'res-1', kind: 'file', label: 'Slide 1', file: { format: 'png', bytes: 1024 } },
+          { _id: 'res-2', kind: 'file', label: 'Slide 2', file: { format: 'png', bytes: 2048 } },
+        ],
+        locked: false,
+      },
+      userCanEdit: true,
+      userIsAdmin: false,
+      currentUser: { _id: '670000000000000000000001', role: 'teacher' },
+      shouldOfferTour: true,
+      renderMaterialBody: s => s,
+      safeJson: o => JSON.stringify(o),
+      csrfToken: 'test-token',
+    };
+
+    const html = await ejs.renderFile(showPath, data);
+    const dom = new JSDOM(html);
+    const doc = dom.window.document;
+
+    const pageSteps = require('../public/js/tours/material-page-tour');
+    for (const step of pageSteps) {
+      const el = doc.querySelector(step.selector);
+      assert.ok(el, `Expected selector "${step.selector}" to exist in views/materials/show.ejs`);
+    }
+
+    assert.ok(doc.querySelector('[data-tour="help"]'), 'Teacher sees "?" help button');
+    assert.ok(doc.querySelector('script[data-tour-key="materialPage"]'), 'Teacher loads materialPage tour script');
+  });
+});
+
+test('Phase 3 Part C - buildOnboardingReport and admin throttle', async (t) => {
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  const now = new Date('2026-10-20T12:00:00.000Z');
+
+  await t.test('empty teachers returns zeroed report', () => {
+    const report = buildOnboardingReport([], {}, now);
+    assert.deepEqual(report.summary, { total: 0, completed: 0, inProgress: 0, notStarted: 0 });
+    assert.equal(report.funnel.length, STEPS.length);
+    assert.deepEqual(report.stuck, []);
+  });
+
+  await t.test('mixed states, skipped steps, legacy excluded, and stuck ordering', () => {
+    const completedTeacher = {
+      _id: '670000000000000000000021',
+      role: 'teacher',
+      displayName: 'Teacher Completed',
+      profilePicture: 'pic.jpg',
+      commission: { primeFull: 100000 },
+      onboarding: {
+        startedAt: new Date(now.getTime() - 10 * MS_PER_DAY),
+        legacy: false,
+        steps: {
+          profile: { doneAt: new Date(now.getTime() - 9 * MS_PER_DAY) },
+          rewards: { doneAt: new Date(now.getTime() - 8 * MS_PER_DAY) },
+          first_report: { doneAt: new Date(now.getTime() - 7 * MS_PER_DAY) },
+          open_material: { doneAt: new Date(now.getTime() - 6 * MS_PER_DAY) },
+          calculator: { doneAt: new Date(now.getTime() - 5 * MS_PER_DAY) },
+          my_salary: { doneAt: new Date(now.getTime() - 4 * MS_PER_DAY) },
+        },
+      },
+    };
+
+    const inProgressTeacher = {
+      _id: '670000000000000000000022',
+      displayName: 'Teacher InProgress',
+      role: 'teacher',
+      profilePicture: null,
+      commission: { primeFull: 0 },
+      onboarding: {
+        startedAt: new Date(now.getTime() - 5 * MS_PER_DAY),
+        legacy: false,
+        reminders: { count: 1, lastSentAt: new Date(now.getTime() - 2 * MS_PER_DAY) },
+        steps: {
+          profile: { skippedAt: new Date(now.getTime() - 4 * MS_PER_DAY) }, // skipped
+        },
+      },
+    };
+
+    const notStartedTeacher = {
+      _id: '670000000000000000000023',
+      displayName: 'Teacher NotStarted',
+      role: 'teacher',
+      profilePicture: null,
+      commission: { primeFull: 0 },
+      onboarding: {
+        startedAt: new Date(now.getTime() - 4 * MS_PER_DAY),
+        legacy: false,
+        reminders: { count: 0, lastSentAt: null },
+        steps: {},
+      },
+    };
+
+    const legacyTeacher = {
+      _id: '670000000000000000000024',
+      displayName: 'Teacher Legacy',
+      role: 'teacher',
+      onboarding: {
+        startedAt: new Date(now.getTime() - 20 * MS_PER_DAY),
+        legacy: true,
+      },
+    };
+
+    const teachers = [completedTeacher, inProgressTeacher, notStartedTeacher, legacyTeacher];
+    const reportCounts = {
+      '670000000000000000000021': 5,
+      '670000000000000000000022': 0,
+      '670000000000000000000023': 0,
+    };
+
+    const report = buildOnboardingReport(teachers, reportCounts, now);
+
+    // Legacy excluded -> total is 3
+    assert.equal(report.summary.total, 3);
+    assert.equal(report.summary.completed, 1);
+    assert.equal(report.summary.inProgress, 1);
+    assert.equal(report.summary.notStarted, 1);
+
+    // Profile step: 1 done, 1 skipped, 1 todo
+    const profileFunnel = report.funnel.find(f => f.key === 'profile');
+    assert.equal(profileFunnel.done, 1);
+    assert.equal(profileFunnel.skipped, 1);
+    assert.equal(profileFunnel.todo, 1);
+
+    // Stuck teachers: inProgress (5 days >= 3) and notStarted (4 days >= 3)
+    assert.equal(report.stuck.length, 2);
+    // Ordered by daysSince descending: 5 days before 4 days
+    assert.equal(report.stuck[0].name, 'Teacher InProgress');
+    assert.equal(report.stuck[0].daysSince, 5);
+    assert.equal(report.stuck[1].name, 'Teacher NotStarted');
+    assert.equal(report.stuck[1].daysSince, 4);
+  });
+
+  await t.test('medianDaysToDone with odd and even counts', () => {
+    const makeTeacherWithDoneDays = (id, stepKey, daysFromStart) => ({
+      _id: `67000000000000000000003${id}`,
+      role: 'teacher',
+      profilePicture: 'pic.jpg',
+      displayName: `Teacher ${id}`,
+      commission: {},
+      onboarding: {
+        startedAt: new Date('2026-10-01T00:00:00.000Z'),
+        legacy: false,
+        steps: {
+          [stepKey]: { doneAt: new Date(new Date('2026-10-01T00:00:00.000Z').getTime() + daysFromStart * MS_PER_DAY) },
+        },
+      },
+    });
+
+    const oddTeachers = [
+      makeTeacherWithDoneDays('1', 'open_material', 1),
+      makeTeacherWithDoneDays('2', 'open_material', 3),
+      makeTeacherWithDoneDays('3', 'open_material', 5),
+    ];
+    const oddReport = buildOnboardingReport(oddTeachers, {}, now);
+    const oddStep = oddReport.funnel.find(f => f.key === 'open_material');
+    assert.equal(oddStep.medianDaysToDone, 3);
+
+    const evenTeachers = [
+      makeTeacherWithDoneDays('1', 'calculator', 2),
+      makeTeacherWithDoneDays('2', 'calculator', 4),
+    ];
+    const evenReport = buildOnboardingReport(evenTeachers, {}, now);
+    const evenStep = evenReport.funnel.find(f => f.key === 'calculator');
+    assert.equal(evenStep.medianDaysToDone, 3);
+  });
+
+  await t.test('canAdminSendReminder 24h throttle logic', () => {
+    const teacherClean = { role: 'teacher', onboarding: { reminders: {} } };
+    assert.equal(canAdminSendReminder(teacherClean, now).allowed, true);
+
+    const teacherRecentlySent = {
+      role: 'teacher',
+      onboarding: {
+        reminders: { lastAdminSentAt: new Date(now.getTime() - 2 * 60 * 60 * 1000) }, // 2h ago
+      },
+    };
+    const resThrottled = canAdminSendReminder(teacherRecentlySent, now);
+    assert.equal(resThrottled.allowed, false);
+    assert.equal(resThrottled.reason, 'throttled_24h');
+
+    const teacherDayAgo = {
+      role: 'teacher',
+      onboarding: {
+        reminders: { lastAdminSentAt: new Date(now.getTime() - 25 * 60 * 60 * 1000) }, // 25h ago
+      },
+    };
+    assert.equal(canAdminSendReminder(teacherDayAgo, now).allowed, true);
+  });
+});
+
+test('Phase 3 Part C - Admin onboarding report page render with XSS escaping', async (t) => {
+  const origLoader = ejs.fileLoader;
+  t.after(() => {
+    ejs.fileLoader = origLoader;
+  });
+
+  ejs.fileLoader = function (filePath) {
+    if (filePath.includes('partials/header') || filePath.includes('partials\\header')) {
+      return '<!-- STUBBED_HEADER -->';
+    }
+    if (filePath.includes('partials/footer') || filePath.includes('partials\\footer')) {
+      return '<!-- STUBBED_FOOTER -->';
+    }
+    return origLoader(filePath);
+  };
+
+  const templatePath = path.resolve('views/admin/onboarding/index.ejs');
+  const mockReport = {
+    summary: { total: 5, completed: 2, inProgress: 2, notStarted: 1 },
+    funnel: [
+      { key: 'profile', title: 'Add your photo and check your name', done: 4, skipped: 1, todo: 0, medianDaysToDone: 1.5 },
+      { key: 'rewards', title: 'Set your teaching reward amounts', done: 3, skipped: 0, todo: 2, medianDaysToDone: 2.0 },
+    ],
+    stuck: [
+      {
+        id: '670000000000000000000099',
+        name: '<script>alert("xss")</script> & "Dangerous"',
+        signedUpAt: new Date('2026-10-10T00:00:00.000Z'),
+        daysSince: 8,
+        remainingSteps: ['Write your first report', 'Open a lesson material'],
+        remindersCount: 2,
+        lastReminderAt: new Date('2026-10-15T00:00:00.000Z'),
+        lastAdminSentAt: null,
+      },
+    ],
+  };
+
+  const html = await ejs.renderFile(templatePath, {
+    title: 'Admin — Onboarding Progress',
+    report: mockReport,
+    csrfToken: 'test-csrf-token',
+  });
+
+  assert.ok(!html.includes('<script>alert("xss")</script>'), 'Unescaped script must not exist in rendered HTML');
+  assert.ok(html.includes('&lt;script&gt;alert(&#34;xss&#34;)&lt;/script&gt;') || html.includes('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;'), 'Name must be properly HTML-escaped');
+  assert.ok(html.includes('Onboarding progress'), 'Header title rendered');
+  assert.ok(html.includes('Stuck for more than 7 days'), '7 days filter button rendered');
+  assert.ok(html.includes('btn-send-reminder'), 'Send reminder button rendered');
+});
+
 
 

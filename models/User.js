@@ -109,6 +109,11 @@ const userSchema = new mongoose.Schema({
       }, { _id: false }),
       default: () => new Map(),
     },
+    reminders: {
+      count:           { type: Number, default: 0 },
+      lastSentAt:      { type: Date, default: null },
+      lastAdminSentAt: { type: Date, default: null },
+    },
   },
 }, { timestamps: true });
 

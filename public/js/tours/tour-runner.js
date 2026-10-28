@@ -5,9 +5,13 @@
  * Built on Driver.js (vanilla JS).
  *
  * Responsibilities:
- * - Reads step configuration (e.g. window.REPORT_FORM_TOUR_STEPS).
+ * - Reads step configuration based on data-tour-key attribute or globals:
+ *   - reportForm: window.REPORT_FORM_TOUR_STEPS
+ *   - materials: window.MATERIALS_TOUR_STEPS
+ *   - materialPage: window.MATERIAL_PAGE_TOUR_STEPS
  * - Filters out elements that are missing or not visible.
  * - Handles the non-blocking first-visit offer toast with "Start tour" & "No thanks".
+ * - Suppresses other tour offers during the same page visit after one is declined/finished.
  * - Starts directly on ?tour=1 or when the '?' help button is clicked.
  * - Handles persistence calls (/seen, /done, /dismiss).
  * - Manages accessibility: aria, keyboard, Esc to close, focus return to '?'.
@@ -19,17 +23,32 @@
 (function () {
   'use strict';
 
-  const TOUR_KEY = 'reportForm';
-
   function getCsrfToken() {
     const meta = document.querySelector('meta[name="csrf-token"]');
     return meta ? meta.getAttribute('content') : '';
   }
 
-  async function postTourStatus(action) {
+  function getTourConfig() {
+    const scriptTag = document.currentScript || document.querySelector('script[src*="tour-runner.js"]');
+    const tourKey = (scriptTag && scriptTag.getAttribute('data-tour-key')) || 'reportForm';
+    const shouldOffer = scriptTag && scriptTag.getAttribute('data-should-offer') === 'true';
+
+    let stepsConfig = [];
+    if (tourKey === 'materials') {
+      stepsConfig = window.MATERIALS_TOUR_STEPS || [];
+    } else if (tourKey === 'materialPage') {
+      stepsConfig = window.MATERIAL_PAGE_TOUR_STEPS || [];
+    } else {
+      stepsConfig = window.REPORT_FORM_TOUR_STEPS || window.MATERIALS_TOUR_STEPS || window.MATERIAL_PAGE_TOUR_STEPS || [];
+    }
+
+    return { tourKey, shouldOffer, stepsConfig };
+  }
+
+  async function postTourStatus(tourKey, action) {
     const csrf = getCsrfToken();
     try {
-      await fetch(`/onboarding/tours/${encodeURIComponent(TOUR_KEY)}/${encodeURIComponent(action)}`, {
+      await fetch(`/onboarding/tours/${encodeURIComponent(tourKey)}/${encodeURIComponent(action)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -38,8 +57,21 @@
         },
       });
     } catch (err) {
-      // Non-blocking error handling
       console.warn(`[tour-runner] Failed to record tour ${action}:`, err);
+    }
+  }
+
+  function markSessionInteracted() {
+    try {
+      sessionStorage.setItem('dt_tour_interacted_in_visit', 'true');
+    } catch (e) {}
+  }
+
+  function hasSessionInteracted() {
+    try {
+      return sessionStorage.getItem('dt_tour_interacted_in_visit') === 'true';
+    } catch (e) {
+      return false;
     }
   }
 
@@ -66,7 +98,6 @@
   }
 
   function hasUserFormInput() {
-    // Check if user has already started filling form or draft is restored
     const classInput = document.getElementById('class_name');
     const privateInput = document.getElementById('private_name_input');
     const subjectInput = document.getElementById('subject');
@@ -84,17 +115,34 @@
     return false;
   }
 
+  const TOAST_CONTENT = {
+    reportForm: {
+      label: 'Report form tour offer',
+      title: 'Take a 1-minute tour of the report form?',
+      desc: 'Learn how to fill reports, tag student attendance, and submit records smoothly.',
+    },
+    materials: {
+      label: 'Materials library tour offer',
+      title: 'Take a 1-minute tour of the materials library?',
+      desc: 'Learn how to search materials, filter by level, and find content.',
+    },
+    materialPage: {
+      label: 'Material page tour offer',
+      title: 'Take a 1-minute tour of the material page?',
+      desc: 'Explore lesson notes, files and links panel, and presentation tools.',
+    },
+  };
+
   function initTour() {
-    const helpBtn = document.getElementById('tour-help-btn');
-    const stepsConfig = window.REPORT_FORM_TOUR_STEPS || [];
-    if (!stepsConfig.length) return;
+    const { tourKey, shouldOffer, stepsConfig } = getTourConfig();
+    const helpBtn = document.querySelector('[data-tour="help"]') || document.getElementById('tour-help-btn');
+    if (!stepsConfig || !stepsConfig.length) return;
 
     let driverInstance = null;
     let tourFinished = false;
     let tourSeenRecorded = false;
 
     function buildDriver() {
-      // Driver.js global is at window.driver.js.driver
       const driverFn = (window.driver && window.driver.js && window.driver.js.driver) ||
                        (window.driver && typeof window.driver === 'function' ? window.driver : null);
 
@@ -103,7 +151,6 @@
         return null;
       }
 
-      // Filter steps to visible elements only
       const driverSteps = [];
       stepsConfig.forEach((s) => {
         const el = resolveStepElement(s);
@@ -123,7 +170,6 @@
       if (!driverSteps.length) return null;
 
       const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
       tourFinished = false;
 
       const driverObj = driverFn({
@@ -139,7 +185,6 @@
         doneBtnText: 'Done',
         steps: driverSteps,
         onPopoverRender: (popover) => {
-          // Add custom Skip tour button if not already present
           if (popover && popover.footer && !popover.footer.querySelector('.dt-tour-skip-btn')) {
             const skipBtn = document.createElement('button');
             skipBtn.type = 'button';
@@ -159,10 +204,11 @@
           driverObj.destroy();
         },
         onDestroyed: () => {
+          markSessionInteracted();
           if (tourFinished) {
-            postTourStatus('done');
+            postTourStatus(tourKey, 'done');
           } else {
-            postTourStatus('seen');
+            postTourStatus(tourKey, 'seen');
           }
           if (helpBtn) {
             helpBtn.focus();
@@ -177,14 +223,14 @@
       driverInstance = buildDriver();
       if (driverInstance) {
         if (!tourSeenRecorded) {
-          postTourStatus('seen');
+          postTourStatus(tourKey, 'seen');
           tourSeenRecorded = true;
         }
         driverInstance.drive();
       }
     }
 
-    // Trigger 2: "?" button in form header
+    // Trigger 2: "?" button in header
     if (helpBtn) {
       helpBtn.addEventListener('click', function (e) {
         e.preventDefault();
@@ -192,7 +238,7 @@
       });
     }
 
-    // Trigger 3: /reports/new?tour=1 auto-start
+    // Trigger 3: ?tour=1 auto-start
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('tour') === '1') {
       setTimeout(startTour, 300);
@@ -200,22 +246,20 @@
     }
 
     // Trigger 1: Offer toast for eligible teachers
-    const scriptTag = document.currentScript || document.querySelector('script[src*="tour-runner.js"]');
-    const shouldOffer = scriptTag && scriptTag.getAttribute('data-should-offer') === 'true';
-
-    if (shouldOffer && !hasUserFormInput()) {
-      showOfferToast(startTour);
+    if (shouldOffer && !hasSessionInteracted() && !hasUserFormInput()) {
+      showOfferToast(tourKey, startTour);
     }
   }
 
-  function showOfferToast(onStart) {
-    // Check if toast already exists
+  function showOfferToast(tourKey, onStart) {
     if (document.getElementById('dt-tour-offer-toast')) return;
+
+    const copy = TOAST_CONTENT[tourKey] || TOAST_CONTENT.reportForm;
 
     const toast = document.createElement('div');
     toast.id = 'dt-tour-offer-toast';
     toast.setAttribute('role', 'region');
-    toast.setAttribute('aria-label', 'Report form tour offer');
+    toast.setAttribute('aria-label', copy.label);
     toast.className = 'fixed bottom-4 right-4 sm:bottom-6 sm:right-6 max-w-sm bg-white rounded-2xl shadow-xl border border-slate-100 p-4 z-40 transition-all transform duration-300 translate-y-0 opacity-100';
 
     toast.innerHTML = `
@@ -226,8 +270,8 @@
           </svg>
         </div>
         <div class="flex-1 min-w-0">
-          <p class="text-xs font-semibold text-slate-800">Take a 1-minute tour of the report form?</p>
-          <p class="text-xs text-slate-500 mt-0.5 leading-relaxed">Learn how to fill reports, tag student attendance, and submit records smoothly.</p>
+          <p class="text-xs font-semibold text-slate-800">${copy.title}</p>
+          <p class="text-xs text-slate-500 mt-0.5 leading-relaxed">${copy.desc}</p>
           <div class="flex items-center gap-2 mt-3">
             <button type="button" id="dt-tour-offer-start"
               class="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold shadow-sm transition focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none">
@@ -263,7 +307,8 @@
     if (declineBtn) {
       declineBtn.addEventListener('click', function () {
         removeToast();
-        postTourStatus('dismiss');
+        markSessionInteracted();
+        postTourStatus(tourKey, 'dismiss');
       });
     }
   }

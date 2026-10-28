@@ -18,6 +18,7 @@ const auditLogSchema = new mongoose.Schema({
       'group_student_add', 'group_student_remove', 'group_student_move',
       'group_student_rename',
       'group_roster_repair',
+      'onboarding_remind',
     ],
     required: true,
   },

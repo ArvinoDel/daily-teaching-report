@@ -15,6 +15,7 @@ const MaterialContent = require('../models/MaterialContent');
 const MaterialContentRevision = require('../models/MaterialContentRevision');
 const AuditLog = require('../models/AuditLog');
 const { invalidateMaterialsCache } = require('../services/materialService');
+const onboardingService = require('../services/onboardingService');
 const {
   getAllowedExtensions,
   getMaxFileBytes,
@@ -129,6 +130,9 @@ exports.materialsLibrary = async (req, res) => {
       countWithContent,
       countNoContent,
       userIsAdmin:   isAdminUser(req),
+      shouldOfferTour: req.session?.user && req.session.user.role === 'teacher'
+        ? onboardingService.shouldOfferTour(req.session.user, 'materials')
+        : false,
       renderMaterialBody,
       safeJson,
     });
@@ -163,6 +167,9 @@ exports.showMaterial = async (req, res) => {
       content: content || { body: '', resources: [], locked: false, version: 1 },
       userCanEdit,
       userIsAdmin,
+      shouldOfferTour: req.session?.user && req.session.user.role === 'teacher'
+        ? onboardingService.shouldOfferTour(req.session.user, 'materialPage')
+        : false,
       renderMaterialBody,
       safeJson,
       csrfToken: (req.session && req.session.csrfToken) || (res.locals && res.locals.csrfToken) || '',

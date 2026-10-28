@@ -297,6 +297,10 @@ exports.index = async (req, res) => {
         facts.hasCommission = hasCommission;
         onboardingState = onboardingService.computeOnboardingState(userDoc, facts);
         await onboardingService.persistDerivedSteps(userDoc, onboardingState);
+        // Fire-and-forget reminder check; never affects page render
+        onboardingService.maybeSendOnboardingReminder(userDoc, onboardingState).catch(remindErr => {
+          console.error('[onboarding] reminder error:', remindErr.message);
+        });
       }
     }
 

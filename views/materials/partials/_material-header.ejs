@@ -49,10 +49,19 @@
     <div class="flex items-center gap-2 flex-shrink-0 self-start">
       <% if (_userCanEdit) { %>
         <a href="/materials/<%= _mat._id %>/edit"
+          data-tour="edit"
           title="<%= _isEmpty ? 'Add First Content' : 'Edit content' %>"
           class="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl text-xs font-semibold border border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
           <%= _isEmpty ? 'Add content' : 'Edit content' %>
         </a>
+      <% } %>
+
+      <% if (typeof currentUser !== 'undefined' && currentUser && currentUser.role === 'teacher') { %>
+        <button type="button" id="tour-help-btn" data-tour="help"
+          class="w-9 h-9 rounded-xl border border-slate-200 text-slate-500 hover:text-brand-600 hover:border-brand-200 hover:bg-brand-50 flex items-center justify-center font-bold text-sm transition focus-visible:ring-2 focus-visible:ring-brand-500"
+          title="Take a tour of the material page" aria-label="Take a tour of the material page">
+          ?
+        </button>
       <% } %>
 
       <% if (_userIsAdmin) { %>

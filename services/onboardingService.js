@@ -268,6 +268,15 @@ async function persistDerivedSteps(user, state, now = new Date()) {
 
   if (state.isComplete && !user.onboarding?.completedAt) {
     updates['onboarding.completedAt'] = now;
+    try {
+      const Notification = require('../models/Notification');
+      await Notification.updateMany(
+        { recipient: user._id, type: 'onboarding_reminder', isRead: false },
+        { $set: { isRead: true, readAt: now } }
+      );
+    } catch (notifErr) {
+      console.error('[onboarding] mark unread reminders read error:', notifErr.message);
+    }
   }
 
   if (Object.keys(updates).length > 0) {
@@ -440,7 +449,326 @@ function getNavOnboardingRemainingCount(user) {
   return state.totalCount - state.doneCount;
 }
 
-const ALLOWED_TOURS = ['reportForm'];
+const ALLOWED_TOURS = ['reportForm', 'materials', 'materialPage'];
+
+const STEP_REMINDER_MESSAGES = {
+  rewards: 'Your salary slip uses your reward amounts. Set them so it is correct.',
+  first_report: 'Ready to write your first report? A one-minute tour walks you through the form.',
+  profile: 'Add your photo so colleagues recognize you.',
+  open_material: 'Your course materials are one tap away.',
+  calculator: 'Try the score calculator when you grade tests.',
+  my_salary: 'Your salary slips will appear here once published.',
+};
+
+/**
+ * Pure function: plan whether an onboarding reminder should be sent.
+ *
+ * @param {Object} user
+ * @param {Object} state
+ * @param {Date} [now=new Date()]
+ * @param {Object} [config={}]
+ * @returns {{ send: boolean, reason: string, step: string|null, notification: { title: string, message: string, link: string } | null }}
+ */
+function planOnboardingReminder(user, state, now = new Date(), config = {}) {
+  if (!user || user.role !== 'teacher') {
+    return { send: false, reason: 'not_teacher', step: null, notification: null };
+  }
+
+  if (!state || !state.visible || state.isComplete) {
+    return { send: false, reason: 'checklist_complete_or_hidden', step: null, notification: null };
+  }
+
+  if (!state.nextStep || !state.nextStep.key) {
+    return { send: false, reason: 'no_next_step', step: null, notification: null };
+  }
+
+  const isLegacy = Boolean(state.isLegacy);
+  const firstAfterDays = config.firstAfterDays !== undefined
+    ? Number(config.firstAfterDays)
+    : Number(process.env.ONBOARDING_REMINDER_FIRST_AFTER_DAYS || 2);
+
+  const intervalDays = config.intervalDays !== undefined
+    ? Number(config.intervalDays)
+    : (isLegacy
+        ? Number(process.env.ONBOARDING_REMINDER_LEGACY_INTERVAL_DAYS || 7)
+        : Number(process.env.ONBOARDING_REMINDER_INTERVAL_DAYS || 3));
+
+  const max = config.maxReminders !== undefined
+    ? Number(config.maxReminders)
+    : (isLegacy
+        ? Number(process.env.ONBOARDING_REMINDER_LEGACY_MAX || 2)
+        : Number(process.env.ONBOARDING_REMINDER_MAX || 3));
+
+  const count = Number(user.onboarding?.reminders?.count) || 0;
+  if (count >= max) {
+    return { send: false, reason: 'max_reached', step: null, notification: null };
+  }
+
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  const lastSentAt = user.onboarding?.reminders?.lastSentAt
+    ? new Date(user.onboarding.reminders.lastSentAt)
+    : null;
+
+  if (lastSentAt) {
+    if (now.getTime() - lastSentAt.getTime() < intervalDays * MS_PER_DAY) {
+      return { send: false, reason: 'interval_not_elapsed', step: null, notification: null };
+    }
+  } else {
+    // First reminder: legacy teachers use interval after deploy/createdAt, new teachers use firstAfterDays
+    const baseline = user.onboarding?.startedAt || user.createdAt;
+    if (!baseline) {
+      return { send: false, reason: 'no_baseline_date', step: null, notification: null };
+    }
+    const requiredDays = isLegacy ? intervalDays : firstAfterDays;
+    if (now.getTime() - new Date(baseline).getTime() < requiredDays * MS_PER_DAY) {
+      return { send: false, reason: 'first_reminder_delay', step: null, notification: null };
+    }
+  }
+
+  const stepKey = state.nextStep.key;
+  const message = STEP_REMINDER_MESSAGES[stepKey] || 'Finish your setup to get the most out of your dashboard.';
+  const link = (state.nextStep.cta && state.nextStep.cta.href) ? state.nextStep.cta.href : '/reports';
+
+  return {
+    send: true,
+    reason: 'reminder_due',
+    step: stepKey,
+    notification: {
+      title: 'Finish your setup',
+      message,
+      link,
+    },
+  };
+}
+
+/**
+ * Service function: maybe send an onboarding reminder.
+ * Calls pure planOnboardingReminder first, verifies no unread reminder exists,
+ * performs atomic claim on User, and creates Notification only upon claim success.
+ *
+ * @param {string|Object} userIdOrDoc
+ * @param {Object} state
+ * @param {Date} [now=new Date()]
+ * @returns {Promise<{ sent: boolean, reason?: string, notification?: Object }>}
+ */
+async function maybeSendOnboardingReminder(userIdOrDoc, state, now = new Date()) {
+  let userDoc = userIdOrDoc;
+  if (!userDoc || typeof userDoc === 'string' || userDoc._bsontype === 'ObjectID' || (userDoc.constructor && userDoc.constructor.name === 'ObjectId')) {
+    userDoc = await User.findById(userIdOrDoc);
+  }
+  if (!userDoc) {
+    return { sent: false, reason: 'user_not_found' };
+  }
+
+  const plan = planOnboardingReminder(userDoc, state, now);
+  if (!plan.send) {
+    return { sent: false, reason: plan.reason };
+  }
+
+  // Skip without counting if teacher already has an unread onboarding_reminder
+  const Notification = require('../models/Notification');
+  const existingUnread = await Notification.findOne({
+    recipient: userDoc._id,
+    type: 'onboarding_reminder',
+    isRead: false,
+  });
+  if (existingUnread) {
+    return { sent: false, reason: 'existing_unread_reminder' };
+  }
+
+  const isLegacy = Boolean(state?.isLegacy);
+  const intervalDays = isLegacy
+    ? Number(process.env.ONBOARDING_REMINDER_LEGACY_INTERVAL_DAYS || 7)
+    : Number(process.env.ONBOARDING_REMINDER_INTERVAL_DAYS || 3);
+  const max = isLegacy
+    ? Number(process.env.ONBOARDING_REMINDER_LEGACY_MAX || 2)
+    : Number(process.env.ONBOARDING_REMINDER_MAX || 3);
+
+  const cutoff = new Date(now.getTime() - intervalDays * 24 * 60 * 60 * 1000);
+
+  const updated = await User.findOneAndUpdate(
+    {
+      _id: userDoc._id,
+      'onboarding.reminders.count': { $lt: max },
+      $or: [
+        { 'onboarding.reminders.lastSentAt': null },
+        { 'onboarding.reminders.lastSentAt': { $exists: false } },
+        { 'onboarding.reminders.lastSentAt': { $lte: cutoff } },
+      ],
+    },
+    {
+      $set: { 'onboarding.reminders.lastSentAt': now },
+      $inc: { 'onboarding.reminders.count': 1 },
+    },
+    { new: true }
+  );
+
+  if (!updated) {
+    return { sent: false, reason: 'claim_failed' };
+  }
+
+  const count = updated.onboarding?.reminders?.count || 1;
+  const notif = await Notification.create({
+    recipient: userDoc._id,
+    type: 'onboarding_reminder',
+    category: 'system',
+    title: plan.notification.title,
+    message: plan.notification.message,
+    link: plan.notification.link,
+    metadata: {
+      action: 'onboarding_reminder',
+      step: plan.step,
+      n: count,
+    },
+  });
+
+  return { sent: true, notification: notif };
+}
+
+/**
+ * Pure helper: check 24-hour admin reminder throttle.
+ *
+ * @param {Object} user
+ * @param {Date} [now=new Date()]
+ * @returns {{ allowed: boolean, reason?: string }}
+ */
+function canAdminSendReminder(user, now = new Date()) {
+  if (!user || user.role !== 'teacher') {
+    return { allowed: false, reason: 'not_teacher' };
+  }
+  const lastAdminSentAt = user.onboarding?.reminders?.lastAdminSentAt;
+  if (lastAdminSentAt) {
+    const diff = now.getTime() - new Date(lastAdminSentAt).getTime();
+    if (diff < 24 * 60 * 60 * 1000) {
+      return { allowed: false, reason: 'throttled_24h' };
+    }
+  }
+  return { allowed: true };
+}
+
+/**
+ * Pure function: build the onboarding progress report for admins.
+ *
+ * @param {Array} teachers - Eligible teacher documents
+ * @param {Object|Map} reportCounts - Report count per teacher ID
+ * @param {Date} [now=new Date()]
+ * @returns {{ summary: Object, funnel: Array, stuck: Array }}
+ */
+function buildOnboardingReport(teachers = [], reportCounts = {}, now = new Date()) {
+  const eligible = teachers.filter(t => t?.onboarding?.startedAt && !t?.onboarding?.legacy && !isUserLegacy(t, now));
+
+  const evaluatedTeachers = eligible.map(t => {
+    const teacherIdStr = String(t._id);
+    const count = reportCounts instanceof Map
+      ? (reportCounts.get(teacherIdStr) || 0)
+      : (reportCounts[teacherIdStr] || 0);
+
+    const comm = t.commission || {};
+    const hasComm = [comm.primeFull, comm.primeAssisted, comm.halfPrime, comm.assistant].some(
+      v => (Number(v) || 0) > 0
+    );
+
+    const facts = {
+      hasProfilePicture: Boolean(t.profilePicture),
+      hasDisplayName: Boolean(t.displayName && String(t.displayName).trim().length > 0),
+      hasCommission: hasComm,
+      reportCount: count,
+    };
+
+    const state = computeOnboardingState(t, facts, now);
+    return { teacher: t, state };
+  });
+
+  const total = evaluatedTeachers.length;
+  let completed = 0;
+  let notStarted = 0;
+
+  evaluatedTeachers.forEach(({ state }) => {
+    if (state.isComplete) {
+      completed++;
+    } else if (state.doneCount === 0) {
+      notStarted++;
+    }
+  });
+
+  const inProgress = total - completed - notStarted;
+  const summary = { total, completed, inProgress, notStarted };
+
+  // Funnel calculations
+  const funnel = STEPS.map(stepDef => {
+    let done = 0;
+    let skipped = 0;
+    let todo = 0;
+    const daysToDoneArr = [];
+
+    evaluatedTeachers.forEach(({ teacher, state }) => {
+      const found = state.steps.find(s => s.key === stepDef.key);
+      if (!found || found.status === 'todo') {
+        todo++;
+      } else if (found.status === 'skipped') {
+        skipped++;
+      } else if (found.status === 'done') {
+        done++;
+        if (found.doneAt && teacher.onboarding?.startedAt) {
+          const diffDays = Math.max(
+            0,
+            (new Date(found.doneAt).getTime() - new Date(teacher.onboarding.startedAt).getTime()) / (24 * 60 * 60 * 1000)
+          );
+          daysToDoneArr.push(diffDays);
+        }
+      }
+    });
+
+    let medianDaysToDone = null;
+    if (daysToDoneArr.length > 0) {
+      daysToDoneArr.sort((a, b) => a - b);
+      const n = daysToDoneArr.length;
+      if (n % 2 === 1) {
+        medianDaysToDone = daysToDoneArr[Math.floor(n / 2)];
+      } else {
+        medianDaysToDone = (daysToDoneArr[n / 2 - 1] + daysToDoneArr[n / 2]) / 2;
+      }
+      medianDaysToDone = Math.round(medianDaysToDone * 10) / 10;
+    }
+
+    return {
+      key: stepDef.key,
+      title: stepDef.title,
+      done,
+      skipped,
+      todo,
+      medianDaysToDone,
+    };
+  });
+
+  // Stuck teachers (not complete and daysSince >= 3)
+  const stuck = [];
+  evaluatedTeachers.forEach(({ teacher, state }) => {
+    if (!state.isComplete && teacher.onboarding?.startedAt) {
+      const startedAt = new Date(teacher.onboarding.startedAt);
+      const daysSince = Math.floor((now.getTime() - startedAt.getTime()) / (24 * 60 * 60 * 1000));
+      if (daysSince >= 3) {
+        const remainingSteps = state.steps
+          .filter(s => s.status === 'todo')
+          .map(s => s.title);
+        stuck.push({
+          id: String(teacher._id),
+          name: teacher.displayName || teacher.username || 'Teacher',
+          signedUpAt: startedAt,
+          daysSince,
+          remainingSteps,
+          remindersCount: teacher.onboarding?.reminders?.count || 0,
+          lastReminderAt: teacher.onboarding?.reminders?.lastSentAt || null,
+          lastAdminSentAt: teacher.onboarding?.reminders?.lastAdminSentAt || null,
+        });
+      }
+    }
+  });
+
+  stuck.sort((a, b) => b.daysSince - a.daysSince);
+
+  return { summary, funnel, stuck };
+}
 
 /**
  * Pure helper: determine if a tour offer should be shown.
@@ -534,6 +862,7 @@ module.exports = {
   STEPS,
   STEP_MAP,
   ALLOWED_TOURS,
+  STEP_REMINDER_MESSAGES,
   isUserLegacy,
   computeOnboardingState,
   getFacts,
@@ -548,4 +877,8 @@ module.exports = {
   recordTourSeen,
   recordTourCompleted,
   recordTourDismissed,
+  planOnboardingReminder,
+  maybeSendOnboardingReminder,
+  canAdminSendReminder,
+  buildOnboardingReport,
 };
