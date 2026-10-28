@@ -175,10 +175,9 @@ function computeOnboardingState(user, facts = {}, now = new Date()) {
 
   let visible = false;
   if (legacy) {
-    // Legacy teachers: only get rewards step and only while rates are missing
+    // Legacy teachers: only get rewards step and only while rates are missing and not skipped
     const rewardsStep = evaluatedSteps.find(s => s.key === 'rewards');
-    const rewardsDone = rewardsStep?.status === 'done';
-    visible = !rewardsDone;
+    visible = !(rewardsStep?.status === 'done' || rewardsStep?.status === 'skipped');
   } else {
     // Normal teachers: visible while incomplete, automatically gone when completed
     visible = !isComplete;

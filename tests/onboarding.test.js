@@ -241,6 +241,7 @@ test('Teacher Onboarding - computeOnboardingState pure function', async (t) => {
   await t.test('legacy teacher with rates missing: only rewards step shown, visible is true', () => {
     const user = {
       _id: '670000000000000000000001',
+      displayName: 'Legacy Jane',
       role: 'teacher',
       commission: { primeFull: 0, primeAssisted: 0, halfPrime: 0, assistant: 0 },
       onboarding: {
@@ -260,9 +261,45 @@ test('Teacher Onboarding - computeOnboardingState pure function', async (t) => {
     assert.equal(state.steps[0].status, 'todo');
   });
 
-  await t.test('legacy teacher with rates set: visible is false', () => {
+  await t.test('legacy with rewards skipped: not visible, not shown on next render, admin helper still includes teacher', async () => {
+    const skippedTime = new Date('2026-10-28T10:00:00Z');
+    const userSteps = new Map();
+    userSteps.set('rewards', { doneAt: null, skippedAt: skippedTime });
+
     const user = {
       _id: '670000000000000000000001',
+      displayName: 'Legacy Jane',
+      role: 'teacher',
+      commission: { primeFull: 0, primeAssisted: 0, halfPrime: 0, assistant: 0 },
+      onboarding: {
+        legacy: true,
+        dismissedAt: null,
+        steps: userSteps,
+      },
+    };
+    const facts = { hasCommission: false };
+    const state = computeOnboardingState(user, facts);
+
+    assert.equal(state.isLegacy, true);
+    assert.equal(state.visible, false, 'Legacy teacher with skipped rewards must not have visible card');
+    assert.equal(state.steps[0].key, 'rewards');
+    assert.equal(state.steps[0].status, 'skipped');
+
+    // Admin warning still includes teacher because real commission amounts are not set
+    const adminReport = getTeachersWithoutRewards([user]);
+    assert.equal(adminReport.count, 1);
+    assert.equal(adminReport.names[0], 'Legacy Jane');
+
+    // Server-rendered card renders empty string
+    const cardTemplate = path.resolve('views/partials/onboarding/_card.ejs');
+    const html = await ejs.renderFile(cardTemplate, { onboardingState: state });
+    assert.equal(html.trim(), '', 'Card must not be rendered when state.visible is false');
+  });
+
+  await t.test('legacy teacher with rates set (done): visible is false', () => {
+    const user = {
+      _id: '670000000000000000000001',
+      displayName: 'Legacy Jane',
       role: 'teacher',
       commission: { primeFull: 45000, primeAssisted: 0, halfPrime: 0, assistant: 0 },
       onboarding: {
@@ -277,6 +314,30 @@ test('Teacher Onboarding - computeOnboardingState pure function', async (t) => {
     assert.equal(state.isLegacy, true);
     assert.equal(state.visible, false);
     assert.equal(state.steps[0].status, 'done');
+  });
+
+  await t.test('legacy skipped then amounts set: visible is false, status is done', () => {
+    const skippedTime = new Date('2026-10-20T10:00:00Z');
+    const userSteps = new Map();
+    userSteps.set('rewards', { doneAt: null, skippedAt: skippedTime });
+
+    const user = {
+      _id: '670000000000000000000001',
+      displayName: 'Legacy Jane',
+      role: 'teacher',
+      commission: { primeFull: 50000, primeAssisted: 0, halfPrime: 0, assistant: 0 },
+      onboarding: {
+        legacy: true,
+        dismissedAt: null,
+        steps: userSteps,
+      },
+    };
+    const facts = { hasCommission: true };
+    const state = computeOnboardingState(user, facts);
+
+    assert.equal(state.isLegacy, true);
+    assert.equal(state.visible, false);
+    assert.equal(state.steps[0].status, 'done', 'Setting amounts overrides skipped status');
   });
 
   await t.test('admin and superadmin: visible is false, empty steps', () => {
