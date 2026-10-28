@@ -20,7 +20,7 @@ const STEPS = [
     why: 'Colleagues and admins see these on reports and salary slips.',
     cta: { label: 'Open profile', href: '/profile/edit' },
     kind: 'data',
-    optional: false,
+    optional: true,
   },
   {
     key: 'rewards',
@@ -147,7 +147,7 @@ function computeOnboardingState(user, facts = {}, now = new Date()) {
     let status = 'todo';
     if (isDone) {
       status = 'done';
-    } else if (cfg.optional && skippedAt) {
+    } else if (skippedAt) {
       status = 'skipped';
     }
 
@@ -215,14 +215,18 @@ async function getFacts(user) {
   );
 
   let reportCount = 0;
-  let firstReportDoneAt = null;
-  if (user.onboarding?.steps instanceof Map) {
-    firstReportDoneAt = user.onboarding.steps.get('first_report')?.doneAt;
-  } else if (user.onboarding?.steps) {
-    firstReportDoneAt = user.onboarding.steps.first_report?.doneAt;
-  }
+  const dataSteps = STEPS.filter(s => s.kind === 'data');
+  const getStoredDoneAt = (key) => {
+    if (user.onboarding?.steps instanceof Map) {
+      return user.onboarding.steps.get(key)?.doneAt;
+    }
+    return user.onboarding?.steps?.[key]?.doneAt;
+  };
 
-  if (firstReportDoneAt) {
+  const allDataStepsHaveStoredDone = dataSteps.every(s => Boolean(getStoredDoneAt(s.key)));
+  const firstReportDoneAt = getStoredDoneAt('first_report');
+
+  if (allDataStepsHaveStoredDone || firstReportDoneAt) {
     reportCount = 1; // already recorded, skip DB query
   } else if (user._id) {
     reportCount = await Report.countDocuments({
@@ -315,7 +319,7 @@ async function skipStep(userId, key, now = new Date()) {
     throw err;
   }
 
-  if (!step.optional) {
+  if (!step.optional && step.key !== 'rewards') {
     const err = new Error('This step cannot be skipped.');
     err.status = 400;
     throw err;
@@ -326,28 +330,6 @@ async function skipStep(userId, key, now = new Date()) {
     { $set: { [`onboarding.steps.${key}.skippedAt`]: now } }
   );
 
-  return true;
-}
-
-/**
- * Hide/dismiss onboarding card for now
- */
-async function dismiss(userId, now = new Date()) {
-  await User.updateOne(
-    { _id: userId },
-    { $set: { 'onboarding.dismissedAt': now } }
-  );
-  return true;
-}
-
-/**
- * Restore onboarding card on dashboard
- */
-async function restore(userId) {
-  await User.updateOne(
-    { _id: userId },
-    { $set: { 'onboarding.dismissedAt': null } }
-  );
   return true;
 }
 
@@ -559,8 +541,6 @@ module.exports = {
   persistDerivedSteps,
   markStepDone,
   skipStep,
-  dismiss,
-  restore,
   ensureOnboardingForNewUser,
   trackOnboardingVisit,
   getTeachersWithoutRewards,

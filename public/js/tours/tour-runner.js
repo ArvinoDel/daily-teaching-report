@@ -227,7 +227,7 @@
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-xs font-semibold text-slate-800">Take a 1-minute tour of the report form?</p>
-          <p class="text-[11px] text-slate-500 mt-0.5 leading-relaxed">Learn how to fill reports, tag student attendance, and submit records smoothly.</p>
+          <p class="text-xs text-slate-500 mt-0.5 leading-relaxed">Learn how to fill reports, tag student attendance, and submit records smoothly.</p>
           <div class="flex items-center gap-2 mt-3">
             <button type="button" id="dt-tour-offer-start"
               class="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold shadow-sm transition focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none">

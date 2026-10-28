@@ -4,10 +4,90 @@
  * public/js/onboarding.js
  * ─────────────────────────────────────────────────────────────────────────────
  * Client-side handler for the teacher onboarding checklist and dashboard card.
+ *
+ * Responsibilities:
+ * - Progress bar animations
+ * - Collapsible steps list toggle
+ * - Throttled real-time visibility check (focus, visibilitychange, live:refreshed)
+ *   with max 1 request / 15s, no in-flight overlaps, and termination on 429 or
+ *   2 consecutive errors
+ * - Completion toast ("Checklist complete. Nice work!")
+ * - Skip action handling with confirmation for rewards
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+/**
+ * Creates a throttled state checker for /onboarding/state.
+ * Throttles to at most 1 call every 15s, prevents concurrent requests,
+ * and permanently stops checking after a 429 or two consecutive failures.
+ *
+ * @param {Function} fetchFn
+ * @param {Function} onComplete
+ * @param {Function} [nowFn=Date.now]
+ */
+function createThrottledChecker(fetchFn, onComplete, nowFn = Date.now) {
+  const THROTTLE_MS = 15000;
+  let lastRequestTime = 0;
+  let inFlight = false;
+  let consecutiveFailures = 0;
+  let stopped = false;
+
+  async function check() {
+    if (stopped) return;
+    if (inFlight) return;
+
+    const now = nowFn();
+    if (lastRequestTime > 0 && now - lastRequestTime < THROTTLE_MS) {
+      return;
+    }
+
+    inFlight = true;
+    lastRequestTime = now;
+
+    try {
+      const res = await fetchFn();
+      if (res.status === 429) {
+        stopped = true;
+        return;
+      }
+
+      if (!res.ok) {
+        consecutiveFailures++;
+        if (consecutiveFailures >= 2) {
+          stopped = true;
+        }
+        return;
+      }
+
+      consecutiveFailures = 0;
+      const data = await res.json();
+      if (data && data.state && (data.state.isComplete || !data.state.visible)) {
+        if (typeof onComplete === 'function') {
+          onComplete(data.state);
+        }
+      }
+    } catch (err) {
+      consecutiveFailures++;
+      if (consecutiveFailures >= 2) {
+        stopped = true;
+      }
+    } finally {
+      inFlight = false;
+    }
+  }
+
+  return {
+    check,
+    isStopped: () => stopped,
+    isInFlight: () => inFlight,
+    getConsecutiveFailures: () => consecutiveFailures,
+    getLastRequestTime: () => lastRequestTime,
+  };
+}
+
 (function () {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
   function getCsrfToken() {
     const meta = document.querySelector('meta[name="csrf-token"]');
     return meta ? meta.getAttribute('content') : '';
@@ -65,44 +145,76 @@
     });
   }
 
+  // Toast displayed when onboarding completes
+  let completionToastShown = false;
+  function showCompletionToast() {
+    if (completionToastShown || document.getElementById('onboarding-completion-toast')) return;
+    completionToastShown = true;
+
+    const toast = document.createElement('div');
+    toast.id = 'onboarding-completion-toast';
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+    toast.className = 'fixed bottom-4 right-4 sm:bottom-6 sm:right-6 max-w-sm bg-white rounded-2xl shadow-xl border border-slate-100 p-4 z-40 transition-all transform duration-300 translate-y-0 opacity-100';
+
+    toast.innerHTML = `
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-xl bg-brand-50 border border-brand-200 flex items-center justify-center text-brand-600 flex-shrink-0">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+          </svg>
+        </div>
+        <p class="text-xs font-semibold text-slate-800">Checklist complete. Nice work!</p>
+      </div>
+    `;
+
+    document.body.appendChild(toast);
+
+    setTimeout(function () {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(10px)';
+      setTimeout(function () {
+        toast.remove();
+      }, 300);
+    }, 4000);
+  }
+
+  // Smooth card removal
+  function removeCardSmoothly(isComplete) {
+    const dashboardCard = document.getElementById('onboarding-card');
+    if (!dashboardCard) return;
+
+    if (isComplete) {
+      showCompletionToast();
+    }
+
+    dashboardCard.style.transition = 'opacity 300ms ease, transform 300ms ease, max-height 400ms ease, margin 400ms ease, padding 400ms ease';
+    dashboardCard.style.opacity = '0';
+    dashboardCard.style.transform = 'translateY(-10px)';
+    setTimeout(function () {
+      dashboardCard.remove();
+    }, 350);
+  }
+
   // Real-time visibility check for dashboard card (auto-disappears once complete)
   const dashboardCard = document.getElementById('onboarding-card');
   if (dashboardCard) {
-    let intervalId = null;
+    const checker = createThrottledChecker(
+      () => fetch('/onboarding/state', { headers: { 'X-Requested-With': 'XMLHttpRequest' } }),
+      (state) => removeCardSmoothly(Boolean(state && state.isComplete))
+    );
 
-    function removeCardSmoothly() {
-      if (intervalId) clearInterval(intervalId);
-      dashboardCard.style.transition = 'opacity 300ms ease, transform 300ms ease, max-height 400ms ease, margin 400ms ease, padding 400ms ease';
-      dashboardCard.style.opacity = '0';
-      dashboardCard.style.transform = 'translateY(-10px)';
-      setTimeout(function () {
-        dashboardCard.remove();
-      }, 350);
-    }
-
-    async function checkCompletionRealtime() {
-      try {
-        const res = await fetch('/onboarding/state', {
-          headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data && data.state && (data.state.isComplete || !data.state.visible)) {
-          removeCardSmoothly();
-        }
-      } catch (err) {
-        // silent fail on network hiccups
-      }
-    }
-
-    intervalId = setInterval(checkCompletionRealtime, 6000);
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'visible') {
-        checkCompletionRealtime();
+        checker.check();
       }
     });
-    window.addEventListener('focus', checkCompletionRealtime);
-    document.addEventListener('live:refreshed', checkCompletionRealtime);
+    window.addEventListener('focus', function () {
+      checker.check();
+    });
+    document.addEventListener('live:refreshed', function () {
+      checker.check();
+    });
   }
 
   // Delegated click handler for onboarding actions
@@ -116,6 +228,11 @@
 
     try {
       if (action === 'skip' && stepKey) {
+        if (stepKey === 'rewards') {
+          const confirmed = window.confirm('Skip only if you do not receive teaching rewards. Admins will still see that your amounts are not set.');
+          if (!confirmed) return;
+        }
+
         btn.disabled = true;
         const res = await fetch(`/onboarding/steps/${encodeURIComponent(stepKey)}/skip`, {
           method: 'POST',
@@ -130,57 +247,10 @@
           const data = await res.json().catch(() => ({}));
           announce('Step skipped.');
           if (data && data.state && (data.state.isComplete || !data.state.visible)) {
-            const card = document.getElementById('onboarding-card');
-            if (card) {
-              card.style.transition = 'opacity 300ms ease, transform 300ms ease, max-height 400ms ease, margin 400ms ease, padding 400ms ease';
-              card.style.opacity = '0';
-              card.style.transform = 'translateY(-10px)';
-              setTimeout(() => card.remove(), 350);
-              return;
-            }
+            removeCardSmoothly(Boolean(data.state && data.state.isComplete));
+            return;
           }
           window.location.reload();
-        } else {
-          btn.disabled = false;
-        }
-      } else if (action === 'dismiss') {
-        btn.disabled = true;
-        const res = await fetch('/onboarding/dismiss', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            'x-csrf-token': csrf,
-          },
-        });
-        if (res.ok) {
-          announce('Onboarding card hidden.');
-          const card = document.getElementById('onboarding-card');
-          if (card) {
-            card.style.transition = 'opacity 300ms ease, transform 300ms ease, max-height 400ms ease, margin 400ms ease, padding 400ms ease';
-            card.style.opacity = '0';
-            card.style.transform = 'translateY(-10px)';
-            setTimeout(() => card.remove(), 350);
-          }
-        } else {
-          btn.disabled = false;
-        }
-      } else if (action === 'restore') {
-        btn.disabled = true;
-        const res = await fetch('/onboarding/restore', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            'x-csrf-token': csrf,
-          },
-        });
-        if (res.ok) {
-          announce('Checklist restored to your dashboard.');
-          const wrap = document.getElementById('onboarding-restore-wrap');
-          if (wrap) {
-            wrap.innerHTML = '<span class="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl"><svg class="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>Restored to dashboard</span>';
-          }
         } else {
           btn.disabled = false;
         }
@@ -191,3 +261,9 @@
     }
   });
 })();
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    createThrottledChecker,
+  };
+}

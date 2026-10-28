@@ -83,7 +83,7 @@
           <!-- Actions -->
           <div class="flex items-center gap-2 self-end sm:self-auto flex-shrink-0">
             <% if (s.status === 'todo') { %>
-              <% if (s.optional) { %>
+              <% if (s.optional || s.key === 'rewards') { %>
                 <button type="button"
                   data-onboarding-action="skip"
                   data-step-key="<%= s.key %>"
@@ -108,7 +108,7 @@
             <% } else if (s.status === 'skipped') { %>
               <a href="<%= s.cta.href %>"
                 class="min-h-[44px] inline-flex items-center justify-center px-3.5 py-2 text-xs font-semibold text-slate-500 bg-slate-50 hover:bg-slate-100 rounded-xl focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:outline-none transition">
-                <%= s.cta.label %>
+                <%= !s.optional ? 'Do it now' : s.cta.label %>
               </a>
             <% } %>
           </div>

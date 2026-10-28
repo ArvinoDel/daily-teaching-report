@@ -8,6 +8,7 @@ const ejs = require('ejs');
 const { JSDOM } = require('jsdom');
 const EventEmitter = require('events');
 const User = require('../models/User');
+const Report = require('../models/Report');
 
 const {
   STEPS,
@@ -146,12 +147,13 @@ test('Teacher Onboarding - computeOnboardingState pure function', async (t) => {
     assert.equal(calcStep.skippedAt.getTime(), skippedTime.getTime());
   });
 
-  await t.test('required steps ignore stored skippedAt and stay todo unless done', () => {
+  await t.test('rewards step can be skipped, has status skipped, counts toward completion, and admin facts unchanged', () => {
     const userSteps = new Map();
     userSteps.set('rewards', { doneAt: null, skippedAt: new Date() });
 
     const user = {
       _id: '670000000000000000000001',
+      displayName: 'Jane Doe',
       role: 'teacher',
       commission: { primeFull: 0, primeAssisted: 0, halfPrime: 0, assistant: 0 },
       onboarding: { steps: userSteps },
@@ -160,7 +162,31 @@ test('Teacher Onboarding - computeOnboardingState pure function', async (t) => {
     const state = computeOnboardingState(user, facts);
 
     const rewardsStep = state.steps.find(s => s.key === 'rewards');
-    assert.equal(rewardsStep.status, 'todo');
+    assert.equal(rewardsStep.status, 'skipped');
+
+    // Admin warning still flags teacher because real commission amounts are not set
+    const adminReport = getTeachersWithoutRewards([user]);
+    assert.equal(adminReport.count, 1);
+    assert.equal(adminReport.names[0], 'Jane Doe');
+  });
+
+  await t.test('profile step is skippable and counts toward completion', () => {
+    const userSteps = new Map();
+    userSteps.set('profile', { doneAt: null, skippedAt: new Date() });
+
+    const user = {
+      _id: '670000000000000000000001',
+      role: 'teacher',
+      displayName: '',
+      profilePicture: null,
+      onboarding: { steps: userSteps },
+    };
+    const facts = { hasProfilePicture: false, hasDisplayName: false };
+    const state = computeOnboardingState(user, facts);
+
+    const profileStep = state.steps.find(s => s.key === 'profile');
+    assert.equal(profileStep.optional, true);
+    assert.equal(profileStep.status, 'skipped');
   });
 
   await t.test('isComplete true when every step is done or skipped', () => {
@@ -313,20 +339,34 @@ test('Teacher Onboarding - Key validation & step constraints', async (t) => {
     );
   });
 
-  await t.test('skipStep rejects required steps', async () => {
-    await assert.rejects(
-      async () => {
-        await skipStep('fake-user-id', 'rewards');
-      },
-      { message: 'This step cannot be skipped.' }
-    );
+  await t.test('skipStep allows optional steps and rewards, but rejects first_report', async () => {
+    let updateCalledWith = null;
+    const origUpdateOne = User.updateOne;
+    User.updateOne = async (filter, update) => {
+      updateCalledWith = { filter, update };
+      return { modifiedCount: 1 };
+    };
+    try {
+      // profile is optional and can be skipped
+      const profileRes = await skipStep('fake-user-id', 'profile');
+      assert.equal(profileRes, true);
+      assert.ok(updateCalledWith.update.$set['onboarding.steps.profile.skippedAt']);
 
-    await assert.rejects(
-      async () => {
-        await skipStep('fake-user-id', 'first_report');
-      },
-      { message: 'This step cannot be skipped.' }
-    );
+      // rewards can be skipped
+      const rewardsRes = await skipStep('fake-user-id', 'rewards');
+      assert.equal(rewardsRes, true);
+      assert.ok(updateCalledWith.update.$set['onboarding.steps.rewards.skippedAt']);
+
+      // first_report is required and cannot be skipped
+      await assert.rejects(
+        async () => {
+          await skipStep('fake-user-id', 'first_report');
+        },
+        { message: 'This step cannot be skipped.' }
+      );
+    } finally {
+      User.updateOne = origUpdateOne;
+    }
   });
 });
 
@@ -483,6 +523,33 @@ test('Teacher Onboarding - EJS Template Rendering', async (t) => {
     assert.ok(html.includes('Getting started'), 'Must render page title');
     assert.ok(html.includes('1 of 6 steps completed'), 'Must render steps completed text');
     assert.ok(html.includes('/profile/edit#commission-section'), 'Must include CTA link to commission section');
+  });
+
+  await t.test('/getting-started view renders Skipped and Do it now for skipped required step', async () => {
+    const state = {
+      doneCount: 1,
+      totalCount: 6,
+      percent: 17,
+      isComplete: false,
+      steps: STEPS.map(s => ({
+        ...s,
+        status: s.key === 'rewards' ? 'skipped' : 'todo',
+      })),
+    };
+    const user = {
+      _id: '670000000000000000000001',
+      displayName: 'Jane Doe',
+      onboarding: {},
+    };
+
+    const html = await ejs.renderFile(indexTemplate, {
+      title: 'Getting Started',
+      state,
+      user,
+    });
+
+    assert.ok(html.includes('Skipped'), 'Must render Skipped badge');
+    assert.ok(html.includes('Do it now'), 'Must render Do it now link for skipped required step');
   });
 });
 
@@ -832,4 +899,151 @@ test('Navigation - Getting started link removed from navbar', async (t) => {
     assert.ok(!mobileHtml.includes('Getting started'), 'admin mobile-menu must not show Getting started');
   });
 });
+
+test('Teacher Onboarding - getFacts cheap query optimization', async (t) => {
+  const origCount = Report.countDocuments;
+  let countCalled = false;
+  Report.countDocuments = async () => {
+    countCalled = true;
+    return 5;
+  };
+  t.after(() => {
+    Report.countDocuments = origCount;
+  });
+
+  await t.test('when every data step already has stored doneAt, answers without count query', async () => {
+    countCalled = false;
+    const user = {
+      _id: '670000000000000000000001',
+      role: 'teacher',
+      onboarding: {
+        steps: new Map([
+          ['profile', { doneAt: new Date() }],
+          ['rewards', { doneAt: new Date() }],
+          ['first_report', { doneAt: new Date() }],
+        ]),
+      },
+    };
+    const { getFacts } = require('../services/onboardingService');
+    const facts = await getFacts(user);
+    assert.equal(countCalled, false, 'Report.countDocuments should not have been called');
+    assert.equal(facts.reportCount, 1);
+  });
+});
+
+test('Teacher Onboarding - Throttled State Checker', async (t) => {
+  const { createThrottledChecker } = require('../public/js/onboarding');
+
+  await t.test('20 focus events within 10 seconds produce at most one request', async () => {
+    let callCount = 0;
+    const fakeFetch = async () => {
+      callCount++;
+      return { ok: true, status: 200, json: async () => ({ state: { isComplete: false, visible: true } }) };
+    };
+
+    let currentTime = 1000;
+    const checker = createThrottledChecker(fakeFetch, () => {}, () => currentTime);
+
+    // 20 focus events fired over 10 seconds (500ms intervals)
+    for (let i = 0; i < 20; i++) {
+      currentTime += 500;
+      await checker.check();
+    }
+
+    assert.equal(callCount, 1, 'Should produce at most 1 request for 20 events in 10s');
+  });
+
+  await t.test('sends second request only after 15 seconds have elapsed', async () => {
+    let callCount = 0;
+    const fakeFetch = async () => {
+      callCount++;
+      return { ok: true, status: 200, json: async () => ({ state: { isComplete: false, visible: true } }) };
+    };
+
+    let currentTime = 1000;
+    const checker = createThrottledChecker(fakeFetch, () => {}, () => currentTime);
+
+    await checker.check(); // at 1000ms -> request 1
+    assert.equal(callCount, 1);
+
+    currentTime += 14000; // at 15000ms (14s elapsed)
+    await checker.check();
+    assert.equal(callCount, 1, 'Should throttle calls under 15 seconds');
+
+    currentTime += 2000; // at 17000ms (16s elapsed)
+    await checker.check();
+    assert.equal(callCount, 2, 'Should allow call after 15 seconds');
+  });
+
+  await t.test('stops all checking after 429 response', async () => {
+    let callCount = 0;
+    const fakeFetch = async () => {
+      callCount++;
+      return { ok: false, status: 429, json: async () => ({}) };
+    };
+
+    let currentTime = 1000;
+    const checker = createThrottledChecker(fakeFetch, () => {}, () => currentTime);
+
+    await checker.check();
+    assert.equal(callCount, 1);
+    assert.equal(checker.isStopped(), true);
+
+    currentTime += 20000;
+    await checker.check();
+    assert.equal(callCount, 1, 'Should not send any more requests after 429');
+  });
+
+  await t.test('stops all checking after two consecutive failures', async () => {
+    let callCount = 0;
+    const fakeFetch = async () => {
+      callCount++;
+      return { ok: false, status: 500, json: async () => ({}) };
+    };
+
+    let currentTime = 1000;
+    const checker = createThrottledChecker(fakeFetch, () => {}, () => currentTime);
+
+    await checker.check(); // failure 1
+    assert.equal(callCount, 1);
+    assert.equal(checker.isStopped(), false);
+
+    currentTime += 16000;
+    await checker.check(); // failure 2
+    assert.equal(callCount, 2);
+    assert.equal(checker.isStopped(), true);
+
+    currentTime += 16000;
+    await checker.check();
+    assert.equal(callCount, 2, 'Should not send any more requests after 2 consecutive failures');
+  });
+
+  await t.test('never sends while a request is in flight', async () => {
+    let callCount = 0;
+    let resolvePromise;
+    const hangingPromise = new Promise(resolve => {
+      resolvePromise = resolve;
+    });
+
+    const fakeFetch = async () => {
+      callCount++;
+      await hangingPromise;
+      return { ok: true, status: 200, json: async () => ({ state: { isComplete: false, visible: true } }) };
+    };
+
+    let currentTime = 1000;
+    const checker = createThrottledChecker(fakeFetch, () => {}, () => currentTime);
+
+    const firstCheck = checker.check(); // starts and hangs
+    assert.equal(callCount, 1);
+
+    currentTime += 20000;
+    await checker.check(); // attempted while in-flight
+    assert.equal(callCount, 1, 'Must not send while in flight');
+
+    resolvePromise();
+    await firstCheck;
+  });
+});
+
 

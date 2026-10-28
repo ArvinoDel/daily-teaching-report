@@ -42,7 +42,7 @@
             <p class="text-xs text-slate-500 mt-0.5"><%= onboardingState.nextStep.why %></p>
           </div>
           <div class="flex items-center gap-2 self-stretch sm:self-auto flex-shrink-0">
-            <% if (onboardingState.nextStep.optional) { %>
+            <% if (onboardingState.nextStep.optional || onboardingState.nextStep.key === 'rewards') { %>
               <button type="button"
                 data-onboarding-action="skip"
                 data-step-key="<%= onboardingState.nextStep.key %>"
@@ -117,7 +117,7 @@
               <!-- Step CTA & Action -->
               <div class="flex items-center gap-2 self-end sm:self-auto flex-shrink-0">
                 <% if (s.status === 'todo') { %>
-                  <% if (s.optional) { %>
+                  <% if (s.optional || s.key === 'rewards') { %>
                     <button type="button"
                       data-onboarding-action="skip"
                       data-step-key="<%= s.key %>"
@@ -136,6 +136,11 @@
                     </svg>
                     Done
                   </span>
+                <% } else if (s.status === 'skipped') { %>
+                  <a href="<%= s.cta.href %>"
+                    class="min-h-[44px] inline-flex items-center justify-center px-3 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 transition">
+                    <%= !s.optional ? 'Do it now' : s.cta.label %>
+                  </a>
                 <% } %>
               </div>
             </div>

@@ -9,8 +9,6 @@
  * GET  /onboarding/state           → Current computed onboarding state JSON
  * POST /onboarding/steps/:key/done → Mark visit step as done
  * POST /onboarding/steps/:key/skip → Skip optional step
- * POST /onboarding/dismiss        → Hide onboarding card
- * POST /onboarding/restore        → Show onboarding card again
  * POST /onboarding/tours/:key/seen → Record tour started / seen
  * POST /onboarding/tours/:key/done → Record tour completed
  * POST /onboarding/tours/:key/dismiss → Record tour dismissed (no thanks)
@@ -27,8 +25,6 @@ const {
   persistDerivedSteps,
   markStepDone,
   skipStep,
-  dismiss,
-  restore,
   ALLOWED_TOURS,
   recordTourSeen,
   recordTourCompleted,
@@ -150,53 +146,7 @@ router.post('/onboarding/steps/:key/skip', async (req, res) => {
   }
 });
 
-/**
- * POST /onboarding/dismiss
- * Hides the card on the dashboard.
- */
-router.post('/onboarding/dismiss', async (req, res) => {
-  try {
-    const sessionUser = req.session.user;
-    if (!sessionUser || sessionUser.role !== 'teacher') {
-      return res.status(403).json({ ok: false, error: 'Only teachers can dismiss onboarding.' });
-    }
 
-    await dismiss(sessionUser._id);
-
-    const user = await User.findById(sessionUser._id);
-    const facts = await getFacts(user);
-    const state = computeOnboardingState(user, facts);
-
-    res.json({ ok: true, state });
-  } catch (err) {
-    console.error('[onboarding] /onboarding/dismiss error:', err);
-    res.status(500).json({ ok: false, error: 'Failed to dismiss onboarding.' });
-  }
-});
-
-/**
- * POST /onboarding/restore
- * Restores the card to appear on the dashboard again.
- */
-router.post('/onboarding/restore', async (req, res) => {
-  try {
-    const sessionUser = req.session.user;
-    if (!sessionUser || sessionUser.role !== 'teacher') {
-      return res.status(403).json({ ok: false, error: 'Only teachers can restore onboarding.' });
-    }
-
-    await restore(sessionUser._id);
-
-    const user = await User.findById(sessionUser._id);
-    const facts = await getFacts(user);
-    const state = computeOnboardingState(user, facts);
-
-    res.json({ ok: true, state });
-  } catch (err) {
-    console.error('[onboarding] /onboarding/restore error:', err);
-    res.status(500).json({ ok: false, error: 'Failed to restore onboarding.' });
-  }
-});
 
 /**
  * POST /onboarding/tours/:key/seen
