@@ -34,7 +34,7 @@
       id: 'status',
       selector: '[data-tour="status"]',
       title: 'Content status',
-      description: 'Switch tabs to see all materials, items with content, or find what still needs notes or files.',
+      description: 'Switch between all materials, materials with content and materials that still need notes or files.',
     },
     {
       id: 'row-action',

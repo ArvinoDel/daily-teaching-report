@@ -25,7 +25,10 @@ const {
   STEP_REMINDER_MESSAGES,
   planOnboardingReminder,
   maybeSendOnboardingReminder,
+  buildReminderClaimFilter,
+  buildAdminReminderClaimFilter,
   canAdminSendReminder,
+  decideAdminReminder,
   buildOnboardingReport,
 } = require('../services/onboardingService');
 
@@ -1212,13 +1215,14 @@ test('Phase 3 Part A - planOnboardingReminder matrix and rules', async (t) => {
     assert.equal(plan.send, false);
   });
 
-  await t.test('legacy teacher interval 7 days and max 2', () => {
+  await t.test('legacy teacher interval 7 days and max 2 with legacySince baseline', () => {
     const legacyTeacher = {
       _id: '670000000000000000000002',
       role: 'teacher',
-      createdAt: t0,
+      createdAt: new Date('2025-01-01T00:00:00.000Z'),
       onboarding: {
         legacy: true,
+        legacySince: t0,
         startedAt: null,
         reminders: { count: 0, lastSentAt: null },
       },
@@ -1230,6 +1234,9 @@ test('Phase 3 Part A - planOnboardingReminder matrix and rules', async (t) => {
       nextStep: { key: 'rewards', cta: { href: '/profile/edit#commission-section' } },
     };
 
+    // Right after init (day 0): not due
+    assert.equal(planOnboardingReminder(legacyTeacher, legacyState, t0).send, false);
+
     // Day 6: 6 days < 7 days interval -> false
     const day6 = new Date(t0.getTime() + 6 * MS_PER_DAY);
     assert.equal(planOnboardingReminder(legacyTeacher, legacyState, day6).send, false);
@@ -1238,7 +1245,7 @@ test('Phase 3 Part A - planOnboardingReminder matrix and rules', async (t) => {
     const day7 = new Date(t0.getTime() + 7 * MS_PER_DAY);
     assert.equal(planOnboardingReminder(legacyTeacher, legacyState, day7).send, true);
 
-    // After reminder on Day 7, Day 10 (3 days later) -> false
+    // After reminder on Day 7, Day 10 (3 days later) -> false (second reminder not before 7 more days)
     const teacherAfter1 = {
       ...legacyTeacher,
       onboarding: { ...legacyTeacher.onboarding, reminders: { count: 1, lastSentAt: day7 } },
@@ -1257,6 +1264,36 @@ test('Phase 3 Part A - planOnboardingReminder matrix and rules', async (t) => {
     };
     const day25 = new Date(t0.getTime() + 25 * MS_PER_DAY);
     assert.equal(planOnboardingReminder(teacherAfter2, legacyState, day25).send, false);
+
+    // Baseline fallback to process.env.ONBOARDING_REMINDERS_START_DATE
+    const prevEnv = process.env.ONBOARDING_REMINDERS_START_DATE;
+    try {
+      process.env.ONBOARDING_REMINDERS_START_DATE = t0.toISOString();
+      const teacherWithEnv = {
+        _id: '670000000000000000000003',
+        role: 'teacher',
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+        onboarding: { legacy: true, reminders: { count: 0, lastSentAt: null } },
+      };
+      assert.equal(planOnboardingReminder(teacherWithEnv, legacyState, day6).send, false);
+      assert.equal(planOnboardingReminder(teacherWithEnv, legacyState, day7).send, true);
+    } finally {
+      if (prevEnv === undefined) {
+        delete process.env.ONBOARDING_REMINDERS_START_DATE;
+      } else {
+        process.env.ONBOARDING_REMINDERS_START_DATE = prevEnv;
+      }
+    }
+
+    // Baseline fallback to createdAt when neither legacySince nor env date is set
+    const teacherWithCreatedAt = {
+      _id: '670000000000000000000004',
+      role: 'teacher',
+      createdAt: t0,
+      onboarding: { legacy: true, reminders: { count: 0, lastSentAt: null } },
+    };
+    assert.equal(planOnboardingReminder(teacherWithCreatedAt, legacyState, day6).send, false);
+    assert.equal(planOnboardingReminder(teacherWithCreatedAt, legacyState, day7).send, true);
   });
 
   await t.test('admin and superadmin -> send is false (not_teacher)', () => {
@@ -1383,6 +1420,10 @@ test('Phase 3 Part B - Material Tours config validation & shouldOfferTour', asyn
       assert.ok(!/<[^>]+>/.test(step.title), 'Title must not contain HTML');
       assert.ok(!/<[^>]+>/.test(step.description), 'Description must not contain HTML');
     }
+    const statusStep = materialsSteps.find(s => s.id === 'status');
+    assert.ok(statusStep, 'Status step exists');
+    assert.ok(!/\btabs?\b/i.test(statusStep.description), 'Status step must not mention tabs');
+    assert.ok(statusStep.description.includes('all materials') && statusStep.description.includes('materials with content') && statusStep.description.includes('still need notes or files'), 'Status step must accurately describe switching');
   });
 
   await t.test('material-page-tour.js config validation', () => {
@@ -1395,6 +1436,10 @@ test('Phase 3 Part B - Material Tours config validation & shouldOfferTour', asyn
       assert.ok(!/<[^>]+>/.test(step.title), 'Title must not contain HTML');
       assert.ok(!/<[^>]+>/.test(step.description), 'Description must not contain HTML');
     }
+    const slideshowStep = materialPageSteps.find(s => s.id === 'slideshow');
+    assert.ok(slideshowStep, 'Slideshow step exists');
+    assert.ok(!/flashcards?/i.test(slideshowStep.description), 'Slideshow must not mention flashcards');
+    assert.equal(slideshowStep.description, 'Open the lesson images as full-screen slides to show your class.');
   });
 
   await t.test('ALLOWED_TOURS contains reportForm, materials, and materialPage', () => {
@@ -1730,6 +1775,270 @@ test('Phase 3 Part C - Admin onboarding report page render with XSS escaping', a
   assert.ok(html.includes('Onboarding progress'), 'Header title rendered');
   assert.ok(html.includes('Stuck for more than 7 days'), '7 days filter button rendered');
   assert.ok(html.includes('btn-send-reminder'), 'Send reminder button rendered');
+});
+
+test('Phase 3 Fix - buildReminderClaimFilter mingo evaluation', async (t) => {
+  const { Query } = require('mingo');
+  const now = new Date('2026-10-10T00:00:00.000Z');
+  const intervalDays = 3;
+  const max = 3;
+  const cutoff = new Date(now.getTime() - intervalDays * 24 * 60 * 60 * 1000); // 2026-10-07T00:00:00.000Z
+  const userId = '670000000000000000000001';
+
+  const filter = buildReminderClaimFilter({ userId, max, cutoff });
+  const query = new Query(filter);
+
+  // 1. no onboarding at all -> should receive reminder
+  const docNoOnboarding = { _id: userId };
+  assert.equal(query.test(docNoOnboarding), true, 'no onboarding at all should receive reminder');
+
+  // 2. onboarding without reminders -> should receive reminder
+  const docNoReminders = { _id: userId, onboarding: {} };
+  assert.equal(query.test(docNoReminders), true, 'onboarding without reminders should receive reminder');
+
+  // 3. reminders with stored defaults (count 0, lastSentAt null) -> should receive reminder
+  const docDefaults = {
+    _id: userId,
+    onboarding: { reminders: { count: 0, lastSentAt: null } },
+  };
+  assert.equal(query.test(docDefaults), true, 'reminders with stored defaults should receive reminder');
+
+  // 4. count equal to max -> should NOT receive reminder
+  const docMaxCount = {
+    _id: userId,
+    onboarding: { reminders: { count: max, lastSentAt: new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000) } },
+  };
+  assert.equal(query.test(docMaxCount), false, 'count equal to max should NOT receive reminder');
+
+  // 5. sent yesterday -> should NOT receive reminder
+  const docSentYesterday = {
+    _id: userId,
+    onboarding: { reminders: { count: 1, lastSentAt: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000) } },
+  };
+  assert.equal(query.test(docSentYesterday), false, 'sent yesterday should NOT receive reminder');
+
+  // 6. sent 4 days ago -> should receive reminder
+  const docSent4DaysAgo = {
+    _id: userId,
+    onboarding: { reminders: { count: 1, lastSentAt: new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000) } },
+  };
+  assert.equal(query.test(docSent4DaysAgo), true, 'sent 4 days ago should receive reminder');
+
+  // Admin claim filter evaluation
+  const adminCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const adminFilter = buildAdminReminderClaimFilter({ userId, cutoff: adminCutoff });
+  const adminQuery = new Query(adminFilter);
+
+  assert.equal(adminQuery.test({ _id: userId }), true, 'admin: no reminders should match');
+  assert.equal(adminQuery.test({ _id: userId, onboarding: { reminders: { lastAdminSentAt: null } } }), true, 'admin: null lastAdminSentAt should match');
+  assert.equal(adminQuery.test({ _id: userId, onboarding: { reminders: { lastAdminSentAt: new Date(now.getTime() - 2 * 60 * 60 * 1000) } } }), false, 'admin: sent 2h ago should NOT match');
+  assert.equal(adminQuery.test({ _id: userId, onboarding: { reminders: { lastAdminSentAt: new Date(now.getTime() - 25 * 60 * 60 * 1000) } } }), true, 'admin: sent 25h ago should match');
+});
+
+test('Phase 3 Fix - never decide from session snapshot and defensive checks', async (t) => {
+  const fs = require('fs');
+  const sessionSnapshot = {
+    _id: '670000000000000000000001',
+    username: 'testteacher',
+    displayName: 'Test Teacher',
+    role: 'teacher',
+    profilePicture: null,
+  };
+
+  const activeState = {
+    visible: true,
+    isComplete: false,
+    nextStep: { key: 'rewards', cta: { href: '/profile/edit' } },
+  };
+
+  // 1. shouldOfferTour returns false for every tour key with session snapshot
+  for (const tourKey of ALLOWED_TOURS) {
+    assert.equal(shouldOfferTour(sessionSnapshot, tourKey), false, `shouldOfferTour false for ${tourKey}`);
+  }
+
+  // 2. planOnboardingReminder returns send: false, reason: 'incomplete_user'
+  const plan = planOnboardingReminder(sessionSnapshot, activeState);
+  assert.equal(plan.send, false);
+  assert.equal(plan.reason, 'incomplete_user');
+
+  // 3. computeOnboardingState returns not-visible
+  const computed = computeOnboardingState(sessionSnapshot, {});
+  assert.equal(computed.visible, false);
+
+  // 4. Real behavior with full documents is unchanged
+  const fullTeacher = {
+    _id: '670000000000000000000001',
+    role: 'teacher',
+    createdAt: new Date('2026-10-01T00:00:00.000Z'),
+    onboarding: {
+      startedAt: new Date('2026-10-01T00:00:00.000Z'),
+      legacy: false,
+      tours: new Map(),
+      reminders: { count: 0, lastSentAt: null },
+    },
+  };
+  for (const tourKey of ALLOWED_TOURS) {
+    assert.equal(shouldOfferTour(fullTeacher, tourKey), true, `shouldOfferTour true for full user ${tourKey}`);
+  }
+
+  // 5. Source-level test: scan controllers/ and routes/ for onboardingService.<fn>(req.session.user)
+  function scanDir(dir) {
+    const files = fs.readdirSync(dir);
+    for (const file of files) {
+      const fullPath = path.join(dir, file);
+      const stat = fs.statSync(fullPath);
+      if (stat.isDirectory()) {
+        scanDir(fullPath);
+      } else if (file.endsWith('.js')) {
+        const content = fs.readFileSync(fullPath, 'utf8');
+        const match = content.match(/onboardingService\.[a-zA-Z0-9_]+\s*\([^)]*req\.session\.user/);
+        assert.equal(
+          match,
+          null,
+          `File ${fullPath} passes req.session.user directly to onboardingService: ${match ? match[0] : ''}`
+        );
+      }
+    }
+  }
+
+  scanDir(path.resolve('controllers'));
+  scanDir(path.resolve('routes'));
+});
+
+test('Phase 3 Fix - admin reminder decision logic pure function and order', async (t) => {
+  const teacher = {
+    _id: '670000000000000000000001',
+    role: 'teacher',
+    onboarding: { reminders: { lastAdminSentAt: null } },
+  };
+
+  // Pure decision logic test:
+  // 1. Complete teacher or no next step -> 400 "Teacher onboarding is complete or has no pending step."
+  const completeState = { visible: false, isComplete: true, nextStep: null };
+  const d1 = decideAdminReminder(teacher, completeState);
+  assert.equal(d1.allowed, false);
+  assert.equal(d1.status, 400);
+  assert.equal(d1.error, 'Teacher onboarding is complete or has no pending step.');
+
+  // 2. State with pending step and no previous admin reminder -> allowed: true
+  const pendingState = { visible: true, isComplete: false, nextStep: { key: 'rewards' } };
+  const d2 = decideAdminReminder(teacher, pendingState);
+  assert.equal(d2.allowed, true);
+  assert.equal(d2.step, 'rewards');
+
+  // 3. Throttled teacher (sent 2 hours ago) -> allowed: false, 429
+  const now = new Date('2026-10-10T12:00:00.000Z');
+  const throttledTeacher = {
+    ...teacher,
+    onboarding: { reminders: { lastAdminSentAt: new Date(now.getTime() - 2 * 60 * 60 * 1000) } },
+  };
+  const d3 = decideAdminReminder(throttledTeacher, pendingState, now);
+  assert.equal(d3.allowed, false);
+  assert.equal(d3.status, 429);
+  assert.equal(d3.reason, 'throttled_24h');
+
+  // 4. Non-teacher -> 404
+  const d4 = decideAdminReminder({ role: 'admin' }, pendingState, now);
+  assert.equal(d4.allowed, false);
+  assert.equal(d4.status, 404);
+});
+
+test('Phase 3 Fix - onboardingSendReminder controller order and rollback', async (t) => {
+  const adminController = require('../controllers/adminController');
+  const Notification = require('../models/Notification');
+  const AuditLog = require('../models/AuditLog');
+
+  const origFindById = User.findById;
+  const origFindOneAndUpdate = User.findOneAndUpdate;
+  const origUpdateOne = User.updateOne;
+  const origNotifCreate = Notification.create;
+  const origAuditCreate = AuditLog.create;
+  const origReportCountDocuments = Report.countDocuments;
+
+  t.after(() => {
+    User.findById = origFindById;
+    User.findOneAndUpdate = origFindOneAndUpdate;
+    User.updateOne = origUpdateOne;
+    Notification.create = origNotifCreate;
+    AuditLog.create = origAuditCreate;
+    Report.countDocuments = origReportCountDocuments;
+  });
+
+  Report.countDocuments = async () => 0;
+
+  const teacherId = '670000000000000000000010';
+
+  // Test 1: Completed teacher (no next step) -> 400 without claiming slot
+  let findOneAndUpdateCalled = false;
+  User.findById = async () => ({
+    _id: teacherId,
+    role: 'teacher',
+    onboarding: {
+      version: 1,
+      startedAt: new Date('2026-10-01'),
+      steps: new Map([
+        ['profile', { doneAt: new Date() }],
+        ['rewards', { doneAt: new Date() }],
+        ['first_report', { doneAt: new Date() }],
+        ['open_material', { doneAt: new Date() }],
+        ['calculator', { doneAt: new Date() }],
+        ['my_salary', { doneAt: new Date() }],
+      ]),
+      reminders: { lastAdminSentAt: null },
+    },
+  });
+  User.findOneAndUpdate = async () => {
+    findOneAndUpdateCalled = true;
+    return {};
+  };
+
+  let statusCode = 200;
+  let jsonResponse = null;
+  const mockRes = {
+    status(code) { statusCode = code; return this; },
+    json(data) { jsonResponse = data; return this; },
+  };
+  const mockReq = {
+    params: { userId: teacherId },
+    session: { user: { _id: '670000000000000000000099', role: 'admin' } },
+  };
+
+  await adminController.onboardingSendReminder(mockReq, mockRes);
+  assert.equal(statusCode, 400);
+  assert.equal(jsonResponse.error, 'Teacher onboarding is complete or has no pending step.');
+  assert.equal(findOneAndUpdateCalled, false, 'User.findOneAndUpdate must NOT be called when no pending step');
+
+  // Test 2: Notification.create throws -> restores previous lastAdminSentAt and returns 500
+  const prevDate = new Date('2026-10-01T00:00:00.000Z');
+  let restoredValue = undefined;
+  User.findById = async () => ({
+    _id: teacherId,
+    role: 'teacher',
+    onboarding: {
+      version: 1,
+      startedAt: new Date('2026-10-01'),
+      steps: new Map(),
+      reminders: { lastAdminSentAt: prevDate },
+    },
+  });
+  User.findOneAndUpdate = async () => ({
+    _id: teacherId,
+    onboarding: { reminders: { lastAdminSentAt: new Date() } },
+  });
+  User.updateOne = async (filter, update) => {
+    restoredValue = update?.$set?.['onboarding.reminders.lastAdminSentAt'];
+    return { acknowledged: true };
+  };
+  Notification.create = async () => {
+    throw new Error('Database connection failed');
+  };
+
+  statusCode = 200;
+  jsonResponse = null;
+  await adminController.onboardingSendReminder(mockReq, mockRes);
+  assert.equal(statusCode, 500);
+  assert.equal(jsonResponse.error, 'Failed to send reminder.');
+  assert.equal(restoredValue, prevDate, 'Previous lastAdminSentAt must be restored');
 });
 
 

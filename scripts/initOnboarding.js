@@ -95,35 +95,79 @@ async function main() {
 
   console.log(`Found ${candidateTeachers.length} existing teacher(s) created before cutoff without onboarding.`);
 
-  if (candidateTeachers.length === 0) {
-    console.log('No teachers require onboarding backfill.\n');
-    await mongoose.disconnect();
-    return;
-  }
-
-  console.log('\nTeachers to initialize:');
-  candidateTeachers.forEach((t, i) => {
-    const comm = t.commission || {};
-    const hasRewards = [comm.primeFull, comm.primeAssisted, comm.halfPrime, comm.assistant].some(
-      v => (Number(v) || 0) > 0
-    );
-    console.log(`  ${i + 1}. ${t.displayName} (@${t.username}) - created: ${t.createdAt ? new Date(t.createdAt).toISOString().slice(0, 10) : 'unknown'}, rewards set: ${hasRewards ? 'Yes' : 'No'}`);
-  });
-
-  if (APPLY) {
-    const result = await User.updateMany(filter, {
-      $set: {
-        'onboarding.version': 1,
-        'onboarding.legacy': true,
-        'onboarding.startedAt': cutoffDate,
-        'onboarding.dismissedAt': null,
-        'onboarding.completedAt': null,
-      },
+  if (candidateTeachers.length > 0) {
+    console.log('\nTeachers to initialize:');
+    candidateTeachers.forEach((t, i) => {
+      const comm = t.commission || {};
+      const hasRewards = [comm.primeFull, comm.primeAssisted, comm.halfPrime, comm.assistant].some(
+        v => (Number(v) || 0) > 0
+      );
+      console.log(`  ${i + 1}. ${t.displayName} (@${t.username}) - created: ${t.createdAt ? new Date(t.createdAt).toISOString().slice(0, 10) : 'unknown'}, rewards set: ${hasRewards ? 'Yes' : 'No'}`);
     });
 
-    console.log(`\n✓ Successfully initialized ${result.modifiedCount} teacher(s) as legacy onboarding.`);
+    if (APPLY) {
+      const now = new Date();
+      const result = await User.updateMany(filter, {
+        $set: {
+          'onboarding.version': 1,
+          'onboarding.legacy': true,
+          'onboarding.startedAt': cutoffDate,
+          'onboarding.dismissedAt': null,
+          'onboarding.completedAt': null,
+        },
+      });
+
+      // Set onboarding.legacySince = now for teachers marked legacy (keep existing values on re-runs)
+      await User.updateMany(
+        {
+          role: 'teacher',
+          'onboarding.legacy': true,
+          $or: [
+            { 'onboarding.legacySince': null },
+            { 'onboarding.legacySince': { $exists: false } },
+          ],
+        },
+        {
+          $set: { 'onboarding.legacySince': now },
+        }
+      );
+
+      console.log(`\n✓ Successfully initialized ${result.modifiedCount} teacher(s) as legacy onboarding.`);
+    } else {
+      console.log(`\n[DRY RUN] Would set onboarding.legacy = true, startedAt, and legacySince for ${candidateTeachers.length} teacher(s).`);
+    }
   } else {
-    console.log(`\n[DRY RUN] Would set onboarding.legacy = true and startedAt for ${candidateTeachers.length} teacher(s).`);
+    console.log('No teachers require legacy onboarding initialization.\n');
+  }
+
+  // Backfill onboarding.reminders = { count: 0, lastSentAt: null, lastAdminSentAt: null } for every teacher that lacks it
+  const missingRemindersFilter = {
+    role: 'teacher',
+    $or: [
+      { onboarding: { $exists: false } },
+      { 'onboarding.reminders': { $exists: false } },
+      { 'onboarding.reminders': null },
+      { 'onboarding.reminders.count': { $exists: false } },
+      { 'onboarding.reminders.count': null },
+    ],
+  };
+
+  const teachersLackingReminders = await User.countDocuments(missingRemindersFilter);
+  console.log(`Found ${teachersLackingReminders} teacher(s) lacking onboarding.reminders.`);
+
+  if (APPLY) {
+    if (teachersLackingReminders > 0) {
+      const remindersResult = await User.updateMany(missingRemindersFilter, {
+        $set: {
+          'onboarding.reminders': { count: 0, lastSentAt: null, lastAdminSentAt: null },
+        },
+      });
+      console.log(`✓ Successfully backfilled onboarding.reminders for ${remindersResult.modifiedCount} teacher(s).`);
+    }
+  } else {
+    if (teachersLackingReminders > 0) {
+      console.log(`[DRY RUN] Would backfill onboarding.reminders for ${teachersLackingReminders} teacher(s).`);
+    }
     console.log('Run with `--apply` to commit these changes.');
   }
 

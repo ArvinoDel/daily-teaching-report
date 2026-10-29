@@ -115,6 +115,12 @@ exports.materialsLibrary = async (req, res) => {
 
     const availableLevels = distinctLevels.filter(Boolean).map(l => l.toUpperCase()).sort();
 
+    let shouldOfferTour = false;
+    if (req.session?.user && req.session.user.role === 'teacher') {
+      const userDoc = res.locals.currentUser || await User.findById(req.session.user._id).select('role onboarding createdAt');
+      shouldOfferTour = onboardingService.shouldOfferTour(userDoc, 'materials');
+    }
+
     res.render('materials/index', {
       title: 'Materials Library',
       materials,
@@ -130,9 +136,7 @@ exports.materialsLibrary = async (req, res) => {
       countWithContent,
       countNoContent,
       userIsAdmin:   isAdminUser(req),
-      shouldOfferTour: req.session?.user && req.session.user.role === 'teacher'
-        ? onboardingService.shouldOfferTour(req.session.user, 'materials')
-        : false,
+      shouldOfferTour,
       renderMaterialBody,
       safeJson,
     });
@@ -161,15 +165,19 @@ exports.showMaterial = async (req, res) => {
     const userCanEdit = canEdit(user, content);
     const userIsAdmin = isAdminUser(req);
 
+    let shouldOfferTour = false;
+    if (req.session?.user && req.session.user.role === 'teacher') {
+      const userDoc = res.locals.currentUser || await User.findById(req.session.user._id).select('role onboarding createdAt');
+      shouldOfferTour = onboardingService.shouldOfferTour(userDoc, 'materialPage');
+    }
+
     res.render('materials/show', {
       title: `${material.name} — Material`,
       material,
       content: content || { body: '', resources: [], locked: false, version: 1 },
       userCanEdit,
       userIsAdmin,
-      shouldOfferTour: req.session?.user && req.session.user.role === 'teacher'
-        ? onboardingService.shouldOfferTour(req.session.user, 'materialPage')
-        : false,
+      shouldOfferTour,
       renderMaterialBody,
       safeJson,
       csrfToken: (req.session && req.session.csrfToken) || (res.locals && res.locals.csrfToken) || '',

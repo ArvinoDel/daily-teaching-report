@@ -80,6 +80,10 @@ const userSchema = new mongoose.Schema({
       type: Boolean,
       default: false,
     },
+    legacySince: {
+      type: Date,
+      default: null,
+    },
     startedAt: {
       type: Date,
       default: null,

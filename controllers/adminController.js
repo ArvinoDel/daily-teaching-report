@@ -1059,21 +1059,25 @@ exports.onboardingSendReminder = async (req, res) => {
     }
 
     const now = new Date();
+
+    // Compute facts and state FIRST: return 400 if complete or no pending step without touching lastAdminSentAt
+    const facts = await onboardingService.getFacts(teacher);
+    const state = onboardingService.computeOnboardingState(teacher, facts, now);
+    if (!state.nextStep || !state.nextStep.key) {
+      return res.status(400).json({ ok: false, error: 'Teacher onboarding is complete or has no pending step.' });
+    }
+
     const check = onboardingService.canAdminSendReminder(teacher, now);
     if (!check.allowed) {
       return res.status(429).json({ ok: false, error: 'A reminder was already sent to this teacher in the last 24 hours.' });
     }
 
+    const prevLastAdminSentAt = teacher.onboarding?.reminders?.lastAdminSentAt ?? null;
     const cutoff24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const claimFilter = onboardingService.buildAdminReminderClaimFilter({ userId: teacher._id, cutoff: cutoff24h });
+
     const updated = await User.findOneAndUpdate(
-      {
-        _id: teacher._id,
-        $or: [
-          { 'onboarding.reminders.lastAdminSentAt': null },
-          { 'onboarding.reminders.lastAdminSentAt': { $exists: false } },
-          { 'onboarding.reminders.lastAdminSentAt': { $lte: cutoff24h } },
-        ],
-      },
+      claimFilter,
       {
         $set: { 'onboarding.reminders.lastAdminSentAt': now },
       },
@@ -1084,48 +1088,55 @@ exports.onboardingSendReminder = async (req, res) => {
       return res.status(429).json({ ok: false, error: 'A reminder was already sent to this teacher in the last 24 hours.' });
     }
 
-    const facts = await onboardingService.getFacts(teacher);
-    const state = onboardingService.computeOnboardingState(teacher, facts, now);
-    if (!state.nextStep || !state.nextStep.key) {
-      return res.status(400).json({ ok: false, error: 'Teacher onboarding is complete or has no pending step.' });
-    }
-
     const Notification = require('../models/Notification');
     const stepKey = state.nextStep.key;
     const message = onboardingService.STEP_REMINDER_MESSAGES[stepKey] || 'Finish your setup to get the most out of your dashboard.';
     const link = (state.nextStep.cta && state.nextStep.cta.href) ? state.nextStep.cta.href : '/reports';
 
-    await Notification.create({
-      recipient: teacher._id,
-      type: 'onboarding_reminder',
-      category: 'system',
-      title: 'Finish your setup',
-      message,
-      link,
-      metadata: {
-        action: 'onboarding_reminder',
-        step: stepKey,
-        adminTriggered: true,
-      },
-    });
+    try {
+      await Notification.create({
+        recipient: teacher._id,
+        type: 'onboarding_reminder',
+        category: 'system',
+        title: 'Finish your setup',
+        message,
+        link,
+        metadata: {
+          action: 'onboarding_reminder',
+          step: stepKey,
+          adminTriggered: true,
+        },
+      });
 
-    await AuditLog.create({
-      admin: req.session.user._id,
-      adminName: req.session.user.displayName || req.session.user.username || 'Admin',
-      action: 'onboarding_remind',
-      targetType: 'user',
-      targetId: teacher._id,
-      targetLabel: teacher.displayName || teacher.username || 'Teacher',
-      meta: {
-        step: stepKey,
-      },
-    });
+      await AuditLog.create({
+        admin: req.session.user._id,
+        adminName: req.session.user.displayName || req.session.user.username || 'Admin',
+        action: 'onboarding_remind',
+        targetType: 'user',
+        targetId: teacher._id,
+        targetLabel: teacher.displayName || teacher.username || 'Teacher',
+        meta: {
+          step: stepKey,
+        },
+      });
 
-    return res.json({
-      ok: true,
-      lastAdminSentAt: now,
-      message: 'Reminder sent successfully.',
-    });
+      return res.json({
+        ok: true,
+        lastAdminSentAt: now,
+        message: 'Reminder sent successfully.',
+      });
+    } catch (notifErr) {
+      // Best-effort restoration of previous lastAdminSentAt
+      try {
+        await User.updateOne(
+          { _id: teacher._id },
+          { $set: { 'onboarding.reminders.lastAdminSentAt': prevLastAdminSentAt } }
+        );
+      } catch (rollbackErr) {
+        console.error('Failed to restore lastAdminSentAt after Notification failure:', rollbackErr);
+      }
+      throw notifErr;
+    }
   } catch (err) {
     console.error('onboardingSendReminder error:', err);
     return res.status(500).json({ ok: false, error: 'Failed to send reminder.' });

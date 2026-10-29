@@ -103,6 +103,19 @@ function computeOnboardingState(user, facts = {}, now = new Date()) {
     };
   }
 
+  if (!user.onboarding && !user.createdAt) {
+    return {
+      visible: false,
+      isLegacy: false,
+      steps: [],
+      doneCount: 0,
+      totalCount: 0,
+      percent: 0,
+      nextStep: null,
+      isComplete: false,
+    };
+  }
+
   const legacy = isUserLegacy(user, now);
   const relevantStepConfigs = legacy
     ? STEPS.filter(s => s.key === 'rewards')
@@ -470,7 +483,11 @@ const STEP_REMINDER_MESSAGES = {
  * @returns {{ send: boolean, reason: string, step: string|null, notification: { title: string, message: string, link: string } | null }}
  */
 function planOnboardingReminder(user, state, now = new Date(), config = {}) {
-  if (!user || user.role !== 'teacher') {
+  if (!user || (!user.onboarding && !user.createdAt)) {
+    return { send: false, reason: 'incomplete_user', step: null, notification: null };
+  }
+
+  if (user.role !== 'teacher') {
     return { send: false, reason: 'not_teacher', step: null, notification: null };
   }
 
@@ -514,8 +531,14 @@ function planOnboardingReminder(user, state, now = new Date(), config = {}) {
       return { send: false, reason: 'interval_not_elapsed', step: null, notification: null };
     }
   } else {
-    // First reminder: legacy teachers use interval after deploy/createdAt, new teachers use firstAfterDays
-    const baseline = user.onboarding?.startedAt || user.createdAt;
+    // First reminder: legacy teachers use interval after baseline (legacySince -> ONBOARDING_REMINDERS_START_DATE -> createdAt),
+    // new teachers use firstAfterDays after startedAt/createdAt
+    const baseline = isLegacy
+      ? (user.onboarding?.legacySince
+          || (process.env.ONBOARDING_REMINDERS_START_DATE ? new Date(process.env.ONBOARDING_REMINDERS_START_DATE) : null)
+          || user.createdAt)
+      : (user.onboarding?.startedAt || user.createdAt);
+
     if (!baseline) {
       return { send: false, reason: 'no_baseline_date', step: null, notification: null };
     }
@@ -538,6 +561,58 @@ function planOnboardingReminder(user, state, now = new Date(), config = {}) {
       message,
       link,
     },
+  };
+}
+
+/**
+ * Pure function: build atomic MongoDB claim filter for automatic onboarding reminder.
+ * Matches when count is missing, null, or < max AND lastSentAt is missing, null, or <= cutoff.
+ *
+ * @param {Object} params
+ * @param {string|mongoose.Types.ObjectId} params.userId
+ * @param {number} params.max
+ * @param {Date} params.cutoff
+ * @returns {Object} MongoDB query filter
+ */
+function buildReminderClaimFilter({ userId, max, cutoff }) {
+  return {
+    _id: userId,
+    $and: [
+      {
+        $or: [
+          { 'onboarding.reminders.count': { $exists: false } },
+          { 'onboarding.reminders.count': null },
+          { 'onboarding.reminders.count': { $lt: max } },
+        ],
+      },
+      {
+        $or: [
+          { 'onboarding.reminders.lastSentAt': { $exists: false } },
+          { 'onboarding.reminders.lastSentAt': null },
+          { 'onboarding.reminders.lastSentAt': { $lte: cutoff } },
+        ],
+      },
+    ],
+  };
+}
+
+/**
+ * Pure function: build atomic MongoDB claim filter for admin onboarding reminder (24h throttle).
+ * Matches when lastAdminSentAt is missing, null, or <= cutoff.
+ *
+ * @param {Object} params
+ * @param {string|mongoose.Types.ObjectId} params.userId
+ * @param {Date} params.cutoff
+ * @returns {Object} MongoDB query filter
+ */
+function buildAdminReminderClaimFilter({ userId, cutoff }) {
+  return {
+    _id: userId,
+    $or: [
+      { 'onboarding.reminders.lastAdminSentAt': { $exists: false } },
+      { 'onboarding.reminders.lastAdminSentAt': null },
+      { 'onboarding.reminders.lastAdminSentAt': { $lte: cutoff } },
+    ],
   };
 }
 
@@ -585,17 +660,10 @@ async function maybeSendOnboardingReminder(userIdOrDoc, state, now = new Date())
     : Number(process.env.ONBOARDING_REMINDER_MAX || 3);
 
   const cutoff = new Date(now.getTime() - intervalDays * 24 * 60 * 60 * 1000);
+  const claimFilter = buildReminderClaimFilter({ userId: userDoc._id, max, cutoff });
 
   const updated = await User.findOneAndUpdate(
-    {
-      _id: userDoc._id,
-      'onboarding.reminders.count': { $lt: max },
-      $or: [
-        { 'onboarding.reminders.lastSentAt': null },
-        { 'onboarding.reminders.lastSentAt': { $exists: false } },
-        { 'onboarding.reminders.lastSentAt': { $lte: cutoff } },
-      ],
-    },
+    claimFilter,
     {
       $set: { 'onboarding.reminders.lastSentAt': now },
       $inc: { 'onboarding.reminders.count': 1 },
@@ -644,6 +712,32 @@ function canAdminSendReminder(user, now = new Date()) {
     }
   }
   return { allowed: true };
+}
+
+/**
+ * Pure decision logic for admin-triggered reminder.
+ * Evaluates teacher, state (ensuring a pending step exists), and 24h throttle.
+ *
+ * @param {Object} user
+ * @param {Object} state
+ * @param {Date} [now=new Date()]
+ * @returns {{ allowed: boolean, status?: number, reason?: string, error?: string, step?: string }}
+ */
+function decideAdminReminder(user, state, now = new Date()) {
+  if (!user || user.role !== 'teacher') {
+    return { allowed: false, status: 404, reason: 'not_teacher', error: 'Teacher not found.' };
+  }
+  if (!state || !state.nextStep || !state.nextStep.key) {
+    return { allowed: false, status: 400, reason: 'no_pending_step', error: 'Teacher onboarding is complete or has no pending step.' };
+  }
+  const lastAdminSentAt = user.onboarding?.reminders?.lastAdminSentAt;
+  if (lastAdminSentAt) {
+    const diff = now.getTime() - new Date(lastAdminSentAt).getTime();
+    if (diff < 24 * 60 * 60 * 1000) {
+      return { allowed: false, status: 429, reason: 'throttled_24h', error: 'A reminder was already sent to this teacher in the last 24 hours.' };
+    }
+  }
+  return { allowed: true, step: state.nextStep.key };
 }
 
 /**
@@ -781,7 +875,8 @@ function buildOnboardingReport(teachers = [], reportCounts = {}, now = new Date(
  * @returns {boolean}
  */
 function shouldOfferTour(user, tourKey, now = new Date()) {
-  if (!user || user.role !== 'teacher') return false;
+  if (!user || (!user.onboarding && !user.createdAt)) return false;
+  if (user.role !== 'teacher') return false;
   if (!ALLOWED_TOURS.includes(tourKey)) return false;
   if (user.onboarding?.legacy) return false;
   if (user.onboarding?.dismissedAt) return false;
@@ -879,6 +974,9 @@ module.exports = {
   recordTourDismissed,
   planOnboardingReminder,
   maybeSendOnboardingReminder,
+  buildReminderClaimFilter,
+  buildAdminReminderClaimFilter,
   canAdminSendReminder,
+  decideAdminReminder,
   buildOnboardingReport,
 };

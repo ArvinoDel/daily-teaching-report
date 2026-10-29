@@ -34,7 +34,7 @@
       id: 'slideshow',
       selector: '[data-tour="slideshow"]',
       title: 'Present slideshow',
-      description: 'Launch full-screen slides of lesson images and flashcards to present directly to your class.',
+      description: 'Open the lesson images as full-screen slides to show your class.',
       conditional: true,
     },
     {
