@@ -191,8 +191,18 @@ exports.analyzeSheet = async (req, res) => {
     const { imageBase64, year, month } = req.body;
     if (!imageBase64) return res.status(400).json({ error: 'No image provided.' });
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY not configured on server.' });
+    const apiKey = (
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
+      process.env.GOOGLE_GEMINI_API_KEY ||
+      process.env.GEMINI_KEY ||
+      ''
+    ).trim();
+    if (!apiKey) {
+      return res.status(500).json({
+        error: 'GEMINI_API_KEY not configured on server. Please verify the environment variable in Vercel and redeploy the deployment.',
+      });
+    }
 
     // Strip data URL prefix if present → get pure base64 + mime
     const matches = imageBase64.match(/^data:([^;]+);base64,(.+)$/);

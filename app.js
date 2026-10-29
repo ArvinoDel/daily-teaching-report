@@ -79,10 +79,11 @@ app.use(helmet({
           "https://*.tailwindcss.com",
           "https://cdn.jsdelivr.net",
           "https://cdnjs.cloudflare.com",
-          "https://unpkg.com"
+          "https://unpkg.com",
+          "https://vercel.live"
         ],
         workerSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net"],
-        childSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net"],
+        childSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net", "https://vercel.live"],
         scriptSrcAttr: ["'unsafe-inline'"],
         styleSrc: [
           "'self'",
@@ -90,10 +91,11 @@ app.use(helmet({
           "https://cdn.tailwindcss.com",
           "https://*.tailwindcss.com",
           "https://fonts.googleapis.com",
-          "https://cdn.jsdelivr.net"
+          "https://cdn.jsdelivr.net",
+          "https://vercel.live"
         ],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://vercel.live", "https://assets.vercel.com"],
+        imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://vercel.live", "https://vercel.com"],
         mediaSrc: ["'self'", "https://res.cloudinary.com"],
         connectSrc: [
           "'self'",
@@ -103,8 +105,12 @@ app.use(helmet({
           "https://cdn.jsdelivr.net",
           "https://tessdata.projectnaptha.com",
           "https://raw.githubusercontent.com",
-          "https://api.cloudinary.com"
+          "https://api.cloudinary.com",
+          "https://vercel.live",
+          "https://*.pusher.com",
+          "wss://*.pusher.com"
         ],
+        frameSrc: ["'self'", "https://vercel.live"],
       },
     }
     : false,
