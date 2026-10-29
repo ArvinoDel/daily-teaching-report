@@ -178,7 +178,7 @@ function sanitizeMaterialHtml(dirtyHtml) {
 
 function renderMaterialBody(html) {
   if (!html || typeof html !== 'string') return '';
-  return sanitizeMaterialHtml(html);
+  return sanitizeMaterialHtml(html).replace(/&nbsp;/g, ' ').replace(/\u00A0/g, ' ');
 }
 
 function safeJson(data) {

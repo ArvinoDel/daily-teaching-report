@@ -191,8 +191,18 @@ exports.analyzeSheet = async (req, res) => {
     const { imageBase64, year, month } = req.body;
     if (!imageBase64) return res.status(400).json({ error: 'No image provided.' });
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'GEMINI_API_KEY not configured on server.' });
+    const apiKey = (
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY ||
+      process.env.GOOGLE_GEMINI_API_KEY ||
+      process.env.GEMINI_KEY ||
+      ''
+    ).trim();
+    if (!apiKey) {
+      return res.status(500).json({
+        error: 'GEMINI_API_KEY not configured on server. Please verify the environment variable in Vercel and redeploy the deployment.',
+      });
+    }
 
     // Strip data URL prefix if present → get pure base64 + mime
     const matches = imageBase64.match(/^data:([^;]+);base64,(.+)$/);
@@ -223,10 +233,10 @@ Output format:
 ]`;
 
     const modelsToTry = [
-      'gemini-flash-latest',
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
       'gemini-3.6-flash',
-      'gemini-3.7-flash',
-      'gemini-2.5-flash',
+      'gemini-flash-latest',
     ];
 
     let lastError = '';
@@ -238,6 +248,7 @@ Output format:
         const geminiRes = await fetch(geminiUrl, {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal:  AbortSignal.timeout(30000),
           body: JSON.stringify({
             contents: [{
               parts: [
@@ -275,7 +286,9 @@ Output format:
         }
 
         const geminiData = await geminiRes.json();
-        rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const parts = geminiData?.candidates?.[0]?.content?.parts || [];
+        const textPart = parts.find(p => !p.thought && p.text) || parts.find(p => p.text) || parts[0];
+        rawText = textPart?.text || '';
         if (rawText) break; // Succeeded!
       } catch (reqErr) {
         lastError = `Model ${model} request failed: ${reqErr.message}`;

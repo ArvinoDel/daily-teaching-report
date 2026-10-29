@@ -143,8 +143,8 @@ async function notifyTeacherWelcome(user) {
   if (!user || !user._id) return null;
 
   const title = 'Welcome to Daily Teaching Report!';
-  const message = `Welcome aboard, ${user.displayName}! Please set your teaching reward and session commission amounts in your profile to enable accurate income calculations.`;
-  const link = '/profile/edit#commission-section';
+  const message = `Welcome aboard, ${user.displayName}! Finish your setup in a few minutes, starting with your teaching reward amounts.`;
+  const link = '/getting-started';
 
   return await sendNotification({
     recipient: user._id,
@@ -154,7 +154,7 @@ async function notifyTeacherWelcome(user) {
     message,
     link,
     metadata: {
-      action: 'set_commission',
+      action: 'start_onboarding',
     },
   });
 }

@@ -20,6 +20,10 @@ router.get('/', ctrl.dashboard);
 // Audit log
 router.get('/audit-log', ctrl.auditLogIndex);
 
+// Onboarding progress report & reminder
+router.get('/onboarding', ctrl.onboardingReport);
+router.post('/onboarding/:userId/remind', ctrl.onboardingSendReminder);
+
 // Users — bulk BEFORE /:id to avoid route conflict
 router.delete('/users/bulk',      ctrl.usersBulkDelete);
 router.get('/users',              ctrl.usersList);

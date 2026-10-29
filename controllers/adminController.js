@@ -10,6 +10,7 @@ const {
   normalizeClassFields,
   validateCompetition,
 } = require('../services/reportInputService');
+const onboardingService = require('../services/onboardingService');
 
 const TEACHING_TYPES = [
   'Prime Teacher (Full)',
@@ -269,13 +270,31 @@ exports.usersList = async (req, res) => {
     const countMap = {};
     reportCounts.forEach(r => { countMap[String(r._id)] = r.count; });
 
-    const usersData = users.map(u => ({
-      ...u.toObject({ virtuals: true }),
-      isOnline:    !!(u.lastActiveAt && new Date(u.lastActiveAt).getTime() >= fiveMinAgo.getTime()),
-      reportCount: countMap[String(u._id)] || 0,
-    }));
+    let noRewardsCount = 0;
+    const allUsersData = users.map(u => {
+      const comm = u.commission || {};
+      const hasRewards = [comm.primeFull, comm.primeAssisted, comm.halfPrime, comm.assistant].some(v => (Number(v) || 0) > 0);
+      const rewardsNotSet = u.role === 'teacher' && !hasRewards;
+      if (rewardsNotSet) noRewardsCount++;
+      return {
+        ...u.toObject({ virtuals: true }),
+        isOnline:    !!(u.lastActiveAt && new Date(u.lastActiveAt).getTime() >= fiveMinAgo.getTime()),
+        reportCount: countMap[String(u._id)] || 0,
+        rewardsNotSet,
+      };
+    });
 
-    res.render('admin/users/index', { users: usersData });
+    const filter = req.query.filter || '';
+    const displayedUsers = filter === 'no-rewards'
+      ? allUsersData.filter(u => u.rewardsNotSet)
+      : allUsersData;
+
+    res.render('admin/users/index', {
+      users: displayedUsers,
+      totalUsersCount: allUsersData.length,
+      noRewardsCount,
+      filter,
+    });
   } catch (err) {
     console.error(err);
     res.render('error', { message: 'Failed to load users.' });
@@ -980,3 +999,147 @@ exports.reportsSummaryIndex = async (req, res) => {
     res.render('error', { message: 'Failed to load reports summary.' });
   }
 };
+
+exports.onboardingReport = async (req, res) => {
+  try {
+    const now = new Date();
+    const teachers = await User.find({
+      role: 'teacher',
+      'onboarding.startedAt': { $ne: null },
+      'onboarding.legacy': { $ne: true },
+    })
+      .select('_id displayName username profilePicture commission onboarding createdAt')
+      .lean();
+
+    const teacherIds = teachers.map(t => t._id);
+
+    const reportAgg = await Report.aggregate([
+      {
+        $match: {
+          teacher: { $in: teacherIds },
+          is_auto_generated: { $ne: true },
+        },
+      },
+      {
+        $group: {
+          _id: '$teacher',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const reportCounts = {};
+    for (const row of reportAgg) {
+      reportCounts[String(row._id)] = row.count;
+    }
+
+    const report = onboardingService.buildOnboardingReport(teachers, reportCounts, now);
+
+    res.render('admin/onboarding/index', {
+      title: 'Admin — Onboarding Report',
+      report,
+      csrfToken: (req.session && req.session.csrfToken) || (res.locals && res.locals.csrfToken) || '',
+    });
+  } catch (err) {
+    console.error('onboardingReport error:', err);
+    res.render('error', { message: 'Failed to load onboarding report.' });
+  }
+};
+
+exports.onboardingSendReminder = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
+      return res.status(400).json({ ok: false, error: 'Invalid user ID.' });
+    }
+
+    const teacher = await User.findById(userId);
+    if (!teacher || teacher.role !== 'teacher') {
+      return res.status(404).json({ ok: false, error: 'Teacher not found.' });
+    }
+
+    const now = new Date();
+
+    // Compute facts and state FIRST: return 400 if complete or no pending step without touching lastAdminSentAt
+    const facts = await onboardingService.getFacts(teacher);
+    const state = onboardingService.computeOnboardingState(teacher, facts, now);
+    if (!state.nextStep || !state.nextStep.key) {
+      return res.status(400).json({ ok: false, error: 'Teacher onboarding is complete or has no pending step.' });
+    }
+
+    const check = onboardingService.canAdminSendReminder(teacher, now);
+    if (!check.allowed) {
+      return res.status(429).json({ ok: false, error: 'A reminder was already sent to this teacher in the last 24 hours.' });
+    }
+
+    const prevLastAdminSentAt = teacher.onboarding?.reminders?.lastAdminSentAt ?? null;
+    const cutoff24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const claimFilter = onboardingService.buildAdminReminderClaimFilter({ userId: teacher._id, cutoff: cutoff24h });
+
+    const updated = await User.findOneAndUpdate(
+      claimFilter,
+      {
+        $set: { 'onboarding.reminders.lastAdminSentAt': now },
+      },
+      { new: true }
+    );
+
+    if (!updated) {
+      return res.status(429).json({ ok: false, error: 'A reminder was already sent to this teacher in the last 24 hours.' });
+    }
+
+    const Notification = require('../models/Notification');
+    const stepKey = state.nextStep.key;
+    const message = onboardingService.STEP_REMINDER_MESSAGES[stepKey] || 'Finish your setup to get the most out of your dashboard.';
+    const link = (state.nextStep.cta && state.nextStep.cta.href) ? state.nextStep.cta.href : '/reports';
+
+    try {
+      await Notification.create({
+        recipient: teacher._id,
+        type: 'onboarding_reminder',
+        category: 'system',
+        title: 'Finish your setup',
+        message,
+        link,
+        metadata: {
+          action: 'onboarding_reminder',
+          step: stepKey,
+          adminTriggered: true,
+        },
+      });
+
+      await AuditLog.create({
+        admin: req.session.user._id,
+        adminName: req.session.user.displayName || req.session.user.username || 'Admin',
+        action: 'onboarding_remind',
+        targetType: 'user',
+        targetId: teacher._id,
+        targetLabel: teacher.displayName || teacher.username || 'Teacher',
+        meta: {
+          step: stepKey,
+        },
+      });
+
+      return res.json({
+        ok: true,
+        lastAdminSentAt: now,
+        message: 'Reminder sent successfully.',
+      });
+    } catch (notifErr) {
+      // Best-effort restoration of previous lastAdminSentAt
+      try {
+        await User.updateOne(
+          { _id: teacher._id },
+          { $set: { 'onboarding.reminders.lastAdminSentAt': prevLastAdminSentAt } }
+        );
+      } catch (rollbackErr) {
+        console.error('Failed to restore lastAdminSentAt after Notification failure:', rollbackErr);
+      }
+      throw notifErr;
+    }
+  } catch (err) {
+    console.error('onboardingSendReminder error:', err);
+    return res.status(500).json({ ok: false, error: 'Failed to send reminder.' });
+  }
+};
+

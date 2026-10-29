@@ -20,6 +20,8 @@ const notificationRoutes = require('./routes/notifications');
 const publicCardRoutes   = require('./routes/publicCard');
 const cronRoutes         = require('./routes/cron');
 const materialRoutes     = require('./routes/materials');
+const onboardingRoutes   = require('./routes/onboarding');
+const { trackOnboardingVisit, getNavOnboardingRemainingCount } = require('./services/onboardingService');
 const User           = require('./models/User');
 const Notification   = require('./models/Notification');
 const Feedback = require('./models/Feedback');
@@ -77,10 +79,11 @@ app.use(helmet({
           "https://*.tailwindcss.com",
           "https://cdn.jsdelivr.net",
           "https://cdnjs.cloudflare.com",
-          "https://unpkg.com"
+          "https://unpkg.com",
+          "https://vercel.live"
         ],
         workerSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net"],
-        childSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net"],
+        childSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net", "https://vercel.live"],
         scriptSrcAttr: ["'unsafe-inline'"],
         styleSrc: [
           "'self'",
@@ -88,10 +91,11 @@ app.use(helmet({
           "https://cdn.tailwindcss.com",
           "https://*.tailwindcss.com",
           "https://fonts.googleapis.com",
-          "https://cdn.jsdelivr.net"
+          "https://cdn.jsdelivr.net",
+          "https://vercel.live"
         ],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://vercel.live", "https://assets.vercel.com"],
+        imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://vercel.live", "https://vercel.com"],
         mediaSrc: ["'self'", "https://res.cloudinary.com"],
         connectSrc: [
           "'self'",
@@ -101,8 +105,12 @@ app.use(helmet({
           "https://cdn.jsdelivr.net",
           "https://tessdata.projectnaptha.com",
           "https://raw.githubusercontent.com",
-          "https://api.cloudinary.com"
+          "https://api.cloudinary.com",
+          "https://vercel.live",
+          "https://*.pusher.com",
+          "wss://*.pusher.com"
         ],
+        frameSrc: ["'self'", "https://vercel.live"],
       },
     }
     : false,
@@ -194,9 +202,9 @@ app.use(async (req, res, next) => {
           req.session.user._id,
           { lastActiveAt: new Date(now) },
           { new: true }
-        ).select('username displayName role joinDate commission profilePicture lastActiveAt')
+        ).select('username displayName role joinDate commission profilePicture lastActiveAt onboarding createdAt')
       : User.findById(req.session.user._id)
-          .select('username displayName role joinDate commission profilePicture lastActiveAt');
+          .select('username displayName role joinDate commission profilePicture lastActiveAt onboarding createdAt');
 
     if (needsTrackUpdate) {
       req.session._lastTracked = now;
@@ -210,6 +218,7 @@ app.use(async (req, res, next) => {
     ]);
 
     res.locals.currentUser = user || null;
+    res.locals.onboardingRemainingCount = getNavOnboardingRemainingCount(user);
 
     if (needsNotifRefresh && notifResult !== null) {
       req.session._cachedUnreadCount = notifResult || 0;
@@ -218,6 +227,7 @@ app.use(async (req, res, next) => {
     res.locals.unreadNotificationCount = req.session._cachedUnreadCount || 0;
   } catch (e) {
     res.locals.currentUser = req.session.user || null;
+    res.locals.onboardingRemainingCount = null;
     res.locals.unreadNotificationCount = 0;
   }
   next();
@@ -238,7 +248,8 @@ app.use('/admin',   adminRoutes);
 app.use('/feedback', feedbackRoutes);
 // Public (unauthenticated) routes — student card view via QR/camera scan
 app.use('/', publicCardRoutes);
-app.get('/score-calculator', requireAuth, (req, res) => res.render('score-calculator'));
+app.use('/', onboardingRoutes);
+app.get('/score-calculator', requireAuth, trackOnboardingVisit('calculator'), (req, res) => res.render('score-calculator'));
 app.get('/', (req, res) => res.redirect('/reports'));
 
 
@@ -254,6 +265,10 @@ app.use((req, res) => {
 
 // Multer & General error handler
 app.use(async (err, req, res, next) => {
+  if (res.headersSent) {
+    return next(err);
+  }
+
   res.locals.currentUser = res.locals.currentUser || null;
   res.locals.csrfToken = res.locals.csrfToken || (req.session && req.session.csrfToken) || '';
 

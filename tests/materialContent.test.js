@@ -140,6 +140,8 @@ test('Material Content - Defense in Depth & Render Helper', () => {
   assert.ok(rendered.includes('<p>Good</p>'));
   assert.equal(renderMaterialBody(''), '');
   assert.equal(renderMaterialBody(null), '');
+  // Normalizes non-breaking spaces to allow natural word wrapping and prevent horizontal overflow
+  assert.equal(renderMaterialBody('<p>Word1&nbsp;Word2\u00A0Word3</p>'), '<p>Word1 Word2 Word3</p>');
 });
 
 test('Material Content - safeJson Helper Escaping', () => {

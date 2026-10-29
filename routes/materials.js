@@ -13,6 +13,7 @@ const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const ctrl = require('../controllers/materialContentController');
 const { requireAuth } = require('../middleware/auth');
+const { trackOnboardingVisit } = require('../services/onboardingService');
 
 router.use(requireAuth);
 
@@ -44,7 +45,7 @@ router.get('/:id/resources/:rid/open', ctrl.openResource);
 router.get('/:id/edit', ctrl.editMaterial);
 
 // Read page
-router.get('/:id', ctrl.showMaterial);
+router.get('/:id', trackOnboardingVisit('open_material'), ctrl.showMaterial);
 
 // Save content (AJAX JSON)
 router.post('/:id', ctrl.saveMaterial);

@@ -71,6 +71,54 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  onboarding: {
+    version: {
+      type: Number,
+      default: 1,
+    },
+    legacy: {
+      type: Boolean,
+      default: false,
+    },
+    legacySince: {
+      type: Date,
+      default: null,
+    },
+    startedAt: {
+      type: Date,
+      default: null,
+    },
+    dismissedAt: {
+      type: Date,
+      default: null,
+    },
+    completedAt: {
+      type: Date,
+      default: null,
+    },
+    steps: {
+      type: Map,
+      of: new mongoose.Schema({
+        doneAt:    { type: Date, default: null },
+        skippedAt: { type: Date, default: null },
+      }, { _id: false }),
+      default: () => new Map(),
+    },
+    tours: {
+      type: Map,
+      of: new mongoose.Schema({
+        seenAt:      { type: Date, default: null },
+        completedAt: { type: Date, default: null },
+        dismissedAt: { type: Date, default: null },
+      }, { _id: false }),
+      default: () => new Map(),
+    },
+    reminders: {
+      count:           { type: Number, default: 0 },
+      lastSentAt:      { type: Date, default: null },
+      lastAdminSentAt: { type: Date, default: null },
+    },
+  },
 }, { timestamps: true });
 
 // Virtual: compute experience string from joinDate to now
