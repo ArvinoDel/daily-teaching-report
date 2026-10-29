@@ -287,8 +287,12 @@ Output format:
 
         const geminiData = await geminiRes.json();
         const parts = geminiData?.candidates?.[0]?.content?.parts || [];
-        const textPart = parts.find(p => !p.thought && p.text) || parts.find(p => p.text) || parts[0];
-        rawText = textPart?.text || '';
+        // Concatenate all text parts (excluding internal thoughts)
+        const textParts = parts.filter(p => !p.thought && typeof p.text === 'string');
+        rawText = (textParts.length > 0 ? textParts : parts)
+          .map(p => p.text || '')
+          .join('')
+          .trim();
         if (rawText) break; // Succeeded!
       } catch (reqErr) {
         lastError = `Model ${model} request failed: ${reqErr.message}`;
@@ -301,39 +305,94 @@ Output format:
       return res.status(502).json({ error: 'AI analysis failed. ' + lastError });
     }
 
-    // Parse the JSON array from Gemini's response (with fallback recovery)
-    let rows = [];
+    // Parse the JSON array from Gemini's response (with robust fallback recovery)
+    let rows = null;
+    const cleaned = rawText.replace(/```json?/gi, '').replace(/```/g, '').trim();
+
     try {
-      const cleaned = rawText.replace(/```json?/gi, '').replace(/```/g, '').trim();
-      rows = JSON.parse(cleaned);
+      const parsed = JSON.parse(cleaned);
+      if (Array.isArray(parsed)) {
+        rows = parsed;
+      } else if (parsed && typeof parsed === 'object') {
+        if (Array.isArray(parsed.rows)) rows = parsed.rows;
+        else if (Array.isArray(parsed.data)) rows = parsed.data;
+        else if (Array.isArray(parsed.items)) rows = parsed.items;
+        else if (parsed.dateKey) rows = [parsed];
+      }
     } catch (parseErr) {
-      console.warn('Direct JSON.parse failed, attempting regex recovery...', parseErr.message);
-      // Fallback: extract individual JSON objects from rawText
-      const objMatches = rawText.match(/\{[^{}]*"dateKey"[^{}]*\}/g);
-      if (objMatches && objMatches.length > 0) {
-        for (const objStr of objMatches) {
+      console.warn('Direct JSON.parse failed, attempting array extraction...', parseErr.message);
+
+      // Try finding the array bounds [ ... ] in rawText
+      const startArr = cleaned.indexOf('[');
+      const endArr = cleaned.lastIndexOf(']');
+      if (startArr !== -1 && endArr > startArr) {
+        try {
+          const slice = cleaned.slice(startArr, endArr + 1);
+          const parsedSlice = JSON.parse(slice);
+          if (Array.isArray(parsedSlice)) rows = parsedSlice;
+        } catch (e) {
+          console.warn('Array slice parse failed:', e.message);
+        }
+      }
+
+      // Try finding an object bounds { ... } if model wrapped response
+      if (!Array.isArray(rows)) {
+        const startObj = cleaned.indexOf('{');
+        const endObj = cleaned.lastIndexOf('}');
+        if (startObj !== -1 && endObj > startObj) {
           try {
-            const parsedObj = JSON.parse(objStr);
-            if (parsedObj && parsedObj.dateKey) rows.push(parsedObj);
+            const slice = cleaned.slice(startObj, endObj + 1);
+            const parsedObj = JSON.parse(slice);
+            if (Array.isArray(parsedObj?.rows)) rows = parsedObj.rows;
+            else if (Array.isArray(parsedObj?.data)) rows = parsedObj.data;
           } catch (e) {
-            // Ignore single corrupt chunk
+            console.warn('Object slice parse failed:', e.message);
           }
+        }
+      }
+
+      // Fallback: extract individual JSON objects containing "dateKey"
+      if (!Array.isArray(rows)) {
+        const objMatches = cleaned.match(/\{[^{}]*"dateKey"[^{}]*\}/g);
+        if (objMatches && objMatches.length > 0) {
+          const recovered = [];
+          for (const objStr of objMatches) {
+            try {
+              const parsedObj = JSON.parse(objStr);
+              if (parsedObj && parsedObj.dateKey) recovered.push(parsedObj);
+            } catch (e) {
+              // Ignore single corrupt chunk
+            }
+          }
+          if (recovered.length > 0) rows = recovered;
         }
       }
     }
 
-    if (!Array.isArray(rows) || rows.length === 0) {
-      console.error('Failed to parse Gemini response:', rawText.slice(0, 500));
+    // If still could not parse into an array
+    if (!Array.isArray(rows)) {
+      console.error('Failed to parse Gemini response as JSON array:', rawText.slice(0, 500));
       return res.status(502).json({ error: 'Could not parse AI response as JSON.', raw: rawText.slice(0, 300) });
     }
 
-    // Sanitize rows: ensure F/P/H/A are integers >= 0
+    // Helper to normalize dates into YYYY-MM-DD
+    const normalizeDateKey = (val) => {
+      if (!val) return '';
+      const str = String(val).trim();
+      const m = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+      if (m) {
+        return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+      }
+      return str;
+    };
+
+    // Sanitize rows: ensure dateKey is valid and F/P/H/A are integers >= 0
     const sanitized = rows.map(r => ({
-      dateKey: String(r.dateKey || ''),
-      F: Math.max(0, parseInt(r.F) || 0),
-      P: Math.max(0, parseInt(r.P) || 0),
-      H: Math.max(0, parseInt(r.H) || 0),
-      A: Math.max(0, parseInt(r.A) || 0),
+      dateKey: normalizeDateKey(r.dateKey),
+      F: Math.max(0, parseInt(r.F, 10) || 0),
+      P: Math.max(0, parseInt(r.P, 10) || 0),
+      H: Math.max(0, parseInt(r.H, 10) || 0),
+      A: Math.max(0, parseInt(r.A, 10) || 0),
     })).filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.dateKey));
 
     return res.json({ ok: true, rows: sanitized });
