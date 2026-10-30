@@ -202,21 +202,6 @@
 
 <% } %>
 
-<script>
-  function toggleDetail(idx) {
-    var row    = document.getElementById('detail-' + idx);
-    var toggle = document.getElementById('toggle-' + idx);
-    var icon   = toggle.querySelector('svg');
-    var isOpen = !row.classList.contains('hidden');
-    row.classList.toggle('hidden', isOpen);
-    icon.style.transform = isOpen ? '' : 'rotate(180deg)';
-  }
-
-  if (typeof registerAction === 'function') {
-    registerAction('toggleCommissionDetail', function (e, el) {
-      toggleDetail(el.dataset.idx);
-    });
-  }
-</script>
+<script src="/js/pages/admin-commission.js"></script>
 
 <%- include('../partials/footer') %>

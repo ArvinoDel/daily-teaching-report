@@ -1606,7 +1606,11 @@ test('Material Content - Teacher Can Edit First Content', async (t) => {
     const scriptFile = path.resolve('public/js/material-editor.js');
 
     // 1. Verify modal partial content
-    const modalContent = fs.readFileSync(modalFile, 'utf8');
+    let modalContent = fs.readFileSync(modalFile, 'utf8');
+    const modalScriptMatch = modalContent.match(/<script\s+src="([^"]+)"/);
+    if (modalScriptMatch) {
+      modalContent += '\n' + fs.readFileSync(path.resolve('public' + modalScriptMatch[1]), 'utf8');
+    }
     assert.ok(modalContent.includes('id="slide-viewer-modal"'), 'Modal should have id="slide-viewer-modal"');
     assert.ok(modalContent.includes('openSlideViewer'), 'Modal must define openSlideViewer');
     assert.ok(modalContent.includes('closeSlideViewer'), 'Modal must define closeSlideViewer');

@@ -1,4 +1,5 @@
 require('dotenv').config();
+const crypto = require('crypto');
 const express = require('express');
 const mongoose = require('mongoose');
 const path = require('path');
@@ -63,6 +64,12 @@ if (process.env.NODE_ENV === 'production') {
   app.set('view cache', true);
 }
 
+// Per-request CSP nonce generation
+app.use((req, res, next) => {
+  res.locals.cspNonce = crypto.randomBytes(16).toString('base64');
+  next();
+});
+
 // Security headers via Helmet
 app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === 'production'
@@ -71,7 +78,7 @@ app.use(helmet({
         defaultSrc: ["'self'"],
         scriptSrc: [
           "'self'",
-          "'unsafe-inline'",
+          (req, res) => `'nonce-${res.locals.cspNonce}'`,
           "'unsafe-eval'",
           "blob:",
           "data:",

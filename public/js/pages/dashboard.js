@@ -1,0 +1,260 @@
+(function () {
+  'use strict';
+
+  /* ── Data ────────────────────────────────────────────────── */
+  /* `let` so the live:refreshed handler can reassign after section swap */
+  var jsonEl = document.getElementById('daily-data-json');
+  let dailyData = jsonEl ? JSON.parse(jsonEl.textContent || '[]') : [];
+
+  const badgeMap = {
+    'Prime Teacher (Full)':     'badge-emerald',
+    'Prime Teacher (Assisted)': 'badge-purple',
+    'Assistant Teacher':        'badge-sky',
+    '1/2 Prime Teacher':        'badge-amber',
+  };
+
+  /* ── Helpers ─────────────────────────────────────────────── */
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function getCsrfToken() {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+  }
+
+  /* ── Daily detail view ───────────────────────────────────── */
+  function showDayDetail(idx) {
+    var day = dailyData[idx];
+    if (!day) return;
+
+    var dateLabel = document.getElementById('detail-date-label');
+    if (dateLabel) dateLabel.textContent = day.dateLabel;
+
+    var reports = (day.reports || []).slice();
+    // Ensure chronological order so the first class is on top
+    reports.sort(function (a, b) {
+      if (a.createdAt && b.createdAt) {
+        var diff = new Date(a.createdAt) - new Date(b.createdAt);
+        if (diff !== 0) return diff;
+      }
+      return String(a._id).localeCompare(String(b._id));
+    });
+
+    var tbody = document.getElementById('detail-tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = reports.map(function (r, index) {
+      var badge    = badgeMap[r.teaching_type] || '';
+      var reportId = escHtml(r._id);
+
+      /* Blue row for online sessions, normal for offline */
+      var rowCls = r.session_mode === 'online'
+        ? 'bg-blue-50 hover:bg-blue-100 transition group'
+        : 'hover:bg-slate-50 transition group';
+
+      /* Small mode + session-type indicators inside class_name cell */
+      var modePip = r.session_mode === 'online'
+        ? '<span class="ml-1.5 inline-flex items-center text-blue-500" title="Online">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">' +
+              '<path stroke-linecap="round" stroke-linejoin="round" d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z" />' +
+            '</svg>' +
+          '</span>'
+        : '';
+
+      var privatePip = r.session_type === 'private'
+        ? '<span class="ml-1 text-xs font-bold text-purple-400" title="Private">Private</span>'
+        : '';
+
+      var subjectHtml = escHtml(r.subject || '—');
+      if (r.materialId) {
+        if (r.materialHasContent) {
+          subjectHtml = '<a href="/materials/' + encodeURIComponent(r.materialId) + '" class="text-brand-600 hover:text-brand-700 hover:underline font-medium inline-flex items-center gap-1" title="View material content">' +
+            subjectHtml +
+            '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>' +
+          '</a>';
+        } else {
+          subjectHtml = '<a href="/materials/' + encodeURIComponent(r.materialId) + '" class="text-slate-700 hover:text-brand-600 hover:underline font-medium inline-flex items-center gap-1.5" title="Material has no content yet — click to view or add content">' +
+            subjectHtml +
+            '<span class="text-[10px] font-semibold text-brand-600 bg-brand-50 hover:bg-brand-100 border border-brand-200/60 px-1.5 py-0.2 rounded-md transition">+ Add</span>' +
+          '</a>';
+        }
+      }
+
+      var orderNum = index + 1;
+      var numBadge = r.session_mode === 'online'
+        ? 'bg-white text-blue-700 border border-blue-200/60'
+        : 'bg-slate-100 text-slate-600';
+
+      return '<tr class="' + rowCls + '">' +
+        '<td class="w-10 sm:w-12 px-2 sm:px-3 py-3.5 text-center whitespace-nowrap">' +
+          '<span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold font-mono ' + numBadge + '">' +
+            orderNum +
+          '</span>' +
+        '</td>' +
+        '<td class="px-3 sm:px-5 py-3.5 font-semibold text-slate-800">' +
+          '<span class="inline-flex items-center gap-0.5">' +
+            escHtml(r.class_name) + modePip + privatePip +
+          '</span>' +
+        '</td>' +
+        '<td class="px-3 sm:px-5 py-3.5 text-slate-600 hidden sm:table-cell">'  + subjectHtml + '</td>' +
+        '<td class="px-3 sm:px-5 py-3.5 hidden sm:table-cell"><span class="' + badge + ' text-xs font-semibold px-2.5 py-1 rounded-full whitespace-nowrap">' + escHtml(r.teaching_type) + '</span></td>' +
+        '<td class="px-3 sm:px-5 py-3.5 font-mono text-xs text-slate-500 hidden md:table-cell whitespace-nowrap">' + escHtml(r.durationFormatted) + '</td>' +
+        '<td class="px-3 sm:px-5 py-3.5 w-20 whitespace-nowrap">' +
+          '<div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition">' +
+            /* View */
+            '<a href="/reports/' + reportId + '" class="text-slate-400 hover:text-brand-600 transition" title="Detail">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.641 0-8.573-3.007-9.964-7.178Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>' +
+            '</a>' +
+            /* Edit */
+            '<a href="/reports/' + reportId + '/edit" class="text-slate-400 hover:text-amber-500 transition" title="Edit">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" /></svg>' +
+            '</a>' +
+            /* Delete */
+            '<button data-delete-url="/reports/' + reportId + '" class="js-open-delete text-slate-400 hover:text-red-500 transition" title="Delete">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>' +
+            '</button>' +
+          '</div>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+
+    var tableView = document.getElementById('daily-table-view');
+    var detailView = document.getElementById('daily-detail-view');
+    if (tableView) tableView.classList.add('hidden');
+    if (detailView) detailView.classList.remove('hidden');
+  }
+
+  function hideDayDetail() {
+    var tableView = document.getElementById('daily-table-view');
+    var detailView = document.getElementById('daily-detail-view');
+    if (tableView) tableView.classList.remove('hidden');
+    if (detailView) detailView.classList.add('hidden');
+  }
+
+  window.showDayDetail = showDayDetail;
+  window.hideDayDetail = hideDayDetail;
+
+  /* ── SweetAlert2 Delete (Dashboard detail view) ─────────── */
+  var tbody = document.getElementById('detail-tbody');
+  if (tbody) {
+    tbody.addEventListener('click', function (e) {
+      var btn = e.target.closest('.js-open-delete');
+      if (!btn) return;
+
+      var deleteUrl = btn.dataset.deleteUrl;
+      if (!deleteUrl) return;
+
+      if (typeof Swal === 'undefined') {
+        if (confirm('Delete this report?')) {
+          fetch(deleteUrl, { method: 'DELETE', headers: { 'X-Requested-With': 'XMLHttpRequest', 'x-csrf-token': getCsrfToken() } })
+            .then(function () { window.location.reload(); });
+        }
+        return;
+      }
+
+      Swal.fire({
+        title: 'Delete this report?',
+        text: 'This action cannot be undone.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Yes, delete it!',
+        cancelButtonText: 'Cancel',
+        reverseButtons: true,
+        focusCancel: true,
+        customClass: {
+          popup: 'rounded-2xl',
+          confirmButton: 'rounded-xl',
+          cancelButton: 'rounded-xl',
+        },
+      }).then(function (result) {
+        if (!result.isConfirmed) return;
+
+        Swal.fire({
+          title: 'Deleting…',
+          text: 'Please wait.',
+          allowOutsideClick: false,
+          allowEscapeKey: false,
+          showConfirmButton: false,
+          didOpen: function () { Swal.showLoading(); },
+        });
+
+        fetch(deleteUrl, {
+          method: 'DELETE',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'x-csrf-token': getCsrfToken(),
+          },
+        })
+          .then(function (res) {
+            if (res.ok || res.redirected) {
+              Swal.fire({
+                title: 'Deleted!',
+                text: 'The report has been removed.',
+                icon: 'success',
+                confirmButtonColor: '#16a34a',
+                customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+                timer: 1500,
+                showConfirmButton: false,
+              }).then(function () {
+                hideDayDetail();
+                if (typeof LiveRefresh !== 'undefined') {
+                  LiveRefresh.refresh([
+                    'dashboard-stats',
+                    'dashboard-type-breakdown',
+                    'dashboard-commission',
+                    'dashboard-daily-summary',
+                  ]);
+                } else {
+                  window.location.reload();
+                }
+              });
+            } else {
+              Swal.fire({
+                title: 'Error',
+                text: 'Failed to delete. Please try again.',
+                icon: 'error',
+                confirmButtonColor: '#ef4444',
+                customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+              });
+            }
+          })
+          .catch(function () {
+            Swal.fire({
+              title: 'Network Error',
+              text: 'Could not reach the server. Please try again.',
+              icon: 'error',
+              confirmButtonColor: '#ef4444',
+              customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+            });
+          });
+      });
+    });
+  }
+
+  /* ── Live refresh: re-parse dailyData after section swap ─── */
+  document.addEventListener('live:refreshed', function (e) {
+    if (e.detail && e.detail.sections && e.detail.sections.indexOf('dashboard-daily-summary') !== -1) {
+      var jsonEl = document.getElementById('daily-data-json');
+      if (jsonEl) {
+        try { dailyData = JSON.parse(jsonEl.textContent); } catch (err) { /* keep stale */ }
+      }
+    }
+  });
+
+  if (typeof registerAction === 'function') {
+    registerAction('showDayDetail', function (e, el) {
+      showDayDetail(el.dataset.idx);
+    });
+    registerAction('hideDayDetail', function () {
+      hideDayDetail();
+    });
+  }
+})();

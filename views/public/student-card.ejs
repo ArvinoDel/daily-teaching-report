@@ -537,32 +537,8 @@
 
 <!-- QR code library -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script>
-(function () {
-  // Render the self-referencing QR code for this card page
-  var cardUrl = '<%= baseUrl %>/student-card/<%= encodeURIComponent(student.barcode) %>';
-  try {
-    new QRCode(document.getElementById('qr-container'), {
-      text:         cardUrl,
-      width:        160,
-      height:       160,
-      colorDark:    '#1e1b4b',
-      colorLight:   '#f8fafc',
-      correctLevel: QRCode.CorrectLevel.M,
-    });
-  } catch (e) {
-    document.getElementById('qr-container').innerHTML =
-      '<p style="font-size:11px;color:#94a3b8;text-align:center;padding:16px;">QR unavailable</p>';
-  }
+<script id="student-card-data" type="application/json"><%- (typeof safeJson === "function" ? safeJson : JSON.stringify)({ cardUrl: baseUrl + "/student-card/" + encodeURIComponent(student.barcode), firstChar: student.full_name.charAt(0).toUpperCase() }) %></script>
+<script src="/js/pages/public-student-card.js" defer></script>
 
-  // Assign gradient avatar color based on first character
-  var name  = '<%= student.full_name.charAt(0).toUpperCase() %>';
-  var hue   = (name.charCodeAt(0) * 37) % 360;
-  var avatar = document.getElementById('student-avatar');
-  if (avatar) {
-    avatar.style.background = 'linear-gradient(135deg, hsl(' + hue + ',65%,58%), hsl(' + (hue + 30) + ',75%,38%))';
-  }
-})();
-</script>
 </body>
 </html>

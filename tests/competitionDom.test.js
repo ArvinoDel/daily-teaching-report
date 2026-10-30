@@ -47,6 +47,7 @@ test('Competition Report - DOM Regression in views/reports/new.ejs', async (t) =
     virtualConsole.on('error', () => {});
     virtualConsole.on('warn', () => {});
 
+    const fs = require('fs');
     const dom = new JSDOM(customHtml, {
       runScripts: 'dangerously',
       resources: 'usable',
@@ -60,6 +61,18 @@ test('Competition Report - DOM Regression in views/reports/new.ejs', async (t) =
     window.Swal = {
       fire: () => Promise.resolve({ isConfirmed: true })
     };
+
+    // If externalized scripts are present, execute them in jsdom
+    const scriptEls = dom.window.document.querySelectorAll('script[src]');
+    scriptEls.forEach(s => {
+      const src = s.getAttribute('src');
+      if (src && src.startsWith('/js/')) {
+        const filePath = path.resolve('public' + src);
+        if (fs.existsSync(filePath)) {
+          dom.window.eval(fs.readFileSync(filePath, 'utf8'));
+        }
+      }
+    });
 
     return dom;
   }
