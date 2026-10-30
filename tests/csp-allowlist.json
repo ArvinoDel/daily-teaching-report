@@ -25,7 +25,7 @@
     "javascriptUrls": 0
   },
   "views/admin/groups/index.ejs": {
-    "eventHandlers": 13,
+    "eventHandlers": 0,
     "inlineScripts": 2,
     "javascriptUrls": 0
   },
@@ -130,7 +130,7 @@
     "javascriptUrls": 0
   },
   "views/partials/admin/group-form-fields.ejs": {
-    "eventHandlers": 5,
+    "eventHandlers": 0,
     "inlineScripts": 1,
     "javascriptUrls": 0
   },
