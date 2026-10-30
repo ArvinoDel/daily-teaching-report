@@ -30,3 +30,4 @@
     avatar.style.background = 'linear-gradient(135deg, hsl(' + hue + ',65%,58%), hsl(' + (hue + 30) + ',75%,38%))';
   }
 })();
+

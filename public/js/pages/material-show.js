@@ -16,3 +16,4 @@
     window.initSlideViewer(materialId, fileResources);
   }
 })();
+

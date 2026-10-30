@@ -104,3 +104,4 @@ if (typeof registerAction === 'function') {
     copyDescText();
   });
 }
+

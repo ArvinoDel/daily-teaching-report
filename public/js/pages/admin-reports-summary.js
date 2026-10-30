@@ -127,3 +127,4 @@ if (typeof registerAction === 'function') {
     deleteReport(el);
   });
 }
+

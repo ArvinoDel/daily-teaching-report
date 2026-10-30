@@ -84,3 +84,4 @@ When a browser encounters a CSP violation, a log line is emitted:
 
 4. **`directive=object-src`**
    - An embedded plugin (`<object>`, `<embed>`) attempted to load. Should always be rejected (`'none'`).
+

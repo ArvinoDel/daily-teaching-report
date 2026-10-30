@@ -13,3 +13,4 @@ if (typeof registerAction === 'function') {
     toggleDetail(el.dataset.idx);
   });
 }
+

@@ -88,3 +88,4 @@ describe('POST /csp-report endpoint', () => {
     assert.strictEqual(res.statusCode, 413);
   });
 });
+
