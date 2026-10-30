@@ -114,6 +114,10 @@
       window.print();
     });
 
+    registerAction('stopPropagation', function (e) {
+      e.stopPropagation();
+    });
+
     registerAction('reloadPage', function () {
       window.location.reload();
     });

@@ -50,18 +50,13 @@
     "javascriptUrls": 0
   },
   "views/admin/salaries/edit.ejs": {
-    "eventHandlers": 6,
+    "eventHandlers": 0,
     "inlineScripts": 1,
     "javascriptUrls": 0
   },
   "views/admin/salaries/index.ejs": {
-    "eventHandlers": 13,
+    "eventHandlers": 0,
     "inlineScripts": 1,
-    "javascriptUrls": 0
-  },
-  "views/admin/salaries/slip.ejs": {
-    "eventHandlers": 1,
-    "inlineScripts": 0,
     "javascriptUrls": 0
   },
   "views/admin/scan-ac/index.ejs": {
@@ -172,11 +167,6 @@
   "views/public/student-card.ejs": {
     "eventHandlers": 0,
     "inlineScripts": 1,
-    "javascriptUrls": 0
-  },
-  "views/reports/my-salary/slip.ejs": {
-    "eventHandlers": 1,
-    "inlineScripts": 0,
     "javascriptUrls": 0
   },
   "views/reports/reward-crosscheck.ejs": {

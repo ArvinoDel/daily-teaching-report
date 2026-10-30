@@ -255,14 +255,14 @@
                   <input type="text" inputmode="numeric" name="otherIncomeAmount[]" value="<%= fmtNum(item.amount) %>"
                     placeholder="0" autocomplete="off" class="input-money has-prefix w-full other-income-amt currency-input">
                 </div>
-                <button type="button" onclick="this.closest('.other-income-row').remove(); recalculate();"
+                <button type="button" data-action="removeOtherIncome"
                   class="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition rounded-xl" title="Remove row">
                   <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
                 </button>
               </div>
             <% }); %>
           </div>
-          <button type="button" onclick="addOtherIncome()"
+          <button type="button" data-action="addOtherIncome"
             class="mt-2.5 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700 transition px-2.5 py-1.5 rounded-lg hover:bg-brand-50">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
             Add income row
@@ -315,14 +315,14 @@
                   <input type="text" inputmode="numeric" name="otherDeductionAmount[]" value="<%= fmtNum(item.amount) %>"
                     placeholder="0" autocomplete="off" class="input-money has-prefix w-full other-deduct-amt currency-input">
                 </div>
-                <button type="button" onclick="this.closest('.other-deduction-row').remove(); recalculate();"
+                <button type="button" data-action="removeOtherDeduction"
                   class="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition rounded-xl" title="Remove row">
                   <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
                 </button>
               </div>
             <% }); %>
           </div>
-          <button type="button" onclick="addOtherDeduction()"
+          <button type="button" data-action="addOtherDeduction"
             class="mt-2.5 inline-flex items-center gap-1.5 text-xs font-semibold text-red-500 hover:text-red-600 transition px-2.5 py-1.5 rounded-lg hover:bg-red-50">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
             Add deduction row
@@ -568,7 +568,7 @@
         <span class="absolute left-3.5 inset-y-0 flex items-center text-slate-400 text-xs font-semibold select-none pointer-events-none">Rp</span>
         <input type="text" inputmode="numeric" name="otherIncomeAmount[]" value="0" placeholder="0" autocomplete="off" class="input-money has-prefix w-full other-income-amt currency-input">
       </div>
-      <button type="button" onclick="this.closest('.other-income-row').remove(); recalculate();"
+      <button type="button" data-action="removeOtherIncome"
         class="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition" title="Remove row">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
       </button>`;
@@ -585,7 +585,7 @@
         <span class="absolute left-3.5 inset-y-0 flex items-center text-red-400 text-xs font-semibold select-none pointer-events-none">Rp</span>
         <input type="text" inputmode="numeric" name="otherDeductionAmount[]" value="0" placeholder="0" autocomplete="off" class="input-money has-prefix w-full other-deduct-amt currency-input">
       </div>
-      <button type="button" onclick="this.closest('.other-deduction-row').remove(); recalculate();"
+      <button type="button" data-action="removeOtherDeduction"
         class="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition" title="Remove row">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
       </button>`;
@@ -602,6 +602,25 @@
 
   // Run initial calculation
   recalculate();
+
+  if (typeof registerAction === 'function') {
+    registerAction('removeOtherIncome', function (e, el) {
+      var row = el.closest('.other-income-row');
+      if (row) row.remove();
+      recalculate();
+    });
+    registerAction('addOtherIncome', function () {
+      addOtherIncome();
+    });
+    registerAction('removeOtherDeduction', function (e, el) {
+      var row = el.closest('.other-deduction-row');
+      if (row) row.remove();
+      recalculate();
+    });
+    registerAction('addOtherDeduction', function () {
+      addOtherDeduction();
+    });
+  }
 </script>
 
 <% if (isBulkFlow) { %>
