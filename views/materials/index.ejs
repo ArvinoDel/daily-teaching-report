@@ -53,7 +53,7 @@
           <select
             name="level"
             data-tour="level"
-            onchange="this.form.submit()"
+            data-action="autoSubmitForm"
             class="w-full text-xs font-semibold rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white px-3 py-2.5 appearance-none focus:outline-none focus:ring-2 focus:ring-brand-500 pr-8 text-slate-700 cursor-pointer min-h-[44px]">
             <option value="" <%= !selectedLevel ? 'selected' : '' %>>All levels</option>
             <% (availableLevels || []).forEach(function(lvl) { %>

@@ -143,7 +143,7 @@
 
               <% if (!isCurrent) { %>
                 <form method="POST" action="/materials/<%= material._id %>/history/<%= rev.version %>/restore"
-                      onsubmit="return confirm('Restore version <%= rev.version %>? This will create a new current version with this content.');">
+                      data-action="confirmSubmit" data-confirm="Restore version <%= rev.version %>? This will create a new current version with this content.">
                   <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                   <button type="submit"
                           class="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-brand text-white hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-1 transition shadow-sm">

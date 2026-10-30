@@ -113,6 +113,16 @@
     registerAction('printPage', function () {
       window.print();
     });
+
+    registerAction('reloadPage', function () {
+      window.location.reload();
+    });
+
+    registerAction('autoSubmitForm', function (e, el) {
+      if (el.form) {
+        el.form.submit();
+      }
+    });
   }
 
   // Export to global scope

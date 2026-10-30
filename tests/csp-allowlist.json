@@ -30,7 +30,7 @@
     "javascriptUrls": 0
   },
   "views/admin/materials/index.ejs": {
-    "eventHandlers": 13,
+    "eventHandlers": 0,
     "inlineScripts": 3,
     "javascriptUrls": 0
   },
@@ -109,19 +109,9 @@
     "inlineScripts": 1,
     "javascriptUrls": 0
   },
-  "views/materials/edit.ejs": {
-    "eventHandlers": 2,
-    "inlineScripts": 0,
-    "javascriptUrls": 0
-  },
   "views/materials/history.ejs": {
-    "eventHandlers": 1,
+    "eventHandlers": 0,
     "inlineScripts": 1,
-    "javascriptUrls": 0
-  },
-  "views/materials/index.ejs": {
-    "eventHandlers": 1,
-    "inlineScripts": 0,
     "javascriptUrls": 0
   },
   "views/materials/partials/_material-header.ejs": {
@@ -130,12 +120,12 @@
     "javascriptUrls": 0
   },
   "views/materials/show.ejs": {
-    "eventHandlers": 4,
+    "eventHandlers": 0,
     "inlineScripts": 1,
     "javascriptUrls": 0
   },
   "views/materials/_slide-viewer-modal.ejs": {
-    "eventHandlers": 13,
+    "eventHandlers": 0,
     "inlineScripts": 1,
     "javascriptUrls": 0
   },
