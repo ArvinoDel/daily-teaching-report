@@ -32,11 +32,45 @@ document.addEventListener('DOMContentLoaded', () => {
   window.RC = window.RC || { commMap: {}, hasCommission: false };
 
   // OCR button
-  document.getElementById('btn-run-ocr').addEventListener('click', runOcr);
+  document.getElementById('btn-run-ocr')?.addEventListener('click', runOcr);
 
   // Clipboard paste anywhere on page
   document.addEventListener('paste', handlePaste);
+
+  // Dropzone drag/drop and click handlers
+  const dropzone = document.getElementById('dropzone');
+  if (dropzone) {
+    dropzone.addEventListener('click', (e) => {
+      if (e.target && e.target.id !== 'img-upload') {
+        const input = document.getElementById('img-upload');
+        if (input) input.click();
+      }
+    });
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('border-brand-400', 'bg-brand-50/40');
+    });
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.classList.remove('border-brand-400', 'bg-brand-50/40');
+    });
+    dropzone.addEventListener('drop', (e) => {
+      handleDrop(e);
+    });
+  }
 });
+
+if (typeof registerAction === 'function') {
+  registerAction('handleFileSelect', (e) => handleFileSelect(e));
+  registerAction('openImgModal', () => openImgModal());
+  registerAction('resetImage', () => resetImage());
+  registerAction('addSupervisorRow', () => addSupervisorRow());
+  registerAction('runCrosscheck', () => runCrosscheck());
+  registerAction('generateDispute', () => generateDispute());
+  registerAction('closeDrilldown', () => closeDrilldown());
+  registerAction('closeImgModal', () => closeImgModal());
+  registerAction('closeDisputeModal', () => closeDisputeModal());
+  registerAction('copyDispute', () => copyDispute());
+}
 
 /* ─── FETCH DB REPORTS FOR SPECIFIC DATES ────────────── */
 async function loadDbReportsForDates(dateKeys) {

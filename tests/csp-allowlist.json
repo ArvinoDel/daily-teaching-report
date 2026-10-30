@@ -169,11 +169,6 @@
     "inlineScripts": 1,
     "javascriptUrls": 0
   },
-  "views/reports/reward-crosscheck.ejs": {
-    "eventHandlers": 15,
-    "inlineScripts": 0,
-    "javascriptUrls": 0
-  },
   "views/reports/show.ejs": {
     "eventHandlers": 0,
     "inlineScripts": 1,
