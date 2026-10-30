@@ -17,7 +17,7 @@
 <% if (typeof flash !== 'undefined' && flash) { %>
   <div id="notif-flash" class="mb-5 flex items-center justify-between gap-3 <%= flash.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700' %> border px-4 py-3 rounded-xl text-sm font-medium">
     <span><%= flash.msg %></span>
-    <button onclick="document.getElementById('notif-flash').remove()" class="opacity-60 hover:opacity-100 transition">
+    <button data-action="dismissFlash" class="opacity-60 hover:opacity-100 transition">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
       </svg>
@@ -126,7 +126,7 @@
         <!-- Right: Actions (Delete) -->
         <div class="flex items-center self-end sm:self-center flex-shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 w-full sm:w-auto justify-end">
           <form action="/notifications/<%= item._id %>/delete" method="POST" class="inline"
-            onsubmit="return confirm('Delete this notification?')">
+            data-action="confirmDeleteNotification">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <button type="submit" title="Delete notification"
               class="inline-flex items-center gap-1 px-2.5 py-1 sm:p-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-red-500 hover:bg-red-50 transition">

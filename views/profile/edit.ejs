@@ -65,7 +65,7 @@
               </svg>
             </label>
             <input id="profilePicture" type="file" name="profilePicture"
-              accept="image/jpeg,image/png,image/webp" class="hidden" onchange="previewAvatar(this)">
+              accept="image/jpeg,image/png,image/webp" class="hidden" data-action="previewAvatar">
           </div>
           <div>
             <p class="text-sm font-semibold text-slate-700"><%= user.displayName %></p>
@@ -252,6 +252,11 @@
             setTimeout(() => el.classList.remove('ring-2', 'ring-brand-500', 'ring-offset-2'), 2500);
           }, 150);
         }
+      }
+      if (typeof registerAction === 'function') {
+        registerAction('previewAvatar', function (e, el) {
+          previewAvatar(el);
+        });
       }
     </script>
   </div>

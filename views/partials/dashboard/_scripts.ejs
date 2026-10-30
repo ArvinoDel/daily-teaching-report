@@ -220,4 +220,12 @@
       }
     }
   });
+  if (typeof registerAction === 'function') {
+    registerAction('showDayDetail', function (e, el) {
+      showDayDetail(el.dataset.idx);
+    });
+    registerAction('hideDayDetail', function () {
+      hideDayDetail();
+    });
+  }
 </script>

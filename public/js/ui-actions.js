@@ -90,6 +90,29 @@
     events.forEach(function (evt) {
       document.addEventListener(evt, handleDelegatedEvent, false);
     });
+
+    // Built-in standard actions
+    registerAction('dismissFlash', function (e, el) {
+      var flash = document.getElementById('notif-flash') || el.closest('[role="alert"]') || el.parentElement;
+      if (flash) flash.remove();
+    });
+
+    registerAction('confirmDeleteNotification', function (e, el) {
+      if (!confirm('Delete this notification?')) {
+        e.preventDefault();
+      }
+    });
+
+    registerAction('confirmSubmit', function (e, el) {
+      var msg = el.dataset.confirm || 'Are you sure?';
+      if (!confirm(msg)) {
+        e.preventDefault();
+      }
+    });
+
+    registerAction('printPage', function () {
+      window.print();
+    });
   }
 
   // Export to global scope

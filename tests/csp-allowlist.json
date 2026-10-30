@@ -139,11 +139,6 @@
     "inlineScripts": 1,
     "javascriptUrls": 0
   },
-  "views/notifications/index.ejs": {
-    "eventHandlers": 2,
-    "inlineScripts": 0,
-    "javascriptUrls": 0
-  },
   "views/partials/admin/group-form-fields.ejs": {
     "eventHandlers": 5,
     "inlineScripts": 1,
@@ -152,11 +147,6 @@
   "views/partials/admin/student-card-modal.ejs": {
     "eventHandlers": 5,
     "inlineScripts": 1,
-    "javascriptUrls": 0
-  },
-  "views/partials/dashboard/_daily-summary.ejs": {
-    "eventHandlers": 2,
-    "inlineScripts": 0,
     "javascriptUrls": 0
   },
   "views/partials/dashboard/_scripts.ejs": {
@@ -185,7 +175,7 @@
     "javascriptUrls": 0
   },
   "views/profile/edit.ejs": {
-    "eventHandlers": 1,
+    "eventHandlers": 0,
     "inlineScripts": 1,
     "javascriptUrls": 0
   },
