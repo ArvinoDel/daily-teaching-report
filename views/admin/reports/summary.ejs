@@ -99,7 +99,7 @@
 
       <!-- Day header / toggle button -->
       <button type="button"
-        onclick="toggleDay('<%= dayIdx %>')"
+        data-action="toggleDay" data-day-idx="<%= dayIdx %>"
         class="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition text-left group">
 
         <div class="flex items-center gap-3 min-w-0">
@@ -317,7 +317,7 @@
                     data-delete-url="/admin/reports/<%= report._id %>"
                     data-label="<%= report.class_name %>"
                     data-row="report-row-<%= report._id %>"
-                    onclick="deleteReport(this)"
+                    data-action="deleteReport"
                     title="Delete report"
                     class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-red-600 bg-slate-100 hover:bg-red-50 border border-transparent hover:border-red-200 px-3 py-1.5 rounded-lg transition whitespace-nowrap">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -464,6 +464,14 @@
           customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
         });
       });
+    });
+  }
+  if (typeof registerAction === 'function') {
+    registerAction('toggleDay', function (e, el) {
+      toggleDay(el.dataset.dayIdx);
+    });
+    registerAction('deleteReport', function (e, el) {
+      deleteReport(el);
     });
   }
 </script>

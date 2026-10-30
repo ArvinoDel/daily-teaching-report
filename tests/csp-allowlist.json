@@ -5,7 +5,7 @@
     "javascriptUrls": 0
   },
   "views/admin/commission.ejs": {
-    "eventHandlers": 1,
+    "eventHandlers": 0,
     "inlineScripts": 1,
     "javascriptUrls": 0
   },
@@ -45,7 +45,7 @@
     "javascriptUrls": 0
   },
   "views/admin/reports/summary.ejs": {
-    "eventHandlers": 2,
+    "eventHandlers": 0,
     "inlineScripts": 1,
     "javascriptUrls": 0
   },
@@ -90,7 +90,7 @@
     "javascriptUrls": 0
   },
   "views/admin/users/index.ejs": {
-    "eventHandlers": 1,
+    "eventHandlers": 0,
     "inlineScripts": 1,
     "javascriptUrls": 0
   },

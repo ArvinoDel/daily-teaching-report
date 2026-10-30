@@ -227,7 +227,7 @@
     class="bg-red-500 hover:bg-red-600 active:scale-95 text-white text-sm font-semibold px-4 py-1.5 rounded-xl transition whitespace-nowrap">
     Delete Selected
   </button>
-  <button onclick="clearSelection()"
+  <button data-action="clearSelection"
     class="text-sm text-slate-400 hover:text-white transition whitespace-nowrap">Cancel</button>
 </div>
 
@@ -363,6 +363,11 @@
       });
     });
   });
+  if (typeof registerAction === 'function') {
+    registerAction('clearSelection', function () {
+      clearSelection();
+    });
+  }
 </script>
 
 <%- include('../../partials/footer') %>
