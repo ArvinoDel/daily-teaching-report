@@ -15,7 +15,7 @@
     "javascriptUrls": 0
   },
   "views/admin/feedbacks/index.ejs": {
-    "eventHandlers": 14,
+    "eventHandlers": 0,
     "inlineScripts": 1,
     "javascriptUrls": 0
   },
