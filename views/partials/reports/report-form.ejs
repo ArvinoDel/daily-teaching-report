@@ -89,7 +89,7 @@
             <p class="text-xs text-amber-700" id="draft-banner-text">We automatically restored your unsaved progress.</p>
           </div>
         </div>
-        <button type="button" onclick="discardDraft()"
+        <button type="button" data-action="discardDraft"
           class="flex-shrink-0 inline-flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-200 transition active:scale-95">
           Discard Draft
         </button>
@@ -147,7 +147,7 @@
           class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition" />
         <!-- Clear button -->
         <button type="button" id="btn-clear-group"
-          onclick="clearGroupSelection()"
+          data-action="clearGroupSelection"
           class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition"
           title="Clear group selection">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
@@ -167,7 +167,7 @@
           class="w-full rounded-xl border border-purple-200 bg-purple-50 px-4 py-2.5 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition" />
         <!-- Clear button -->
         <button type="button" id="btn-clear-private"
-          onclick="clearPrivateSelection()"
+          data-action="clearPrivateSelection"
           class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition"
           title="Clear private selection">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
@@ -203,9 +203,9 @@
     <div class="space-y-2">
       <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Session Type</label>
       <div id="session-type-buttons" class="flex gap-2">
-        <button type="button" id="btn-group"       class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setSessionType('group')">Group</button>
-        <button type="button" id="btn-private"      class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setSessionType('private')">Private</button>
-        <button type="button" id="btn-competition"   class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setSessionType('competition')">Competition</button>
+        <button type="button" id="btn-group"       class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" data-action="setSessionType" data-type="group">Group</button>
+        <button type="button" id="btn-private"      class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" data-action="setSessionType" data-type="private">Private</button>
+        <button type="button" id="btn-competition"   class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" data-action="setSessionType" data-type="competition">Competition</button>
       </div>
       <input type="hidden" name="session_type" id="session_type_input" value="<%= _sessionTypeValue %>">
       <input type="hidden" name="competition_groups" id="competition_groups_hidden" value="<%= _competitionGroupsValue %>">
@@ -213,8 +213,8 @@
     <div class="space-y-2">
       <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Class Mode</label>
       <div class="flex gap-2">
-        <button type="button" id="btn-offline" class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setMode('offline')">Offline</button>
-        <button type="button" id="btn-online"  class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" onclick="setMode('online')">Online</button>
+        <button type="button" id="btn-offline" class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" data-action="setMode" data-mode="offline">Offline</button>
+        <button type="button" id="btn-online"  class="flex-1 py-2.5 rounded-xl border-2 text-sm font-semibold transition" data-action="setMode" data-mode="online">Online</button>
       </div>
       <input type="hidden" name="session_mode" id="session_mode_input" value="<%= _sessionModeValue %>">
       <div id="personal-internet-wrapper" class="hidden">
@@ -316,7 +316,7 @@
           value="<%= _partnerTeacherName %>" />
         <!-- Clear button -->
         <button type="button" id="btn-clear-partner"
-          onclick="clearPartnerTeacher()"
+          data-action="clearPartnerTeacher"
           class="<%= _partnerTeacherName ? '' : 'hidden' %> absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition"
           title="Clear partner teacher">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
@@ -368,15 +368,15 @@
         </div>
         <div id="global-roster-actions" class="flex items-center gap-1.5 flex-wrap">
           <span id="roster-summary" class="text-xs text-slate-500 mr-1"></span>
-          <button type="button" onclick="markAll('ac')"
+          <button type="button" data-action="markAll" data-status="ac"
             class="text-xs font-semibold bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-2.5 py-1.5 rounded-lg transition">
             All AC
           </button>
-          <button type="button" onclick="markAll('absent')"
+          <button type="button" data-action="markAll" data-status="absent"
             class="text-xs font-semibold bg-red-100 hover:bg-red-200 text-red-600 px-2.5 py-1.5 rounded-lg transition">
             All Absent
           </button>
-          <button type="button" onclick="markAll('clear')"
+          <button type="button" data-action="markAll" data-status="clear"
             class="text-xs font-semibold bg-white hover:bg-slate-100 text-slate-500 border border-slate-200 px-2.5 py-1.5 rounded-lg transition">
             Clear
           </button>
@@ -396,7 +396,7 @@
         <p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd></p>
         <div id="ac-tag-box"
           class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-100 transition"
-          onclick="document.getElementById('ac-input').focus()"></div>
+          data-action="focusInput" data-target="ac-input"></div>
         <input type="text" id="ac-input" placeholder="e.g: Darren" autocomplete="off"
           class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition" />
         <p class="text-xs text-slate-400"><span id="ac-count">0</span> student(s) added</p>
@@ -406,7 +406,7 @@
         <p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd></p>
         <div id="ac-reduced-tag-box"
           class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-rose-500 focus-within:ring-2 focus-within:ring-rose-100 transition"
-          onclick="document.getElementById('ac-reduced-input').focus()"></div>
+          data-action="focusInput" data-target="ac-reduced-input"></div>
         <input type="text" id="ac-reduced-input" placeholder="e.g: Sarah" autocomplete="off"
           class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition" />
         <p class="text-xs text-slate-400"><span id="ac-reduced-count">0</span> student(s) deducted</p>
@@ -416,7 +416,7 @@
         <p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd></p>
         <div id="absent-tag-box"
           class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition"
-          onclick="document.getElementById('absent-input').focus()"></div>
+          data-action="focusInput" data-target="absent-input"></div>
         <input type="text" id="absent-input" placeholder="e.g: Michael" autocomplete="off"
           class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition" />
         <p class="text-xs text-slate-400"><span id="absent-count">0</span> student(s) added</p>
@@ -471,7 +471,7 @@
 <!-- Add Another Class button -->
 <div class="mt-4">
   <button type="button" id="btn-add-class"
-    onclick="addBulkEntry()"
+    data-action="addBulkEntry"
     class="w-full inline-flex items-center justify-center gap-2 text-sm font-semibold text-brand-600 hover:text-brand-700 bg-white hover:bg-brand-50 border-2 border-dashed border-brand-200 hover:border-brand-400 px-6 py-3.5 rounded-2xl transition-all active:scale-[0.98] group">
     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 transition-transform group-hover:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
       <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
@@ -488,7 +488,7 @@
       <p class="text-brand-200 text-xs mt-0.5">Each class is saved as a separate, independent report</p>
     </div>
     <button type="button" id="btn-submit-bulk"
-      onclick="submitBulkReports()"
+      data-action="submitBulkReports"
       class="inline-flex items-center gap-2 bg-white text-brand-700 font-semibold text-sm px-5 py-2.5 rounded-xl shadow transition hover:bg-brand-50 active:scale-95 flex-shrink-0">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/>
@@ -785,7 +785,7 @@ function renderPartnerDropdown(list) {
   if (!partnerDropdown) return;
   if (!list.length) { partnerDropdown.classList.add('hidden'); return; }
   partnerDropdown.innerHTML = list.slice(0, 8).map(function(t) {
-    return '<button type="button" onclick="selectPartnerTeacher(' + JSON.stringify({_id:t._id, displayName:t.displayName}).replace(/"/g,'&quot;') + ')" ' +
+    return '<button type="button" data-action="selectPartnerTeacher" data-teacher-id="' + escHtml(t._id) + '" data-teacher-name="' + escHtml(t.displayName) + '" ' +
       'class="w-full text-left px-4 py-3 hover:bg-sky-50 transition flex items-center justify-between gap-3">' +
       '<div class="flex-1 min-w-0">' +
         '<p class="text-sm font-semibold text-slate-800 truncate">' + escHtml(t.displayName) + '</p>' +
@@ -887,7 +887,7 @@ function renderDropdown(groups) {
   groupDropdown.innerHTML = groups.slice(0, 8).map(function(g) {
     var tcls = g.type === 'GROUP' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700';
     var tlbl = g.type === 'GROUP' ? 'Group' : 'Private';
-    return '<button type="button" onclick="selectGroup(\''+escHtml(g._id)+'\')" '+
+    return '<button type="button" data-action="selectGroup" data-group-id="'+escHtml(g._id)+'" '+
       'class="w-full text-left px-4 py-3 hover:bg-brand-50 transition flex items-center justify-between gap-3">' +
       '<div class="flex-1 min-w-0">' +
         '<p class="text-sm font-semibold text-slate-800 truncate">' + escHtml(g.group_name) + '</p>' +
@@ -953,7 +953,7 @@ function renderPrivateDropdown(groups) {
   var filtered = groups.filter(function(g) { return g.type === 'PRIVATE'; });
   if (filtered.length === 0) { privateDropdown.classList.add('hidden'); return; }
   privateDropdown.innerHTML = filtered.slice(0, 8).map(function(g) {
-    return '<button type="button" onclick="selectGroup(\'' + escHtml(g._id) + '\')" ' +
+    return '<button type="button" data-action="selectGroup" data-group-id="' + escHtml(g._id) + '" ' +
       'class="w-full text-left px-4 py-3 hover:bg-purple-50 transition flex items-center justify-between gap-3">' +
       '<div class="flex-1 min-w-0">' +
         '<p class="text-sm font-semibold text-slate-800 truncate">' + escHtml(g.group_name) + '</p>' +
@@ -1126,7 +1126,7 @@ function renderCompetitionDropdown(groups) {
   competitionDropdown.innerHTML = filtered.slice(0, 8).map(function(g) {
     var tcls  = g.type === 'GROUP' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700';
     var tlbl  = g.type === 'GROUP' ? 'Group' : 'Private';
-    return '<button type="button" onclick="addCompetitionGroup(\''+escHtml(g._id)+'\')" '+
+    return '<button type="button" data-action="addCompetitionGroup" data-group-id="'+escHtml(g._id)+'" '+
       'class="w-full text-left px-4 py-3 hover:bg-orange-50 transition flex items-center justify-between gap-3">' +
       '<div class="flex-1 min-w-0">' +
         '<p class="text-sm font-semibold text-slate-800 truncate">' + escHtml(g.group_name) + '</p>' +
@@ -1187,7 +1187,7 @@ function renderCompetitionTags() {
     if (!g) return '';
     return '<span class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-orange-100 text-orange-700">' +
       escHtml(g.group_name) +
-      ' <button type="button" class="ml-0.5 leading-none opacity-60 hover:opacity-100 transition text-sm" onclick="removeCompetitionGroup(\''+escHtml(id)+'\')">×</button>' +
+      ' <button type="button" class="ml-0.5 leading-none opacity-60 hover:opacity-100 transition text-sm" data-action="removeCompetitionGroup" data-group-id="'+escHtml(id)+'">×</button>' +
     '</span>';
   }).join('');
   
@@ -1390,9 +1390,9 @@ function renderGroupedRoster() {
         (statsParts.length ? '<span class="text-[10px]">' + statsParts.join(' · ') + '</span>' : '') +
       '</div>' +
       '<div class="flex items-center gap-1 flex-shrink-0">' +
-        '<button type="button" onclick="markAllInGroup(\'' + escHtml(id) + '\', \'ac\')" class="text-[10px] font-semibold bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-2 py-1 rounded-md transition">All AC</button>' +
-        '<button type="button" onclick="markAllInGroup(\'' + escHtml(id) + '\', \'absent\')" class="text-[10px] font-semibold bg-red-100 hover:bg-red-200 text-red-600 px-2 py-1 rounded-md transition">All Absent</button>' +
-        '<button type="button" onclick="markAllInGroup(\'' + escHtml(id) + '\', \'clear\')" class="text-[10px] font-semibold bg-white hover:bg-slate-100 text-slate-500 border border-slate-200 px-2 py-1 rounded-md transition">Clear</button>' +
+        '<button type="button" data-action="markAllInGroup" data-group-id="' + escHtml(id) + '" data-status="ac" class="text-[10px] font-semibold bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-2 py-1 rounded-md transition">All AC</button>' +
+        '<button type="button" data-action="markAllInGroup" data-group-id="' + escHtml(id) + '" data-status="absent" class="text-[10px] font-semibold bg-red-100 hover:bg-red-200 text-red-600 px-2 py-1 rounded-md transition">All Absent</button>' +
+        '<button type="button" data-action="markAllInGroup" data-group-id="' + escHtml(id) + '" data-status="clear" class="text-[10px] font-semibold bg-white hover:bg-slate-100 text-slate-500 border border-slate-200 px-2 py-1 rounded-md transition">Clear</button>' +
       '</div>' +
     '</div>';
 
@@ -2200,7 +2200,7 @@ function _renderEntryDropdown(id, groups) {
   dd.innerHTML = groups.slice(0, 8).map(function(g) {
     var tcls = g.type === 'GROUP' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700';
     var tlbl = g.type === 'GROUP' ? 'Group' : 'Private';
-    return '<button type="button" onclick="selectEntryGroup(' + id + ',\'' + escHtml(g._id) + '\')" class="w-full text-left px-4 py-3 hover:bg-brand-50 transition flex items-center justify-between gap-3">' +
+    return '<button type="button" data-action="selectEntryGroup" data-entry-id="' + id + '" data-group-id="' + escHtml(g._id) + '" class="w-full text-left px-4 py-3 hover:bg-brand-50 transition flex items-center justify-between gap-3">' +
       '<div class="flex-1 min-w-0"><p class="text-sm font-semibold text-slate-800 truncate">' + escHtml(g.group_name) + '</p>' +
       '<div class="flex items-center gap-1.5 mt-0.5"><span class="text-[10px] font-bold px-1.5 py-0.5 rounded-full ' + tcls + '">' + tlbl + '</span>' +
       (g.level ? '<span class="text-[10px] font-mono text-slate-400">' + escHtml(g.level) + '</span>' : '') + '</div></div>' +
@@ -2486,6 +2486,27 @@ function _initBulkEntry(id) {
     if (!e.target.closest('#bulk-entry-' + id + '-group-wrap')) _hideEntryDropdown(id);
     if (!e.target.closest('#bulk-entry-' + id + '-pt-wrap')) _hideBulkPtDropdown(id);
   });
+
+  // PT input listeners
+  var ptDisp = document.getElementById('bulk-entry-' + id + '-pt-display');
+  if (ptDisp) {
+    ptDisp.addEventListener('input', function() { _bulkPtInput(id, this.value); });
+    ptDisp.addEventListener('focus', function() { _bulkPtFocus(id); });
+    ptDisp.addEventListener('blur', function() { _bulkPtBlur(id, this.value); });
+    ptDisp.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' || e.key === 'Tab') _hideBulkPtDropdown(id);
+    });
+  }
+
+  // Class input listeners
+  var clsInp = document.getElementById('bulk-entry-' + id + '-class-name');
+  if (clsInp) {
+    clsInp.addEventListener('input', function() { _entryClassInput(id, this.value); });
+    clsInp.addEventListener('focus', function() { _entryClassFocus(id); });
+    clsInp.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' || e.key === 'Tab') _hideEntryDropdown(id);
+    });
+  }
 }
 
 /* ─── Collect entry data ────────────────────────────────────────────── */
@@ -2639,7 +2660,7 @@ function _renderBulkPtDropdown(id, list) {
   if (!dropdown) return;
   if (!list.length) { dropdown.classList.add('hidden'); return; }
   dropdown.innerHTML = list.slice(0, 8).map(function(t) {
-    return '<button type="button" onclick="_selectBulkPt(' + id + ',' + JSON.stringify({_id:t._id,displayName:t.displayName}).replace(/"/g,'&quot;') + ')" ' +
+    return '<button type="button" data-action="selectBulkPt" data-entry-id="' + id + '" data-teacher-id="' + escHtml(t._id) + '" data-teacher-name="' + escHtml(t.displayName) + '" ' +
       'class="w-full text-left px-4 py-3 hover:bg-sky-50 transition flex items-center justify-between gap-3">' +
       '<div class="flex-1 min-w-0">' +
         '<p class="text-sm font-semibold text-slate-800 truncate">' + escHtml(t.displayName) + '</p>' +
@@ -2878,7 +2899,7 @@ function _buildEntryHtml(id, num) {
           '<p class="text-xs text-slate-400 mt-0.5">Fill in all fields for this class</p>' +
         '</div>' +
       '</div>' +
-      '<button type="button" onclick="removeBulkEntry(' + id + ')" class="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-red-500 transition px-2.5 py-1.5 rounded-lg hover:bg-red-50">' +
+      '<button type="button" data-action="removeBulkEntry" data-entry-id="' + id + '" class="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-red-500 transition px-2.5 py-1.5 rounded-lg hover:bg-red-50">' +
         '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>Remove' +
       '</button>' +
     '</div>' +
@@ -2923,12 +2944,8 @@ function _buildEntryHtml(id, num) {
           '<p id="bulk-entry-' + id + '-pt-subtext" class="text-xs text-sky-500 -mt-1">Tag the Prime Teacher. Search by name or type manually.</p>' +
           '<div class="relative" id="bulk-entry-' + id + '-pt-wrap">' +
             '<input type="text" id="bulk-entry-' + id + '-pt-display" placeholder="Search registered teachers\u2026" autocomplete="off"' +
-              ' class="w-full rounded-xl border border-sky-200 bg-white px-4 py-2.5 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition"' +
-              ' oninput="_bulkPtInput(' + id + ', this.value)"' +
-              ' onfocus="_bulkPtFocus(' + id + ')"' +
-              ' onblur="_bulkPtBlur(' + id + ', this.value)"' +
-              ' onkeydown="if(event.key===\'Escape\'||event.key===\'Tab\') _hideBulkPtDropdown(' + id + ')"/>' +
-            '<button type="button" id="bulk-entry-' + id + '-pt-clear" onclick="_clearBulkPt(' + id + ')" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition">' +
+              ' class="w-full rounded-xl border border-sky-200 bg-white px-4 py-2.5 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-100 transition"/>' +
+            '<button type="button" id="bulk-entry-' + id + '-pt-clear" data-action="clearBulkPt" data-entry-id="' + id + '" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition">' +
               '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>' +
             '</button>' +
             '<div id="bulk-entry-' + id + '-pt-dropdown" class="hidden absolute z-30 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden divide-y divide-slate-50 max-h-52 overflow-y-auto"></div>' +
@@ -2953,9 +2970,8 @@ function _buildEntryHtml(id, num) {
         '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Group / Class Name <span class="text-red-500">*</span></label>' +
         '<div id="bulk-entry-' + id + '-group-wrap" class="relative">' +
           '<input type="text" id="bulk-entry-' + id + '-class-name" placeholder="Type to search groups\u2026" autocomplete="off"' +
-            ' class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"' +
-            ' oninput="_entryClassInput(' + id + ', this.value)" onfocus="_entryClassFocus(' + id + ')" onkeydown="if(event.key===\'Escape\'||event.key===\'Tab\') _hideEntryDropdown(' + id + ')"/>' +
-          '<button type="button" id="bulk-entry-' + id + '-clear-btn" onclick="clearEntryGroup(' + id + ')" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition">' +
+            ' class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 pr-10 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"/>' +
+          '<button type="button" id="bulk-entry-' + id + '-clear-btn" data-action="clearEntryGroup" data-entry-id="' + id + '" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition">' +
             '<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>' +
           '</button>' +
           '<div id="bulk-entry-' + id + '-dropdown" class="hidden absolute z-30 left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden divide-y divide-slate-50 max-h-56 overflow-y-auto"></div>' +
@@ -2967,15 +2983,15 @@ function _buildEntryHtml(id, num) {
       '<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">' +
         '<div class="space-y-2"><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Session Type</label>' +
           '<div class="flex gap-2">' +
-            '<button type="button" id="bulk-entry-' + id + '-btn-group"   onclick="setEntrySessionType(' + id + ',\'group\')"   class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Group</button>' +
-            '<button type="button" id="bulk-entry-' + id + '-btn-private" onclick="setEntrySessionType(' + id + ',\'private\')" class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Private</button>' +
+            '<button type="button" id="bulk-entry-' + id + '-btn-group"   data-action="setEntrySessionType" data-entry-id="' + id + '" data-type="group"   class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Group</button>' +
+            '<button type="button" id="bulk-entry-' + id + '-btn-private" data-action="setEntrySessionType" data-entry-id="' + id + '" data-type="private" class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Private</button>' +
           '</div>' +
           '<p class="text-[11px] text-slate-400 mt-1">Competition reports: use the main form (add other reports one at a time).</p>' +
         '</div>' +
         '<div class="space-y-2"><label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Class Mode</label>' +
           '<div class="flex gap-2">' +
-            '<button type="button" id="bulk-entry-' + id + '-btn-offline" onclick="setEntryMode(' + id + ',\'offline\')" class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Offline</button>' +
-            '<button type="button" id="bulk-entry-' + id + '-btn-online"  onclick="setEntryMode(' + id + ',\'online\')"  class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Online</button>' +
+            '<button type="button" id="bulk-entry-' + id + '-btn-offline" data-action="setEntryMode" data-entry-id="' + id + '" data-mode="offline" class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Offline</button>' +
+            '<button type="button" id="bulk-entry-' + id + '-btn-online"  data-action="setEntryMode" data-entry-id="' + id + '" data-mode="online"  class="flex-1 py-2 rounded-xl border-2 text-xs font-semibold transition">Online</button>' +
           '</div></div>' +
       '</div>' +
 
@@ -3009,9 +3025,9 @@ function _buildEntryHtml(id, num) {
             '<div><p class="text-xs font-semibold text-brand-500 uppercase tracking-wider">Students from</p><h3 id="bulk-entry-' + id + '-roster-name" class="text-sm font-bold text-slate-800 mt-0.5"></h3></div>' +
             '<div class="flex items-center gap-1.5">' +
               '<span id="bulk-entry-' + id + '-roster-summary" class="text-xs text-slate-500 mr-1"></span>' +
-              '<button type="button" onclick="markAllEntry(' + id + ',\'ac\')"     class="text-xs font-semibold bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-2.5 py-1.5 rounded-lg transition">All AC</button>' +
-              '<button type="button" onclick="markAllEntry(' + id + ',\'absent\')" class="text-xs font-semibold bg-red-100 hover:bg-red-200 text-red-600 px-2.5 py-1.5 rounded-lg transition">All Absent</button>' +
-              '<button type="button" onclick="markAllEntry(' + id + ',\'clear\')"  class="text-xs font-semibold bg-white hover:bg-slate-100 text-slate-500 border border-slate-200 px-2.5 py-1.5 rounded-lg transition">Clear</button>' +
+              '<button type="button" data-action="markAllEntry" data-entry-id="' + id + '" data-status="ac"     class="text-xs font-semibold bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-2.5 py-1.5 rounded-lg transition">All AC</button>' +
+              '<button type="button" data-action="markAllEntry" data-entry-id="' + id + '" data-status="absent" class="text-xs font-semibold bg-red-100 hover:bg-red-200 text-red-600 px-2.5 py-1.5 rounded-lg transition">All Absent</button>' +
+              '<button type="button" data-action="markAllEntry" data-entry-id="' + id + '" data-status="clear"  class="text-xs font-semibold bg-white hover:bg-slate-100 text-slate-500 border border-slate-200 px-2.5 py-1.5 rounded-lg transition">Clear</button>' +
             '</div>' +
           '</div>' +
           '<div id="bulk-entry-' + id + '-roster-students" class="px-4 py-3 space-y-1.5 max-h-72 overflow-y-auto"></div>' +
@@ -3025,21 +3041,21 @@ function _buildEntryHtml(id, num) {
           '<div class="space-y-1.5">' +
             '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Achievement Card (+AC)</label>' +
             '<p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd> to add</p>' +
-            '<div id="bulk-entry-' + id + '-ac-box" class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition" onclick="document.getElementById(\'bulk-entry-' + id + '-ac-input\').focus()"></div>' +
+            '<div id="bulk-entry-' + id + '-ac-box" class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition" data-action="focusInput" data-target="' + 'bulk-entry-' + id + '-ac-input' + '"></div>' +
             '<input type="text" id="bulk-entry-' + id + '-ac-input" placeholder="e.g: Darren" autocomplete="off" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition"/>' +
             '<p class="text-xs text-slate-400"><span id="bulk-entry-' + id + '-ac-count">0</span> student(s) added</p>' +
           '</div>' +
           '<div class="space-y-1.5">' +
             '<label class="block text-xs font-semibold text-rose-600 uppercase tracking-wider">AC Deductions (−AC)</label>' +
             '<p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd> to add</p>' +
-            '<div id="bulk-entry-' + id + '-ac-reduced-box" class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition" onclick="document.getElementById(\'bulk-entry-' + id + '-ac-reduced-input\').focus()"></div>' +
+            '<div id="bulk-entry-' + id + '-ac-reduced-box" class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition" data-action="focusInput" data-target="' + 'bulk-entry-' + id + '-ac-reduced-input' + '"></div>' +
             '<input type="text" id="bulk-entry-' + id + '-ac-reduced-input" placeholder="e.g: Darren" autocomplete="off" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition"/>' +
             '<p class="text-xs text-slate-400"><span id="bulk-entry-' + id + '-ac-reduced-count">0</span> student(s) added</p>' +
           '</div>' +
           '<div class="space-y-1.5">' +
             '<label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Absent</label>' +
             '<p class="text-xs text-slate-400 -mt-1">Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">Enter</kbd> or <kbd class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-mono text-xs">,</kbd> to add</p>' +
-            '<div id="bulk-entry-' + id + '-absent-box" class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition" onclick="document.getElementById(\'bulk-entry-' + id + '-absent-input\').focus()"></div>' +
+            '<div id="bulk-entry-' + id + '-absent-box" class="min-h-[44px] flex flex-wrap gap-1.5 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 cursor-text focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 transition" data-action="focusInput" data-target="' + 'bulk-entry-' + id + '-absent-input' + '"></div>' +
             '<input type="text" id="bulk-entry-' + id + '-absent-input" placeholder="e.g: Michael" autocomplete="off" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-800 placeholder-slate-300 focus:outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 transition"/>' +
             '<p class="text-xs text-slate-400"><span id="bulk-entry-' + id + '-absent-count">0</span> student(s) added</p>' +
           '</div>' +
@@ -3371,6 +3387,63 @@ window.addEventListener('pagehide', saveDraft);
 window.addEventListener('visibilitychange', function() {
   if (document.visibilityState === 'hidden') saveDraft();
 });
+
+// Expose functions globally for backward-compatibility and tests
+window.discardDraft = typeof discardDraft === 'function' ? discardDraft : window.discardDraft;
+window.clearGroupSelection = typeof clearGroupSelection === 'function' ? clearGroupSelection : window.clearGroupSelection;
+window.clearPrivateSelection = typeof clearPrivateSelection === 'function' ? clearPrivateSelection : window.clearPrivateSelection;
+window.setSessionType = typeof setSessionType === 'function' ? setSessionType : window.setSessionType;
+window.setMode = typeof setMode === 'function' ? setMode : window.setMode;
+window.clearPartnerTeacher = typeof clearPartnerTeacher === 'function' ? clearPartnerTeacher : window.clearPartnerTeacher;
+window.markAll = typeof markAll === 'function' ? markAll : window.markAll;
+window.addBulkEntry = typeof addBulkEntry === 'function' ? addBulkEntry : window.addBulkEntry;
+window.submitBulkReports = typeof submitBulkReports === 'function' ? submitBulkReports : window.submitBulkReports;
+window.selectPartnerTeacher = typeof selectPartnerTeacher === 'function' ? selectPartnerTeacher : window.selectPartnerTeacher;
+window.selectGroup = typeof selectGroup === 'function' ? selectGroup : window.selectGroup;
+window.addCompetitionGroup = typeof addCompetitionGroup === 'function' ? addCompetitionGroup : window.addCompetitionGroup;
+window.removeCompetitionGroup = typeof removeCompetitionGroup === 'function' ? removeCompetitionGroup : window.removeCompetitionGroup;
+window.markAllInGroup = typeof markAllInGroup === 'function' ? markAllInGroup : window.markAllInGroup;
+window.selectEntryGroup = typeof selectEntryGroup === 'function' ? selectEntryGroup : window.selectEntryGroup;
+window._selectBulkPt = typeof _selectBulkPt === 'function' ? _selectBulkPt : window._selectBulkPt;
+window.removeBulkEntry = typeof removeBulkEntry === 'function' ? removeBulkEntry : window.removeBulkEntry;
+window._clearBulkPt = typeof _clearBulkPt === 'function' ? _clearBulkPt : window._clearBulkPt;
+window.clearEntryGroup = typeof clearEntryGroup === 'function' ? clearEntryGroup : window.clearEntryGroup;
+window.setEntrySessionType = typeof setEntrySessionType === 'function' ? setEntrySessionType : window.setEntrySessionType;
+window.setEntryMode = typeof setEntryMode === 'function' ? setEntryMode : window.setEntryMode;
+window.markAllEntry = typeof markAllEntry === 'function' ? markAllEntry : window.markAllEntry;
+
+if (typeof registerAction === 'function') {
+  registerAction('discardDraft', function() { if (typeof discardDraft === 'function') discardDraft(); });
+  registerAction('clearGroupSelection', function() { if (typeof clearGroupSelection === 'function') clearGroupSelection(); });
+  registerAction('clearPrivateSelection', function() { if (typeof clearPrivateSelection === 'function') clearPrivateSelection(); });
+  registerAction('setSessionType', function(e, el) { if (typeof setSessionType === 'function') setSessionType(el.dataset.type); });
+  registerAction('setMode', function(e, el) { if (typeof setMode === 'function') setMode(el.dataset.mode); });
+  registerAction('clearPartnerTeacher', function() { if (typeof clearPartnerTeacher === 'function') clearPartnerTeacher(); });
+  registerAction('markAll', function(e, el) { if (typeof markAll === 'function') markAll(el.dataset.status); });
+  registerAction('addBulkEntry', function() { if (typeof addBulkEntry === 'function') addBulkEntry(); });
+  registerAction('submitBulkReports', function() { if (typeof submitBulkReports === 'function') submitBulkReports(); });
+  registerAction('selectPartnerTeacher', function(e, el) {
+    if (typeof selectPartnerTeacher === 'function') {
+      selectPartnerTeacher({ _id: el.dataset.teacherId, displayName: el.dataset.teacherName });
+    }
+  });
+  registerAction('selectGroup', function(e, el) { if (typeof selectGroup === 'function') selectGroup(el.dataset.groupId); });
+  registerAction('addCompetitionGroup', function(e, el) { if (typeof addCompetitionGroup === 'function') addCompetitionGroup(el.dataset.groupId); });
+  registerAction('removeCompetitionGroup', function(e, el) { if (typeof removeCompetitionGroup === 'function') removeCompetitionGroup(el.dataset.groupId); });
+  registerAction('markAllInGroup', function(e, el) { if (typeof markAllInGroup === 'function') markAllInGroup(el.dataset.groupId, el.dataset.status); });
+  registerAction('selectEntryGroup', function(e, el) { if (typeof selectEntryGroup === 'function') selectEntryGroup(Number(el.dataset.entryId), el.dataset.groupId); });
+  registerAction('selectBulkPt', function(e, el) {
+    if (typeof _selectBulkPt === 'function') {
+      _selectBulkPt(Number(el.dataset.entryId), { _id: el.dataset.teacherId, displayName: el.dataset.teacherName });
+    }
+  });
+  registerAction('removeBulkEntry', function(e, el) { if (typeof removeBulkEntry === 'function') removeBulkEntry(Number(el.dataset.entryId)); });
+  registerAction('clearBulkPt', function(e, el) { if (typeof _clearBulkPt === 'function') _clearBulkPt(Number(el.dataset.entryId)); });
+  registerAction('clearEntryGroup', function(e, el) { if (typeof clearEntryGroup === 'function') clearEntryGroup(Number(el.dataset.entryId)); });
+  registerAction('setEntrySessionType', function(e, el) { if (typeof setEntrySessionType === 'function') setEntrySessionType(Number(el.dataset.entryId), el.dataset.type); });
+  registerAction('setEntryMode', function(e, el) { if (typeof setEntryMode === 'function') setEntryMode(Number(el.dataset.entryId), el.dataset.mode); });
+  registerAction('markAllEntry', function(e, el) { if (typeof markAllEntry === 'function') markAllEntry(Number(el.dataset.entryId), el.dataset.status); });
+}
 
 // Restore draft on initial load
 setTimeout(restoreDraft, 60);

@@ -114,6 +114,15 @@
       window.print();
     });
 
+    registerAction('focusInput', function (e, el) {
+      if (el.dataset.target) {
+        var input = document.getElementById(el.dataset.target);
+        if (input && typeof input.focus === 'function') {
+          input.focus();
+        }
+      }
+    });
+
     registerAction('stopPropagation', function (e) {
       e.stopPropagation();
     });

@@ -84,7 +84,7 @@ app.use(helmet({
         ],
         workerSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net"],
         childSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net", "https://vercel.live"],
-        scriptSrcAttr: ["'unsafe-inline'"],
+        scriptSrcAttr: ["'none'"],
         styleSrc: [
           "'self'",
           "'unsafe-inline'",

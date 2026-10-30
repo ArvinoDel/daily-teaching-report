@@ -155,7 +155,7 @@
     "javascriptUrls": 0
   },
   "views/partials/reports/report-form.ejs": {
-    "eventHandlers": 47,
+    "eventHandlers": 0,
     "inlineScripts": 3,
     "javascriptUrls": 0
   },

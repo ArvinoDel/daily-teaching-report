@@ -24,17 +24,17 @@ Checklist of pages and user actions to verify throughout Content Security Policy
 ---
 
 ## 3. Reports Form (`/reports/new`, `/reports/:id/edit`)
-- [ ] **Single Report Mode**
+- [x] **Single Report Mode**
   - Select class / group name -> Autocomplete dropdown filters, select option populates roster.
   - Toggle attendance checkboxes for students (Present / Absent / Late).
   - Add bonus / deduction items -> New input row created, value calculated.
   - Attach photo / media upload -> File preview renders.
   - Submit report -> Form validation runs and submits cleanly.
-- [ ] **Competition Report Mode**
+- [x] **Competition Report Mode**
   - Switch session type to "Competition" -> Competition group picker reveals.
   - Search and select 2+ groups -> Group chips added, `competition_groups_hidden` populated.
   - Remove a group chip -> Removed from UI and hidden field.
-- [ ] **Multi-Report Mode**
+- [x] **Multi-Report Mode**
   - Click "+ Add Another Report" -> Adds second report card (`addBulkEntry`).
   - Fill fields in second card, remove card via delete button -> Card cleanly detached.
 
