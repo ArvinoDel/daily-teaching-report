@@ -1,0 +1,222 @@
+{
+  "views/admin/backups/index.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/admin/commission.ejs": {
+    "eventHandlers": 1,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/admin/dashboard.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/admin/feedbacks/index.ejs": {
+    "eventHandlers": 14,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/admin/groups/import.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/admin/groups/index.ejs": {
+    "eventHandlers": 13,
+    "inlineScripts": 2,
+    "javascriptUrls": 0
+  },
+  "views/admin/materials/index.ejs": {
+    "eventHandlers": 13,
+    "inlineScripts": 3,
+    "javascriptUrls": 0
+  },
+  "views/admin/onboarding/index.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/admin/reports/index.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/admin/reports/summary.ejs": {
+    "eventHandlers": 2,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/admin/salaries/edit.ejs": {
+    "eventHandlers": 6,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/admin/salaries/index.ejs": {
+    "eventHandlers": 13,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/admin/salaries/slip.ejs": {
+    "eventHandlers": 1,
+    "inlineScripts": 0,
+    "javascriptUrls": 0
+  },
+  "views/admin/scan-ac/index.ejs": {
+    "eventHandlers": 1,
+    "inlineScripts": 2,
+    "javascriptUrls": 0
+  },
+  "views/admin/scan-ac/mobile.ejs": {
+    "eventHandlers": 2,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/admin/student-achievements/index.ejs": {
+    "eventHandlers": 4,
+    "inlineScripts": 3,
+    "javascriptUrls": 0
+  },
+  "views/admin/student-achievements/print-cards.ejs": {
+    "eventHandlers": 1,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/admin/users/edit.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 2,
+    "javascriptUrls": 0
+  },
+  "views/admin/users/index.ejs": {
+    "eventHandlers": 1,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/auth/login.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 2,
+    "javascriptUrls": 0
+  },
+  "views/auth/register.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/error.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/materials/edit.ejs": {
+    "eventHandlers": 2,
+    "inlineScripts": 0,
+    "javascriptUrls": 0
+  },
+  "views/materials/history.ejs": {
+    "eventHandlers": 1,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/materials/index.ejs": {
+    "eventHandlers": 1,
+    "inlineScripts": 0,
+    "javascriptUrls": 0
+  },
+  "views/materials/partials/_material-header.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/materials/show.ejs": {
+    "eventHandlers": 4,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/materials/_slide-viewer-modal.ejs": {
+    "eventHandlers": 13,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/notifications/index.ejs": {
+    "eventHandlers": 2,
+    "inlineScripts": 0,
+    "javascriptUrls": 0
+  },
+  "views/partials/admin/group-form-fields.ejs": {
+    "eventHandlers": 5,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/partials/admin/student-card-modal.ejs": {
+    "eventHandlers": 5,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/partials/dashboard/_daily-summary.ejs": {
+    "eventHandlers": 2,
+    "inlineScripts": 0,
+    "javascriptUrls": 0
+  },
+  "views/partials/dashboard/_scripts.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/partials/dashboard/_toast.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/partials/nav/head.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/partials/nav/mobile-menu.ejs": {
+    "eventHandlers": 18,
+    "inlineScripts": 0,
+    "javascriptUrls": 0
+  },
+  "views/partials/nav/nav-right.ejs": {
+    "eventHandlers": 2,
+    "inlineScripts": 0,
+    "javascriptUrls": 0
+  },
+  "views/partials/nav/nav-scripts.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/partials/reports/report-form.ejs": {
+    "eventHandlers": 47,
+    "inlineScripts": 3,
+    "javascriptUrls": 0
+  },
+  "views/profile/edit.ejs": {
+    "eventHandlers": 1,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/public/student-card.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  },
+  "views/reports/my-salary/slip.ejs": {
+    "eventHandlers": 1,
+    "inlineScripts": 0,
+    "javascriptUrls": 0
+  },
+  "views/reports/reward-crosscheck.ejs": {
+    "eventHandlers": 15,
+    "inlineScripts": 0,
+    "javascriptUrls": 0
+  },
+  "views/reports/show.ejs": {
+    "eventHandlers": 0,
+    "inlineScripts": 1,
+    "javascriptUrls": 0
+  }
+}
