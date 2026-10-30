@@ -37,6 +37,12 @@ const ENV_REGISTRY = [
     required: true,
     validate: (v) => typeof v === 'string' && v.trim().length >= 16,
   },
+  {
+    name: 'CSP_REPORT_ONLY',
+    group: 'Security',
+    required: false,
+    validate: (v) => ['true', 'false', '1', '0'].includes(String(v).trim().toLowerCase()),
+  },
   // Cloudinary
   {
     name: 'CLOUDINARY_CLOUD_NAME',

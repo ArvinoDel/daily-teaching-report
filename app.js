@@ -20,6 +20,7 @@ const feedbackRoutes    = require('./routes/feedback');
 const notificationRoutes = require('./routes/notifications');
 const publicCardRoutes   = require('./routes/publicCard');
 const cronRoutes         = require('./routes/cron');
+const cspReportRoutes    = require('./routes/cspReport');
 const materialRoutes     = require('./routes/materials');
 const onboardingRoutes   = require('./routes/onboarding');
 const { trackOnboardingVisit, getNavOnboardingRemainingCount } = require('./services/onboardingService');
@@ -74,6 +75,7 @@ app.use((req, res, next) => {
 app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === 'production'
     ? {
+      reportOnly: process.env.CSP_REPORT_ONLY === 'true',
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: [
@@ -116,6 +118,7 @@ app.use(helmet({
         baseUri: ["'self'"],
         formAction: ["'self'"],
         frameAncestors: ["'self'"],
+        reportUri: ["/csp-report"],
       },
     }
     : false,
@@ -127,6 +130,9 @@ app.use(express.static(path.join(__dirname, 'public'), {
 
 // Cron endpoints (triggered by Vercel Cron, authenticated via Bearer token)
 app.use('/api/cron', cronRoutes);
+
+// CSP violation reporting (rate limited, 8kb limit, exempt from session/csrf)
+app.use('/csp-report', cspReportRoutes);
 
 app.use(session({
   secret: SESSION_SECRET,
