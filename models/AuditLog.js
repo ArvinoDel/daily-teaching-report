@@ -19,12 +19,16 @@ const auditLogSchema = new mongoose.Schema({
       'group_student_rename',
       'group_roster_repair',
       'onboarding_remind',
+      'report_gap_remind',
+      'report_gap_ack',
+      'no_class_date_add',
+      'no_class_date_delete',
     ],
     required: true,
   },
   targetType: {
     type: String,
-    enum: ['report', 'user', 'group', 'salary', 'material'],
+    enum: ['report', 'user', 'group', 'salary', 'material', 'no_class_date', 'report_gap'],
     required: true,
   },
   targetId: {

@@ -50,6 +50,8 @@ const BACKUP_COLLECTIONS = [
 
 const EXCLUDED_MODELS = {
   Backup: 'Backup stores metadata about the backup archives themselves; backing it up into backups would be circular and redundant.',
+  ReportGapAck: 'ReportGapAck stores admin acknowledgements of heuristic report gaps and can be re-evaluated from raw reports.',
+  NoClassDate: 'NoClassDate stores calendar exceptions for report gap heuristics and does not form part of core teaching data backups.',
 };
 
 /* ───────────────────────────────────────────────

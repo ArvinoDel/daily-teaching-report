@@ -1,0 +1,456 @@
+<%- include('../../partials/header', { title: 'Admin — Possible Missing Reports' }) %>
+
+<!-- Page Header -->
+<div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+  <div class="flex items-center gap-3">
+    <a href="/admin" class="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition" aria-label="Back to Admin Dashboard">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+      </svg>
+    </a>
+    <div>
+      <div class="flex items-center gap-2 mb-1">
+        <span class="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-0.5 rounded-full">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+          </svg>
+          Heuristic Gap Detection
+        </span>
+      </div>
+      <h1 class="text-2xl font-bold text-slate-900 leading-tight">Possible Missing Reports</h1>
+      <p class="text-slate-500 text-sm mt-0.5">Automated heuristic alerts. There is no fixed timetable, so items represent possible missing submissions.</p>
+    </div>
+  </div>
+
+  <!-- Lookback Window Selector -->
+  <div class="flex items-center gap-2 bg-slate-100 p-1 rounded-xl self-start sm:self-auto">
+    <span class="text-xs font-semibold text-slate-500 pl-2 pr-1">Lookback:</span>
+    <a href="/admin/report-gaps?lookback=14"
+      class="px-3 py-1.5 rounded-lg text-xs font-bold transition <%= lookback === 14 ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-600 hover:text-slate-900' %>">
+      14 Days
+    </a>
+    <a href="/admin/report-gaps?lookback=30"
+      class="px-3 py-1.5 rounded-lg text-xs font-bold transition <%= lookback === 30 ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-600 hover:text-slate-900' %>">
+      30 Days
+    </a>
+  </div>
+</div>
+
+<!-- Global Notification / Toast Container for Client Actions -->
+<div id="gap-alert-box" class="hidden mb-6 p-4 rounded-xl text-sm font-medium border transition-all duration-200">
+  <div class="flex items-center justify-between gap-3">
+    <span id="gap-alert-message"></span>
+    <button type="button" data-action="dismiss-alert" class="text-slate-400 hover:text-slate-600 transition" aria-label="Close message">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Possible Gaps</p>
+    <p id="stat-total" class="text-2xl sm:text-3xl font-bold text-slate-900"><%= summary.total %></p>
+    <p class="text-xs text-slate-400 mt-1">across all detectors</p>
+  </div>
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Missed Usual Days</p>
+    <p id="stat-teacher-day" class="text-2xl sm:text-3xl font-bold text-brand-600"><%= summary.teacherDayCount %></p>
+    <p class="text-xs text-slate-400 mt-1">last <%= lookback %> days (up to yesterday)</p>
+  </div>
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Silent Teachers</p>
+    <p id="stat-teacher-silent" class="text-2xl sm:text-3xl font-bold text-amber-600"><%= summary.teacherSilentCount %></p>
+    <p class="text-xs text-slate-400 mt-1">0 reports in &ge; <%= config.SILENT_DAYS %> days</p>
+  </div>
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 sm:p-5">
+    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Silent Groups</p>
+    <p id="stat-group-silent" class="text-2xl sm:text-3xl font-bold text-indigo-600"><%= summary.groupSilentCount %></p>
+    <p class="text-xs text-slate-400 mt-1">0 reports in &ge; <%= config.SILENT_DAYS %> days</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SECTION 1: Possible Missing Teacher Reports by Day (teacher_day)
+══════════════════════════════════════════════════════════════ -->
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-8">
+  <div class="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+    <div>
+      <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+        <span>Missed Usual Teaching Days</span>
+        <span id="badge-teacher-day" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-brand-50 text-brand-700">
+          <%= teacherDayGaps.length %>
+        </span>
+      </h2>
+      <p class="text-xs text-slate-400 mt-0.5">Teacher usually reports on this weekday (&ge; <%= config.PATTERN_MIN_WEEKS %> of previous <%= config.PATTERN_WEEKS %> weeks), but has no report for this date.</p>
+    </div>
+  </div>
+
+  <div class="overflow-x-auto w-full">
+    <table class="w-full text-left text-sm min-w-[650px]">
+      <thead class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100">
+        <tr>
+          <th class="px-5 py-3.5">Teacher</th>
+          <th class="px-5 py-3.5">Date</th>
+          <th class="px-5 py-3.5">Evidence</th>
+          <th class="px-5 py-3.5 text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-teacher-day" class="divide-y divide-slate-100">
+        <% if (teacherDayGaps.length === 0) { %>
+          <tr id="empty-teacher-day">
+            <td colspan="4" class="px-5 py-10 text-center text-slate-400 text-sm">
+              No missed usual teaching days detected in the last <%= lookback %> days.
+            </td>
+          </tr>
+        <% } else { %>
+          <% teacherDayGaps.forEach(function(gap) { %>
+            <tr class="hover:bg-slate-50/70 transition" data-row-id="teacher_day-<%= gap.teacherId %>-<%= gap.date %>">
+              <td class="px-5 py-3.5">
+                <p class="font-semibold text-slate-800 text-sm"><%= gap.teacherName %></p>
+              </td>
+              <td class="px-5 py-3.5 whitespace-nowrap">
+                <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700">
+                  <%= formatShortDate(gap.date) %>
+                </span>
+                <span class="text-xs text-slate-400 ml-1.5"><%= gap.date %></span>
+              </td>
+              <td class="px-5 py-3.5 text-xs text-slate-600">
+                <%= gap.evidence %>
+              </td>
+              <td class="px-5 py-3.5 text-right whitespace-nowrap">
+                <div class="inline-flex items-center gap-2">
+                  <button type="button"
+                    data-action="open-ack-modal"
+                    data-kind="teacher_day"
+                    data-teacher-id="<%= gap.teacherId %>"
+                    data-target-name="<%= gap.teacherName %>"
+                    data-date="<%= gap.date %>"
+                    data-weekday="<%= gap.weekday %>"
+                    class="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition shadow-sm">
+                    Mark as no class
+                  </button>
+                  <button type="button"
+                    data-action="remind-teacher"
+                    data-teacher-id="<%= gap.teacherId %>"
+                    data-teacher-name="<%= gap.teacherName %>"
+                    data-gap-kind="teacher_day"
+                    data-date="<%= gap.date %>"
+                    data-weekday="<%= gap.weekday %>"
+                    class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white transition shadow-sm">
+                    Remind teacher
+                  </button>
+                </div>
+              </td>
+            </tr>
+          <% }); %>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SECTION 2: Silent Teachers (teacher_silent)
+══════════════════════════════════════════════════════════════ -->
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-8">
+  <div class="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+    <div>
+      <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+        <span>Silent Teachers</span>
+        <span id="badge-teacher-silent" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-50 text-amber-700">
+          <%= teacherSilentGaps.length %>
+        </span>
+      </h2>
+      <p class="text-xs text-slate-400 mt-0.5">Active teachers (&ge; <%= config.SILENT_TEACHER_MIN_REPORTS %> reports in previous <%= config.PATTERN_WEEKS %> weeks) with zero submissions in the last <%= config.SILENT_DAYS %> days.</p>
+    </div>
+  </div>
+
+  <div class="overflow-x-auto w-full">
+    <table class="w-full text-left text-sm min-w-[650px]">
+      <thead class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100">
+        <tr>
+          <th class="px-5 py-3.5">Teacher</th>
+          <th class="px-5 py-3.5">Silence Length</th>
+          <th class="px-5 py-3.5">Evidence</th>
+          <th class="px-5 py-3.5 text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-teacher-silent" class="divide-y divide-slate-100">
+        <% if (teacherSilentGaps.length === 0) { %>
+          <tr id="empty-teacher-silent">
+            <td colspan="4" class="px-5 py-10 text-center text-slate-400 text-sm">
+              No silent teachers detected. All active teachers have submitted reports recently.
+            </td>
+          </tr>
+        <% } else { %>
+          <% teacherSilentGaps.forEach(function(gap) { %>
+            <tr class="hover:bg-slate-50/70 transition" data-row-id="teacher_silent-<%= gap.teacherId %>">
+              <td class="px-5 py-3.5">
+                <p class="font-semibold text-slate-800 text-sm"><%= gap.teacherName %></p>
+              </td>
+              <td class="px-5 py-3.5 whitespace-nowrap">
+                <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-800">
+                  <%= gap.silenceDays %> days silent
+                </span>
+                <% if (gap.lastReportDate) { %>
+                  <span class="text-xs text-slate-400 ml-1.5">Last: <%= gap.lastReportDate %></span>
+                <% } %>
+              </td>
+              <td class="px-5 py-3.5 text-xs text-slate-600">
+                <%= gap.evidence %>
+              </td>
+              <td class="px-5 py-3.5 text-right whitespace-nowrap">
+                <div class="inline-flex items-center gap-2">
+                  <button type="button"
+                    data-action="open-ack-modal"
+                    data-kind="teacher_silent"
+                    data-teacher-id="<%= gap.teacherId %>"
+                    data-target-name="<%= gap.teacherName %>"
+                    class="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition shadow-sm">
+                    Mark as no class
+                  </button>
+                  <button type="button"
+                    data-action="remind-teacher"
+                    data-teacher-id="<%= gap.teacherId %>"
+                    data-teacher-name="<%= gap.teacherName %>"
+                    data-gap-kind="teacher_silent"
+                    class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white transition shadow-sm">
+                    Remind teacher
+                  </button>
+                </div>
+              </td>
+            </tr>
+          <% }); %>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SECTION 3: Silent Groups (group_silent)
+══════════════════════════════════════════════════════════════ -->
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-8">
+  <div class="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+    <div>
+      <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+        <span>Silent Class Groups</span>
+        <span id="badge-group-silent" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-indigo-50 text-indigo-700">
+          <%= groupSilentGaps.length %>
+        </span>
+      </h2>
+      <p class="text-xs text-slate-400 mt-0.5">Established groups &amp; private classes (&ge; <%= config.SILENT_GROUP_MIN_REPORTS %> reports in previous <%= config.PATTERN_WEEKS %> weeks) with no reports in the last <%= config.SILENT_DAYS %> days (competitions excluded).</p>
+    </div>
+  </div>
+
+  <div class="overflow-x-auto w-full">
+    <table class="w-full text-left text-sm min-w-[650px]">
+      <thead class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100">
+        <tr>
+          <th class="px-5 py-3.5">Group / Class</th>
+          <th class="px-5 py-3.5">Silence Length</th>
+          <th class="px-5 py-3.5">Evidence</th>
+          <th class="px-5 py-3.5 text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-group-silent" class="divide-y divide-slate-100">
+        <% if (groupSilentGaps.length === 0) { %>
+          <tr id="empty-group-silent">
+            <td colspan="4" class="px-5 py-10 text-center text-slate-400 text-sm">
+              No silent groups detected. All active classes have recent teaching reports.
+            </td>
+          </tr>
+        <% } else { %>
+          <% groupSilentGaps.forEach(function(gap) { %>
+            <tr class="hover:bg-slate-50/70 transition" data-row-id="group_silent-<%= gap.groupName %>">
+              <td class="px-5 py-3.5">
+                <p class="font-semibold text-slate-800 text-sm"><%= gap.groupName %></p>
+              </td>
+              <td class="px-5 py-3.5 whitespace-nowrap">
+                <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-100 text-indigo-800">
+                  <%= gap.silenceDays %> days silent
+                </span>
+                <% if (gap.lastDate) { %>
+                  <span class="text-xs text-slate-400 ml-1.5">Last: <%= gap.lastDate %></span>
+                <% } %>
+              </td>
+              <td class="px-5 py-3.5 text-xs text-slate-600">
+                <%= gap.evidence %>
+              </td>
+              <td class="px-5 py-3.5 text-right whitespace-nowrap">
+                <button type="button"
+                  data-action="open-ack-modal"
+                  data-kind="group_silent"
+                  data-group="<%= gap.groupName %>"
+                  data-target-name="<%= gap.groupName %>"
+                  class="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition shadow-sm">
+                  Mark as no class
+                </button>
+              </td>
+            </tr>
+          <% }); %>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SECTION 4: Global No-Class Dates Panel (Holidays & Closures)
+══════════════════════════════════════════════════════════════ -->
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-12">
+  <div class="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div>
+      <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+        <span>Global No-Class Dates</span>
+        <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-slate-100 text-slate-700">
+          <%= noClassDates.length %>
+        </span>
+      </h2>
+      <p class="text-xs text-slate-400 mt-0.5">Official holidays or campus closures that suppress "missed day" gap alerts across all teachers.</p>
+    </div>
+  </div>
+
+  <!-- Add No-Class Date Form -->
+  <div class="p-5 bg-slate-50/50 border-b border-slate-100">
+    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600 mb-3">Add Global No-Class Date or Period</h3>
+    <form id="form-no-class-date" class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+      <div>
+        <label for="ncd-from" class="block text-xs font-semibold text-slate-600 mb-1">From Date</label>
+        <input type="date" id="ncd-from" name="from" required
+          class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white">
+      </div>
+      <div>
+        <label for="ncd-to" class="block text-xs font-semibold text-slate-600 mb-1">To Date</label>
+        <input type="date" id="ncd-to" name="to" required
+          class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white">
+      </div>
+      <div>
+        <label for="ncd-label" class="block text-xs font-semibold text-slate-600 mb-1">Label (e.g. Idul Fitri)</label>
+        <input type="text" id="ncd-label" name="label" maxlength="80" placeholder="e.g. National Holiday" required
+          class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white">
+      </div>
+      <div class="flex items-end">
+        <button type="submit" data-action="submit-no-class-date"
+          class="w-full px-4 py-2 text-xs font-semibold rounded-xl bg-brand-600 hover:bg-brand-700 text-white transition shadow-sm h-[34px]">
+          Add No-Class Date
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- No-Class Dates List Table -->
+  <div class="overflow-x-auto w-full">
+    <table class="w-full text-left text-sm min-w-[500px]">
+      <thead class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100">
+        <tr>
+          <th class="px-5 py-3">Label</th>
+          <th class="px-5 py-3">Date Range</th>
+          <th class="px-5 py-3 text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-no-class-dates" class="divide-y divide-slate-100">
+        <% if (noClassDates.length === 0) { %>
+          <tr id="empty-no-class-dates">
+            <td colspan="3" class="px-5 py-8 text-center text-slate-400 text-sm">
+              No global no-class dates registered.
+            </td>
+          </tr>
+        <% } else { %>
+          <% noClassDates.forEach(function(ncd) { %>
+            <tr class="hover:bg-slate-50/70 transition" data-ncd-id="<%= ncd._id %>">
+              <td class="px-5 py-3 font-semibold text-slate-800 text-sm">
+                <%= ncd.label %>
+              </td>
+              <td class="px-5 py-3 text-xs text-slate-600 whitespace-nowrap">
+                <span class="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700"><%= ncd.from %></span>
+                <% if (ncd.from !== ncd.to) { %>
+                  <span class="text-slate-400 mx-1">&rarr;</span>
+                  <span class="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700"><%= ncd.to %></span>
+                <% } %>
+              </td>
+              <td class="px-5 py-3 text-right whitespace-nowrap">
+                <button type="button"
+                  data-action="delete-no-class-date"
+                  data-id="<%= ncd._id %>"
+                  class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-transparent hover:border-red-200 transition">
+                  Delete
+                </button>
+              </td>
+            </tr>
+          <% }); %>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     MODAL DIALOG: "Mark as no class" (Acknowledgement)
+══════════════════════════════════════════════════════════════ -->
+<div id="modal-ack" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="modal-ack-title">
+  <div class="bg-white rounded-2xl shadow-xl border border-slate-100 max-w-md w-full overflow-hidden p-6 transition-all">
+    <div class="flex items-center justify-between mb-4">
+      <h3 id="modal-ack-title" class="text-base font-bold text-slate-900">Mark as No Class</h3>
+      <button type="button" data-action="close-ack-modal" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition" aria-label="Close dialog">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <p class="text-xs text-slate-500 mb-4">
+      Acknowledging this gap removes it permanently from alert calculations.
+    </p>
+
+    <div class="mb-4 p-3 bg-slate-50 rounded-xl text-xs space-y-1 text-slate-700">
+      <div><span class="font-semibold text-slate-500">Target:</span> <span id="modal-ack-target-label" class="font-medium"></span></div>
+      <div id="modal-ack-date-row"><span class="font-semibold text-slate-500">Date:</span> <span id="modal-ack-date-label" class="font-medium"></span></div>
+    </div>
+
+    <form id="form-ack">
+      <input type="hidden" id="modal-ack-kind" name="kind">
+      <input type="hidden" id="modal-ack-teacher" name="teacher">
+      <input type="hidden" id="modal-ack-group" name="group">
+      <input type="hidden" id="modal-ack-date" name="date">
+
+      <div class="mb-4">
+        <label for="modal-ack-reason" class="block text-xs font-semibold text-slate-700 mb-1">Reason</label>
+        <select id="modal-ack-reason" name="reason" required
+          class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white">
+          <option value="no_class">No class held (cancelled / rescheduled)</option>
+          <option value="holiday">Holiday / campus closure</option>
+          <option value="leave">Teacher on official leave / sick</option>
+          <option value="reported_elsewhere">Reported under another teacher / name</option>
+          <option value="other">Other reason</option>
+        </select>
+      </div>
+
+      <div class="mb-5">
+        <label for="modal-ack-note" class="block text-xs font-semibold text-slate-700 mb-1">Optional Note (max 200 chars)</label>
+        <textarea id="modal-ack-note" name="note" maxlength="200" rows="2" placeholder="Provide extra context if helpful..."
+          class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white resize-none"></textarea>
+      </div>
+
+      <div class="flex items-center justify-end gap-2">
+        <button type="button" data-action="close-ack-modal"
+          class="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 transition">
+          Cancel
+        </button>
+        <button type="submit" data-action="submit-ack"
+          class="px-4 py-2 text-xs font-semibold rounded-xl bg-brand-600 hover:bg-brand-700 text-white transition shadow-sm">
+          Confirm &amp; Acknowledge
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<%- include('../../partials/footer') %>
+
+<!-- Client JS for Report Gaps (no inline handlers or inline scripts) -->
+<script defer src="/js/report-gaps.js"></script>
+

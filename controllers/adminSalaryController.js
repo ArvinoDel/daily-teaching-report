@@ -1,3 +1,4 @@
+const reportGapService = require('../services/reportGapService');
 'use strict';
 /**
  * adminSalaryController.js
@@ -164,6 +165,10 @@ exports.salaryIndex = async (req, res) => {
     const flash = req.session.flash || null;
     delete req.session.flash;
 
+    const pStart = salaries.length > 0 && salaries[0].periodStart ? salaries[0].periodStart : new Date(year, month - 1, 1);
+    const pEnd   = salaries.length > 0 && salaries[0].periodEnd   ? salaries[0].periodEnd   : new Date(year, month, 0, 23, 59, 59, 999);
+    const missingReportsCount = await reportGapService.countMissingReportsInPeriod(pStart, pEnd);
+
     const activeTeachers = await User.find({ role: 'teacher' }).select('displayName username commission').lean();
     const teachersWithoutRewards = getTeachersWithoutRewards(activeTeachers);
 
@@ -179,6 +184,7 @@ exports.salaryIndex = async (req, res) => {
       firstDraftId,
       firstRowId,
       teachersWithoutRewards,
+      missingReportsCount,
     });
   } catch (err) {
     console.error('[salary] index error:', err);

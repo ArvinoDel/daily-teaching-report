@@ -11,11 +11,20 @@ const achievementsCtrl = require('../controllers/adminStudentAchievementsControl
 const acScanCtrl       = require('../controllers/adminAcScanController');
 const printCardsCtrl   = require('../controllers/adminPrintCardsController');
 const salaryCtrl = require('../controllers/adminSalaryController');
+const reportGapCtrl = require('../controllers/adminReportGapController');
 
 router.use(requireAuth, requireAdmin);
 
 // Dashboard
 router.get('/', ctrl.dashboard);
+
+// Report gaps (possible missing reports)
+router.get('/report-gaps', reportGapCtrl.index);
+router.post('/report-gaps/ack', reportGapCtrl.acknowledge);
+router.post('/report-gaps/remind', reportGapCtrl.remindTeacher);
+router.post('/report-gaps/no-class-dates', reportGapCtrl.addNoClassDate);
+router.post('/report-gaps/no-class-dates/:id/delete', reportGapCtrl.deleteNoClassDate);
+router.delete('/report-gaps/no-class-dates/:id', reportGapCtrl.deleteNoClassDate);
 
 // Audit log
 router.get('/audit-log', ctrl.auditLogIndex);

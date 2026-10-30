@@ -119,6 +119,9 @@ const userSchema = new mongoose.Schema({
       lastAdminSentAt: { type: Date, default: null },
     },
   },
+  reportGapReminders: {
+    lastSentAt: { type: Date, default: null },
+  },
 }, { timestamps: true });
 
 // Virtual: compute experience string from joinDate to now
