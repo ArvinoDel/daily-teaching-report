@@ -106,6 +106,26 @@ const studentSchema = new mongoose.Schema(
       default: '',
     },
 
+    // Grade change history (capped at last 5 entries)
+    grade_history: [
+      {
+        grade_school: {
+          type:    String,
+          trim:    true,
+          default: '',
+        },
+        at: {
+          type:    Date,
+          default: Date.now,
+        },
+        source: {
+          type:     String,
+          enum:     ['import', 'manual'],
+          required: true,
+        },
+      },
+    ],
+
     // Groups this student belongs to (relational reference)
     groups: [
       {

@@ -447,10 +447,15 @@
   /* ═══════════════════════════════════════════════════════════════
      API: SUBMIT ADD STUDENTS
   ═══════════════════════════════════════════════════════════════ */
-  async function submitAddStudents(names, onSuccess) {
+  async function submitAddStudents(names, onSuccess, confirmSameStudent) {
     if (!names || names.length === 0) return;
 
     try {
+      const payload = { names };
+      if (Array.isArray(confirmSameStudent) && confirmSameStudent.length > 0) {
+        payload.confirmSameStudent = confirmSameStudent;
+      }
+
       const res = await fetch(`/admin/groups/${GROUP_ID}/students`, {
         method: 'POST',
         headers: {
@@ -458,11 +463,46 @@
           'x-csrf-token': CSRF_TOKEN,
           'X-Requested-With': 'XMLHttpRequest',
         },
-        body: JSON.stringify({ names }),
+        body: JSON.stringify(payload),
       });
 
       if (res.status === 409) {
         const data = await res.json().catch(() => ({}));
+
+        if (data.possibleNamesake && Array.isArray(data.possibleNamesake) && data.possibleNamesake.length > 0) {
+          let listHtml = '<div class="text-left space-y-3 mt-3">';
+          data.possibleNamesake.forEach(p => {
+            const grpStr = p.groupNames && p.groupNames.length ? p.groupNames.join(', ') : 'None';
+            listHtml += '<div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1">'
+              + '<div class="font-bold text-amber-900 text-sm">Incoming: ' + escHtml(p.rawName) + '</div>'
+              + '<div class="text-slate-700"><strong>Existing Student:</strong> ' + escHtml(p.name) + '</div>'
+              + '<div class="text-slate-600"><strong>Grade / School:</strong> ' + escHtml(p.grade_school || 'None') + '</div>'
+              + '<div class="text-slate-600"><strong>Status:</strong> ' + escHtml(p.status || 'active') + '</div>'
+              + '<div class="text-slate-600"><strong>Current Groups:</strong> ' + escHtml(grpStr) + '</div>'
+              + '</div>';
+          });
+          listHtml += '</div>';
+
+          const modalResult = await Swal.fire({
+            title: 'Possible Namesake Detected',
+            html: '<p class="text-sm text-slate-600">An existing student with a matching name was found, but the grade or school details indicate they might be different students.</p>'
+              + listHtml
+              + '<p class="text-xs text-slate-500 mt-3">If this is a different student, click Cancel and add a last initial or surname (e.g. "Jason J 12 CS") to separate them.</p>',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, same student',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#4f46e5',
+            cancelButtonColor: '#6b7280',
+          });
+
+          if (modalResult.isConfirmed) {
+            const confirmedNorms = data.possibleNamesake.map(p => p.norm).filter(Boolean);
+            return submitAddStudents(names, onSuccess, confirmedNorms);
+          }
+          return;
+        }
+
         if (data.needsRepair) {
           const banner = document.getElementById('roster-inconsistent-banner');
           if (banner) banner.classList.remove('hidden');

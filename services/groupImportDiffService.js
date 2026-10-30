@@ -7,6 +7,7 @@
  */
 
 const { normalizeName } = require('../models/Student');
+const { assessNameMatch } = require('./studentIdentityService');
 
 /**
  * Resolves students from a DB Group document into normalized student descriptors.
@@ -121,6 +122,21 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
     studentById.set(String(s._id), s);
     if (s.normalized_name) {
       studentByNorm.set(s.normalized_name, s);
+    }
+  }
+
+  // Pre-build group names lookup by normalized name
+  const groupNamesByStudentNorm = new Map();
+  for (const g of existingGroups) {
+    const gName = g.group_name || '';
+    for (const raw of (g.students || [])) {
+      const norm = normalizeName(raw);
+      if (norm) {
+        if (!groupNamesByStudentNorm.has(norm)) {
+          groupNamesByStudentNorm.set(norm, new Set());
+        }
+        groupNamesByStudentNorm.get(norm).add(gName);
+      }
     }
   }
 
@@ -328,7 +344,16 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
 
     // Additions: in C, not in D
     for (const s of cItem.students) {
-      if (!dKeys.has(s.key)) {
+      const sDoc = s.studentId ? studentById.get(s.studentId) : (s.normKey ? studentByNorm.get(s.normKey) : null);
+      let matchResult = null;
+      if (sDoc) {
+        const groupNames = Array.from(groupNamesByStudentNorm.get(sDoc.normalized_name) || []);
+        matchResult = assessNameMatch({ ...sDoc, groupNames }, s.rawName);
+      }
+      const isNamesake = Boolean(matchResult && matchResult.kind === 'likely_namesake');
+      const isCheckSchool = Boolean(matchResult && matchResult.kind === 'check_school');
+
+      if (!dKeys.has(s.key) || isNamesake) {
         const inStudentColl = Boolean(s.studentId || (s.normKey && studentByNorm.has(s.normKey)));
         if (!inStudentColl) {
           additions.push({
@@ -362,27 +387,53 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
             }
           }
 
+          let addObj;
           if (movedFrom) {
-            additions.push({
+            addObj = {
               ...s,
               status: 'MOVED_IN',
               fromGroup: movedFrom,
               label: `Moved from ${movedFrom}`,
-            });
+            };
           } else if (notInCsvGroup) {
-            additions.push({
+            addObj = {
               ...s,
               status: 'EXISTING',
               note: `Also in ${notInCsvGroup} (not in this CSV, stays there)`,
               label: `Also in ${notInCsvGroup} (not in this CSV, stays there)`,
-            });
+            };
           } else {
-            additions.push({
+            addObj = {
               ...s,
               status: 'EXISTING',
               label: 'Existing student',
-            });
+            };
           }
+
+          if (isNamesake) {
+            const namesakeExisting = matchResult.existing;
+            const namesakeDisp = `${namesakeExisting.name}${namesakeExisting.grade_school ? ' ' + namesakeExisting.grade_school : ''}${namesakeExisting.groupNames.length ? ' (' + namesakeExisting.groupNames.join(', ') + ')' : ''}`;
+            addObj.status = 'NAMESAKE';
+            addObj.label = 'Possible namesake';
+            addObj.namesake = {
+              isNamesake: true,
+              existingStudentId: String(sDoc._id),
+              existingName: namesakeExisting.name,
+              existingGradeSchool: namesakeExisting.grade_school,
+              existingStatus: namesakeExisting.status,
+              existingGroups: namesakeExisting.groupNames,
+              displayText: `Possible namesake of ${namesakeDisp}`,
+            };
+          } else if (isCheckSchool) {
+            addObj.checkSchool = {
+              isCheckSchool: true,
+              storedSchool: matchResult.storedSchool,
+              incomingSchool: matchResult.incomingSchool,
+              displayText: `Different school: ${matchResult.storedSchool || '—'} vs ${matchResult.incomingSchool || '—'}`,
+            };
+          }
+
+          additions.push(addObj);
         }
       }
     }
@@ -390,7 +441,20 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
     // Removals: in D, not in C
     if (dItem) {
       for (const s of dItem.students) {
-        if (!cKeys.has(s.key)) {
+        const matchingCsvStudent = cItem.students.find(cs => cs.key === s.key);
+        let matchingCsvIsNamesake = false;
+        if (matchingCsvStudent) {
+          const sDoc = s.studentId ? studentById.get(s.studentId) : (s.normKey ? studentByNorm.get(s.normKey) : null);
+          if (sDoc) {
+            const groupNames = Array.from(groupNamesByStudentNorm.get(sDoc.normalized_name) || []);
+            const matchResult = assessNameMatch({ ...sDoc, groupNames }, matchingCsvStudent.rawName);
+            if (matchResult && matchResult.kind === 'likely_namesake') {
+              matchingCsvIsNamesake = true;
+            }
+          }
+        }
+
+        if (!cKeys.has(s.key) || matchingCsvIsNamesake) {
           const inCsvGroups = (csvMembershipsByType[type].get(s.key) || []);
           const targetCsvGroups = [];
 
@@ -444,6 +508,7 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
   let newStudentsCount = 0;
   let movedStudentsCount = 0;
   let notInCsvStudentsCount = 0;
+  let possibleNamesakesCount = 0;
 
   for (const cItem of csvGroupResolved) {
     const csvName = cItem.doc.group_name;
@@ -472,6 +537,7 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
 
         // Tally chips counts — movedStudents counts MOVED_IN only (student moved once)
         for (const add of diff.additions) {
+          if (add.namesake && add.namesake.isNamesake) possibleNamesakesCount++;
           if (add.status === 'NEW') newStudentsCount++;
           if (add.status === 'MOVED_IN') movedStudentsCount++;
         }
@@ -521,6 +587,7 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
 
       // Default tally uses diffAsNew (since default is unchecked)
       for (const add of diffAsNew.additions) {
+        if (add.namesake && add.namesake.isNamesake) possibleNamesakesCount++;
         if (add.status === 'NEW') newStudentsCount++;
         if (add.status === 'MOVED_IN') movedStudentsCount++;
       }
@@ -548,6 +615,7 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
       const diff = computeDiffBetween(cItem, null);
 
       for (const add of diff.additions) {
+        if (add.namesake && add.namesake.isNamesake) possibleNamesakesCount++;
         if (add.status === 'NEW') newStudentsCount++;
         if (add.status === 'MOVED_IN') movedStudentsCount++;
       }
@@ -577,6 +645,7 @@ function computeRosterDiff(docs, existingGroups, existingStudents) {
     summaryChips: {
       groupsWithChanges: changedGroups.length,
       levelOnlyChanges: levelOnlyGroups.length,
+      possibleNamesakes: possibleNamesakesCount,
       newStudents: newStudentsCount,
       movedStudents: movedStudentsCount,
       notInCsvStudents: notInCsvStudentsCount,

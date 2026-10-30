@@ -9,8 +9,9 @@ const {
   buildGroupRecords,
 } = require('../scripts/lib/parseRoster');
 const { matchOrCreateStudent } = require('../services/studentService');
-const { normalizeName }        = require('../models/Student');
+const { normalizeName, extractGradeSchool } = require('../models/Student');
 const { computeRosterDiff }    = require('../services/groupImportDiffService');
+const { assessNameMatch, recordGradeChange } = require('../services/studentIdentityService');
 
 /* ── Multer: memory storage (no temp files — works on serverless) ── */
 const upload = multer({
@@ -136,7 +137,7 @@ exports.importExecute = (req, res) => {
         // Fetch existing DB groups and existing students
         const [existingGroups, existingStudents] = await Promise.all([
           Group.find({}).lean(),
-          Student.find({}, { _id: 1, normalized_name: 1, raw_name: 1, full_name: 1 }).lean(),
+          Student.find({}, { _id: 1, normalized_name: 1, raw_name: 1, full_name: 1, grade_school: 1, status: 1, groups: 1 }).lean(),
         ]);
 
         // Student identity counts (wouldCreate, wouldRetain)
@@ -180,7 +181,7 @@ exports.importExecute = (req, res) => {
       // Fetch fresh DB groups and students to recompute authoritative diff
       const [existingGroups, existingStudents] = await Promise.all([
         Group.find({}),
-        Student.find({}, { _id: 1, normalized_name: 1, raw_name: 1, full_name: 1 }).lean(),
+        Student.find({}, { _id: 1, normalized_name: 1, raw_name: 1, full_name: 1, grade_school: 1, status: 1, groups: 1 }).lean(),
       ]);
 
       const studentById = new Map();
@@ -195,6 +196,7 @@ exports.importExecute = (req, res) => {
       // Parse admin decisions from multipart form
       let clientRemovals = [];
       let clientRenames  = [];
+      let clientConfirmedNamesakes = [];
       if (req.body.decisions) {
         try {
           const parsed = typeof req.body.decisions === 'string'
@@ -202,6 +204,7 @@ exports.importExecute = (req, res) => {
             : req.body.decisions;
           if (Array.isArray(parsed.removals)) clientRemovals = parsed.removals;
           if (Array.isArray(parsed.renames))  clientRenames  = parsed.renames;
+          if (Array.isArray(parsed.confirmedNamesakes)) clientConfirmedNamesakes = parsed.confirmedNamesakes;
         } catch (e) {
           console.warn('Failed to parse import decisions JSON:', e);
         }
@@ -291,24 +294,88 @@ exports.importExecute = (req, res) => {
       let groupsUpdated        = 0;
       let removedFromGroups    = 0;
       let movedCount           = 0;
+      const skippedNamesakes   = [];
+
+      // Pre-build group names lookup by normalized name
+      const groupNamesByStudentNorm = new Map();
+      for (const g of existingGroups) {
+        const gName = g.group_name || '';
+        for (const raw of (g.students || [])) {
+          const norm = normalizeName(raw);
+          if (norm) {
+            if (!groupNamesByStudentNorm.has(norm)) {
+              groupNamesByStudentNorm.set(norm, new Set());
+            }
+            groupNamesByStudentNorm.get(norm).add(gName);
+          }
+        }
+      }
 
       for (const doc of docs) {
         const studentIds   = [];
         const studentNames = [];
 
         for (const rawName of doc.students) {
-          const result = await matchOrCreateStudent(rawName);
-          if (!result) continue;
-          const { student, created } = result;
-          if (created) {
-            newStudentsAdded++;
-            studentById.set(String(student._id), student);
-            if (student.normalized_name) studentByNorm.set(student.normalized_name, student);
+          const norm = normalizeName(rawName);
+          if (!norm) continue;
+
+          let sDoc = studentByNorm.get(norm);
+          if (sDoc) {
+            const groupNames = Array.from(groupNamesByStudentNorm.get(norm) || []);
+            const matchResult = assessNameMatch({ ...sDoc, groupNames }, rawName);
+
+            if (matchResult.kind === 'likely_namesake') {
+              // Re-validate against client confirmations
+              // Tampered confirmations (for another student or unflagged row) are ignored
+              const isConfirmed = clientConfirmedNamesakes.some(cn =>
+                cn.normKey === norm &&
+                String(cn.studentId) === String(sDoc._id) &&
+                (cn.rawName === rawName || cn.groupName === doc.group_name)
+              );
+
+              if (!isConfirmed) {
+                // SKIP unconfirmed namesake row!
+                skippedNamesakes.push({
+                  rawName,
+                  groupName: doc.group_name,
+                  existingName: matchResult.existing.name,
+                  existingGradeSchool: matchResult.existing.grade_school,
+                  existingGroups: matchResult.existing.groupNames,
+                  instruction: 'Add a last initial or surname to the name in the CSV and import again.',
+                });
+                continue;
+              }
+            }
+
+            // Confirmed namesake or same/check_school -> match with existing student
+            let student = await Student.findById(sDoc._id);
+            if (student) {
+              const newGradeSchool = extractGradeSchool(rawName);
+              if (newGradeSchool && newGradeSchool !== student.grade_school) {
+                recordGradeChange(student, newGradeSchool, 'import');
+                await student.save();
+                studentById.set(String(student._id), student.toObject());
+                studentByNorm.set(student.normalized_name, student.toObject());
+              }
+              studentIds.push(student._id);
+              studentNames.push(rawName);
+              existingStudentsKept++;
+            }
           } else {
-            existingStudentsKept++;
+            // New student
+            const result = await matchOrCreateStudent(rawName);
+            if (!result) continue;
+            const { student, created } = result;
+            if (created) {
+              newStudentsAdded++;
+              studentById.set(String(student._id), student);
+              if (student.normalized_name) studentByNorm.set(student.normalized_name, student);
+            } else {
+              existingStudentsKept++;
+            }
+            studentIds.push(student._id);
+            studentNames.push(rawName);
           }
-          studentIds.push(student._id);
-          studentNames.push(rawName);
         }
 
         // Check if matched DB group exists (either renamed or matched by name)
@@ -461,6 +528,7 @@ exports.importExecute = (req, res) => {
       summary.removedFromGroups    = removedFromGroups;
       summary.moved                = movedCount;
       summary.renamed              = renamedCount;
+      summary.skippedNamesakes     = skippedNamesakes;
 
       // Audit log
       await logAudit(req, 'import_groups', {
@@ -473,6 +541,7 @@ exports.importExecute = (req, res) => {
         renamed: renamedCount,
         invalidRemovals: invalidRemovalsCount,
         invalidRenames: invalidRenamesCount,
+        skippedNamesakes: skippedNamesakes.length,
       });
 
       return res.json({ ok: true, dryRun: false, summary });
