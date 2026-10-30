@@ -60,22 +60,22 @@
     "javascriptUrls": 0
   },
   "views/admin/scan-ac/index.ejs": {
-    "eventHandlers": 1,
+    "eventHandlers": 0,
     "inlineScripts": 2,
     "javascriptUrls": 0
   },
   "views/admin/scan-ac/mobile.ejs": {
-    "eventHandlers": 2,
+    "eventHandlers": 0,
     "inlineScripts": 1,
     "javascriptUrls": 0
   },
   "views/admin/student-achievements/index.ejs": {
-    "eventHandlers": 4,
+    "eventHandlers": 0,
     "inlineScripts": 3,
     "javascriptUrls": 0
   },
   "views/admin/student-achievements/print-cards.ejs": {
-    "eventHandlers": 1,
+    "eventHandlers": 0,
     "inlineScripts": 1,
     "javascriptUrls": 0
   },

@@ -356,7 +356,7 @@
     <div id="cam-error">
       <strong>Camera not available</strong>
       <p>Please allow camera permission and reload.</p>
-      <button class="cam-err-btn" onclick="location.reload()">Reload Page</button>
+      <button class="cam-err-btn" data-action="reloadPage">Reload Page</button>
     </div>
   </div>
 
@@ -427,7 +427,7 @@
     <!-- Error -->
     <div id="state-error">
       <p id="error-msg">Student not found.</p>
-      <button id="btn-try-again" onclick="resetToIdle()">Try again</button>
+      <button id="btn-try-again" data-action="resetToIdle">Try again</button>
     </div>
 
   </div><!-- /bottom-sheet -->
@@ -436,6 +436,7 @@
 <div id="toast"></div>
 
 <!-- ZXing barcode library — fallback for browsers without native BarcodeDetector -->
+<script src="/js/ui-actions.js"></script>
 <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
 
 <script>

@@ -127,6 +127,35 @@
         el.form.submit();
       }
     });
+
+    registerAction('submitFilterForm', function (e, el) {
+      var form = document.getElementById('filter-form') || el.form;
+      if (form) form.submit();
+    });
+
+    registerAction('showStudentCard', function (e, el) {
+      if (typeof window.showStudentCard === 'function') {
+        window.showStudentCard(el.dataset.studentId);
+      }
+    });
+
+    registerAction('runStudentSync', function () {
+      if (typeof window.runStudentSync === 'function') {
+        window.runStudentSync();
+      }
+    });
+
+    registerAction('undoLog', function (e, el) {
+      if (typeof window.undoLog === 'function') {
+        window.undoLog(el.dataset.txId);
+      }
+    });
+
+    registerAction('resetToIdle', function () {
+      if (typeof window.resetToIdle === 'function') {
+        window.resetToIdle();
+      }
+    });
   }
 
   // Export to global scope
