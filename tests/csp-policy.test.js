@@ -28,10 +28,44 @@ describe('CSP Production Policy Guard', () => {
       "script-src in production CSP must NOT contain 'unsafe-inline'"
     );
 
+    // Assert NO 'unsafe-eval' inside scriptSrc
+    assert.strictEqual(
+      /'unsafe-eval'|"unsafe-eval"/.test(scriptSrcBody),
+      false,
+      "script-src in production CSP must NOT contain 'unsafe-eval'"
+    );
+
+    // Assert NO 'blob:' or 'data:' inside scriptSrc
+    assert.strictEqual(
+      /blob:|data:/.test(scriptSrcBody),
+      false,
+      "script-src in production CSP must NOT contain blob: or data:"
+    );
+
+    // Assert NO 'unpkg.com' inside scriptSrc
+    assert.strictEqual(
+      /unpkg\.com/.test(scriptSrcBody),
+      false,
+      "script-src in production CSP must NOT contain unpkg.com"
+    );
+
+    // Assert NO wildcard tailwindcss in scriptSrc
+    assert.strictEqual(
+      /\*\.tailwindcss\.com/.test(scriptSrcBody),
+      false,
+      "script-src in production CSP must NOT contain *.tailwindcss.com"
+    );
+
     // Assert nonce function is configured in scriptSrc
     assert.ok(
       /nonce-\$\{res\.locals\.cspNonce\}/.test(scriptSrcBody) || /nonce-'\s*\+\s*res\.locals\.cspNonce/.test(scriptSrcBody),
       "script-src must include dynamic nonce resolver function using res.locals.cspNonce"
     );
+
+    // 3. Assert containment directives
+    assert.ok(/objectSrc:\s*\[\s*["']'none'["']\s*\]/.test(prodConfigText), "objectSrc must be ['none']");
+    assert.ok(/baseUri:\s*\[\s*["']'self'["']\s*\]/.test(prodConfigText), "baseUri must be ['self']");
+    assert.ok(/formAction:\s*\[\s*["']'self'["']\s*\]/.test(prodConfigText), "formAction must be ['self']");
+    assert.ok(/frameAncestors:\s*\[\s*["']'self'["']\s*\]/.test(prodConfigText), "frameAncestors must be ['self']");
   });
 });
