@@ -130,7 +130,7 @@
     "javascriptUrls": 0
   },
   "views/partials/admin/student-card-modal.ejs": {
-    "eventHandlers": 5,
+    "eventHandlers": 0,
     "inlineScripts": 1,
     "javascriptUrls": 0
   },
