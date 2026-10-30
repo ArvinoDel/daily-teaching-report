@@ -174,16 +174,6 @@
     "inlineScripts": 1,
     "javascriptUrls": 0
   },
-  "views/partials/nav/mobile-menu.ejs": {
-    "eventHandlers": 18,
-    "inlineScripts": 0,
-    "javascriptUrls": 0
-  },
-  "views/partials/nav/nav-right.ejs": {
-    "eventHandlers": 2,
-    "inlineScripts": 0,
-    "javascriptUrls": 0
-  },
   "views/partials/nav/nav-scripts.ejs": {
     "eventHandlers": 0,
     "inlineScripts": 1,

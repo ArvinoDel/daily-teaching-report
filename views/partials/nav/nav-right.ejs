@@ -27,7 +27,7 @@
   <% if (typeof currentUser !== 'undefined' && currentUser) { %>
     <div class="hidden sm:block relative" id="profile-dropdown-wrapper">
 
-      <button onclick="toggleProfileDropdown()" id="profile-btn"
+      <button data-action="toggleProfileDropdown" id="profile-btn"
         class="flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-slate-100 transition group">
         <div class="relative flex-shrink-0">
           <% if (currentUser.profilePicture) { %>
@@ -121,7 +121,7 @@
   <% } %>
 
   <!-- Hamburger (mobile) -->
-  <button id="mobile-menu-btn" onclick="toggleMenu()"
+  <button id="mobile-menu-btn" data-action="toggleMenu"
     class="sm:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-100 transition flex-shrink-0">
     <svg id="icon-open" xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
       <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />

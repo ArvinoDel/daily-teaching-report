@@ -16,6 +16,15 @@
     if (chevron) chevron.classList.toggle('rotate-180');
   }
 
+  if (typeof registerAction === 'function') {
+    registerAction('toggleMenu', function () {
+      toggleMenu();
+    });
+    registerAction('toggleProfileDropdown', function () {
+      toggleProfileDropdown();
+    });
+  }
+
   /* BUG FIX: close dropdown when clicking outside */
   document.addEventListener('click', function (e) {
     var wrapper = document.getElementById('profile-dropdown-wrapper');
