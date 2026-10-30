@@ -23,12 +23,14 @@ const auditLogSchema = new mongoose.Schema({
       'report_gap_ack',
       'no_class_date_add',
       'no_class_date_delete',
+      'system_test_cloudinary',
+      'system_cleanup_preview',
     ],
     required: true,
   },
   targetType: {
     type: String,
-    enum: ['report', 'user', 'group', 'salary', 'material', 'no_class_date', 'report_gap'],
+    enum: ['report', 'user', 'group', 'salary', 'material', 'no_class_date', 'report_gap', 'system'],
     required: true,
   },
   targetId: {

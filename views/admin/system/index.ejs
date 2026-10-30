@@ -1,0 +1,449 @@
+<%- include('../../partials/header', { title: 'System Health' }) %>
+
+<!-- Page Header -->
+<div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+  <div class="flex items-center gap-3">
+    <a href="/admin" class="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition" aria-label="Back to Admin Dashboard">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+      </svg>
+    </a>
+    <div>
+      <div class="flex items-center gap-2 mb-1">
+        <span class="inline-flex items-center gap-1 bg-rose-100 text-rose-700 text-xs font-bold px-2.5 py-0.5 rounded-full">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
+          </svg>
+          Superadmin only
+        </span>
+      </div>
+      <h1 class="text-2xl font-bold text-slate-900 leading-tight">System health</h1>
+      <p class="text-slate-500 text-sm mt-0.5">Superadmin diagnostics: backup and cleanup status, cron jobs, and environment configuration.</p>
+    </div>
+  </div>
+
+  <!-- Test Action Buttons -->
+  <div class="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+    <button type="button" data-action="test-cloudinary"
+      class="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold px-3.5 py-2 rounded-xl border border-slate-200 shadow-sm transition disabled:opacity-50">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z" />
+      </svg>
+      Test Cloudinary connection
+    </button>
+    <button type="button" data-action="cleanup-preview"
+      class="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold px-3.5 py-2 rounded-xl border border-slate-200 shadow-sm transition disabled:opacity-50">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+      </svg>
+      Run cleanup preview
+    </button>
+  </div>
+</div>
+
+<!-- Diagnostics Action Feedback Box -->
+<div id="system-alert-box" class="hidden mb-6 p-4 rounded-xl text-sm font-medium border transition-all duration-200">
+  <div class="flex items-start justify-between gap-3">
+    <div id="system-alert-content"></div>
+    <button type="button" data-action="dismiss-alert" class="text-slate-400 hover:text-slate-600 transition" aria-label="Close message">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- 1. Overall Status Banner -->
+<div class="mb-8">
+  <% if (health.status === 'OK') { %>
+    <div class="flex items-start gap-4 p-5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-950 shadow-sm">
+      <div class="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+      </div>
+      <div>
+        <h2 class="text-base font-bold text-emerald-900">System status is healthy</h2>
+        <p class="text-xs text-emerald-800 mt-1">All required environment variables are set and valid, database backups and crons are on schedule, and the database connection is active.</p>
+      </div>
+    </div>
+  <% } else { %>
+    <div class="flex items-start gap-4 p-5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-950 shadow-sm">
+      <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+        </svg>
+      </div>
+      <div class="min-w-0 flex-1">
+        <h2 class="text-base font-bold text-amber-900">System requires attention</h2>
+        <p class="text-xs text-amber-800 mt-0.5 mb-2.5">The diagnostic evaluator identified the following items:</p>
+        <ul class="space-y-1.5 text-xs text-amber-900">
+          <% health.reasons.forEach(function(reason) { %>
+            <li class="flex items-start gap-2">
+              <span class="text-amber-500 font-bold">•</span>
+              <span><%= reason %></span>
+            </li>
+          <% }); %>
+        </ul>
+      </div>
+    </div>
+  <% } %>
+</div>
+
+<!-- 2. Backups Section -->
+<div class="mb-8 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+  <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+    <div>
+      <h2 class="text-base font-bold text-slate-800">Database backups</h2>
+      <p class="text-xs text-slate-400 mt-0.5">Status of automated and manual database archives in cloud storage</p>
+    </div>
+    <a href="/admin/backups" class="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700 transition">
+      <span>View all backups</span>
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+      </svg>
+    </a>
+  </div>
+
+  <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Last Successful Backup Card -->
+    <div class="p-5 rounded-2xl border border-slate-100 bg-slate-50/50 flex flex-col justify-between">
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Last successful backup</span>
+          <% if (backups.lastSuccess) { %>
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+              Healthy
+            </span>
+          <% } else { %>
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800">
+              None
+            </span>
+          <% } %>
+        </div>
+
+        <% if (backups.lastSuccess) { %>
+          <p class="text-lg font-bold text-slate-800"><%= backups.lastSuccess.timeFormatted %></p>
+          <p class="text-xs text-slate-500 mt-0.5"><%= backups.lastSuccess.age %></p>
+
+          <div class="mt-4 pt-4 border-t border-slate-200/60 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div>
+              <p class="text-slate-400">Size</p>
+              <p class="font-semibold text-slate-700 mt-0.5"><%= backups.lastSuccess.sizeFormatted %></p>
+            </div>
+            <div>
+              <p class="text-slate-400">Format</p>
+              <p class="font-semibold text-slate-700 mt-0.5"><%= backups.lastSuccess.format %></p>
+            </div>
+            <div>
+              <p class="text-slate-400">Checksum</p>
+              <p class="font-semibold text-slate-700 mt-0.5"><%= backups.lastSuccess.hasChecksum ? 'Present' : 'None' %></p>
+            </div>
+            <div>
+              <p class="text-slate-400">Storage</p>
+              <p class="font-semibold text-slate-700 mt-0.5"><%= backups.lastSuccess.isPrivate ? 'Private' : 'Public' %></p>
+            </div>
+          </div>
+        <% } else { %>
+          <p class="text-sm text-slate-500 mt-2">No successful backup has been recorded in database history.</p>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Last Failed Backup Card -->
+    <div class="p-5 rounded-2xl border border-slate-100 bg-slate-50/50 flex flex-col justify-between">
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Last failed backup</span>
+          <% if (backups.lastFailed) { %>
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800">
+              Failed
+            </span>
+          <% } else { %>
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
+              Clean
+            </span>
+          <% } %>
+        </div>
+
+        <% if (backups.lastFailed) { %>
+          <p class="text-lg font-bold text-slate-800"><%= backups.lastFailed.timeFormatted %></p>
+          <p class="text-xs text-slate-500 mt-0.5"><%= backups.lastFailed.age %></p>
+          <div class="mt-4 pt-4 border-t border-slate-200/60">
+            <p class="text-xs text-slate-400">Error message</p>
+            <p class="text-xs font-medium text-rose-700 mt-0.5 break-words line-clamp-2"><%= backups.lastFailed.errorMessage %></p>
+          </div>
+        <% } else { %>
+          <p class="text-sm font-semibold text-slate-700 mt-1">No failed backup on record</p>
+          <p class="text-xs text-slate-400 mt-1">All recent backup attempts completed without recording errors.</p>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Backups Stats Grid -->
+  <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-5 gap-4 text-xs">
+    <div>
+      <p class="text-slate-400">Total backups</p>
+      <p class="text-sm font-bold text-slate-800 mt-0.5"><%= backups.totalCount %></p>
+    </div>
+    <div>
+      <p class="text-slate-400">Pinned backups</p>
+      <p class="text-sm font-bold text-slate-800 mt-0.5"><%= backups.pinnedCount %></p>
+    </div>
+    <div>
+      <p class="text-slate-400">Expiring in 7 days</p>
+      <p class="text-sm font-bold <%= backups.expiringSoonCount > 0 ? 'text-amber-600' : 'text-slate-800' %> mt-0.5"><%= backups.expiringSoonCount %></p>
+    </div>
+    <div>
+      <p class="text-slate-400">Total stored size</p>
+      <p class="text-sm font-bold text-slate-800 mt-0.5"><%= backups.totalSizeFormatted %></p>
+    </div>
+    <div>
+      <p class="text-slate-400">Next scheduled backup</p>
+      <p class="text-sm font-bold text-slate-800 mt-0.5"><%= backups.nextBackupFormatted %></p>
+    </div>
+  </div>
+</div>
+
+<!-- 3. Cron Jobs Section -->
+<div class="mb-8 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+  <div class="px-6 py-4 border-b border-slate-100">
+    <h2 class="text-base font-bold text-slate-800">Cron jobs</h2>
+    <p class="text-xs text-slate-400 mt-0.5">Execution history and overdue status for scheduled maintenance tasks</p>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="w-full text-left border-collapse min-w-[700px]">
+      <thead>
+        <tr class="border-b border-slate-100 bg-slate-50/70 text-xs font-bold text-slate-500 uppercase tracking-wider">
+          <th class="px-6 py-3.5">Job</th>
+          <th class="px-6 py-3.5">Last execution</th>
+          <th class="px-6 py-3.5">Trigger</th>
+          <th class="px-6 py-3.5">Status</th>
+          <th class="px-6 py-3.5">Duration</th>
+          <th class="px-6 py-3.5">Summary counts</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100 text-xs">
+        <% 
+          const jobDefinitions = [
+            { id: 'backup', name: 'Weekly database backup', run: cronStatus.backup, overdue: cronStatus.backupOverdue, overdueText: 'Overdue (> 8 days)' },
+            { id: 'backup-cleanup', name: 'Daily backup cleanup', run: cronStatus.cleanup, overdue: cronStatus.cleanupOverdue, overdueText: 'Overdue (> 36 hours)' },
+            { id: 'manual-prune', name: 'Manual backup prune', run: cronStatus.prune, overdue: false, overdueText: '' },
+          ];
+          jobDefinitions.forEach(function(jobItem) {
+            const run = jobItem.run;
+        %>
+          <tr class="hover:bg-slate-50/50 transition">
+            <td class="px-6 py-4">
+              <p class="font-bold text-slate-800"><%= jobItem.name %></p>
+              <p class="text-slate-400 font-mono text-[11px] mt-0.5"><%= jobItem.id %></p>
+            </td>
+            <td class="px-6 py-4">
+              <% if (run) { %>
+                <p class="font-semibold text-slate-700"><%= run.startedAtFormatted %></p>
+                <p class="text-slate-400 text-[11px] mt-0.5"><%= run.age %></p>
+              <% } else { %>
+                <span class="text-slate-400 italic">Never ran</span>
+              <% } %>
+            </td>
+            <td class="px-6 py-4">
+              <% if (run) { %>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md font-medium text-slate-600 bg-slate-100">
+                  <%= run.trigger %>
+                </span>
+              <% } else { %>
+                <span class="text-slate-400">—</span>
+              <% } %>
+            </td>
+            <td class="px-6 py-4">
+              <% if (!run) { %>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full font-semibold bg-slate-100 text-slate-600">
+                  Never ran
+                </span>
+              <% } else if (jobItem.overdue) { %>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800">
+                  <%= jobItem.overdueText %>
+                </span>
+              <% } else if (run.ok) { %>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-800">
+                  OK
+                </span>
+              <% } else { %>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full font-semibold bg-rose-100 text-rose-800">
+                  Failed
+                </span>
+              <% } %>
+            </td>
+            <td class="px-6 py-4 font-mono text-slate-600">
+              <%= run ? run.durationMs + ' ms' : '—' %>
+            </td>
+            <td class="px-6 py-4 text-slate-600">
+              <% if (run && run.summary && Object.keys(run.summary).length > 0) { %>
+                <div class="space-y-0.5 font-mono text-[11px]">
+                  <% Object.entries(run.summary).forEach(function([k, v]) { %>
+                    <div><span class="text-slate-400"><%= k %>:</span> <span class="font-semibold text-slate-700"><%= typeof v === 'object' ? JSON.stringify(v) : v %></span></div>
+                  <% }); %>
+                </div>
+              <% } else if (run && run.error) { %>
+                <span class="text-rose-600 font-medium truncate max-w-xs block"><%= run.error %></span>
+              <% } else { %>
+                <span class="text-slate-400">—</span>
+              <% } %>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 4. Environment Variables Section -->
+<div class="mb-8 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+  <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+    <div>
+      <h2 class="text-base font-bold text-slate-800">Environment variables</h2>
+      <p class="text-xs text-slate-400 mt-0.5">Configuration presence and validity check against system registry</p>
+    </div>
+    <span class="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+      </svg>
+      Values hidden for security
+    </span>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="w-full text-left border-collapse min-w-[640px]">
+      <thead>
+        <tr class="border-b border-slate-100 bg-slate-50/70 text-xs font-bold text-slate-500 uppercase tracking-wider">
+          <th class="px-6 py-3.5">Variable name</th>
+          <th class="px-6 py-3.5">Group</th>
+          <th class="px-6 py-3.5">Requirement</th>
+          <th class="px-6 py-3.5">Status</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100 text-xs">
+        <% envItems.forEach(function(item) { %>
+          <tr class="hover:bg-slate-50/50 transition">
+            <td class="px-6 py-3 font-mono font-bold text-slate-800">
+              <%= item.name %>
+            </td>
+            <td class="px-6 py-3 text-slate-500 font-medium">
+              <%= item.group %>
+            </td>
+            <td class="px-6 py-3">
+              <% if (item.required) { %>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full font-bold text-[11px] bg-rose-50 text-rose-700 border border-rose-100">
+                  Required
+                </span>
+              <% } else { %>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full font-medium text-[11px] bg-slate-100 text-slate-600">
+                  Optional
+                </span>
+              <% } %>
+            </td>
+            <td class="px-6 py-3">
+              <% if (item.status === 'Set') { %>
+                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-xs bg-emerald-100 text-emerald-800">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                  </svg>
+                  Set
+                </span>
+              <% } else if (item.status === 'Missing') { %>
+                <% if (item.required) { %>
+                  <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-xs bg-rose-100 text-rose-800">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                    Missing
+                  </span>
+                <% } else { %>
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full font-medium text-xs bg-slate-100 text-slate-600">
+                    Missing
+                  </span>
+                <% } %>
+              <% } else { %>
+                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-xs bg-amber-100 text-amber-800">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                  </svg>
+                  Set but invalid
+                </span>
+              <% } %>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 5. Runtime Information Section -->
+<div class="mb-8 bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+  <div class="px-6 py-4 border-b border-slate-100">
+    <h2 class="text-base font-bold text-slate-800">Runtime environment</h2>
+    <p class="text-xs text-slate-400 mt-0.5">Application process execution parameters and platform status</p>
+  </div>
+
+  <div class="p-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 text-xs">
+    <div class="p-3.5 rounded-xl border border-slate-100 bg-slate-50/50">
+      <p class="text-slate-400">Node environment</p>
+      <p class="font-mono font-semibold text-slate-800 mt-1"><%= runtime.nodeEnv %></p>
+    </div>
+
+    <div class="p-3.5 rounded-xl border border-slate-100 bg-slate-50/50">
+      <p class="text-slate-400">Vercel environment</p>
+      <p class="font-mono font-semibold text-slate-800 mt-1"><%= runtime.vercelEnv %></p>
+    </div>
+
+    <div class="p-3.5 rounded-xl border border-slate-100 bg-slate-50/50">
+      <p class="text-slate-400">Vercel region</p>
+      <p class="font-mono font-semibold text-slate-800 mt-1"><%= runtime.region %></p>
+    </div>
+
+    <div class="p-3.5 rounded-xl border border-slate-100 bg-slate-50/50">
+      <p class="text-slate-400">Git commit</p>
+      <p class="font-mono font-semibold text-slate-800 mt-1"><%= runtime.shortCommit %></p>
+    </div>
+
+    <div class="p-3.5 rounded-xl border border-slate-100 bg-slate-50/50">
+      <p class="text-slate-400">Node version</p>
+      <p class="font-mono font-semibold text-slate-800 mt-1"><%= runtime.nodeVersion %></p>
+    </div>
+
+    <div class="p-3.5 rounded-xl border border-slate-100 bg-slate-50/50">
+      <p class="text-slate-400">Process uptime</p>
+      <p class="font-mono font-semibold text-slate-800 mt-1"><%= runtime.uptimeFormatted %></p>
+    </div>
+
+    <div class="p-3.5 rounded-xl border border-slate-100 bg-slate-50/50">
+      <p class="text-slate-400">Server time</p>
+      <p class="font-semibold text-slate-800 mt-1"><%= runtime.serverTimeFormatted %></p>
+    </div>
+
+    <div class="p-3.5 rounded-xl border border-slate-100 bg-slate-50/50">
+      <p class="text-slate-400">Database connection</p>
+      <div class="flex items-center gap-1.5 mt-1">
+        <% if (runtime.dbConnected) { %>
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span class="font-semibold text-emerald-800">Connected</span>
+          <% if (runtime.dbPingMs !== null) { %>
+            <span class="text-slate-400 font-mono text-[11px]">(<%= runtime.dbPingMs %> ms)</span>
+          <% } %>
+        <% } else { %>
+          <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+          <span class="font-semibold text-rose-800">Disconnected</span>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include('../../partials/footer') %>
+
+<!-- Client JS for System Health (no inline handlers or inline scripts) -->
+<script defer src="/js/system-health.js"></script>
+

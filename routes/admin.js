@@ -106,6 +106,13 @@ router.get('/backups/:id/download', requireSuperAdmin, backupCtrl.downloadBackup
 router.post('/backups/:id/pin',     requireSuperAdmin, backupCtrl.togglePinBackup);
 router.delete('/backups/:id',       requireSuperAdmin, backupCtrl.deleteBackup);
 
+const systemCtrl = require('../controllers/adminSystemController');
+
+// System Health — superadmin only
+router.get('/system',                  requireSuperAdmin, systemCtrl.systemHealthIndex);
+router.post('/system/test-cloudinary', requireSuperAdmin, systemCtrl.testCloudinary);
+router.post('/system/cleanup-preview', requireSuperAdmin, systemCtrl.cleanupPreview);
+
 // Student Achievements — named routes BEFORE the main index
 router.get('/student-achievements/scan',         achievementsCtrl.lookupByBarcode);
 router.get('/student-achievements/student/:id',  achievementsCtrl.studentProfile);

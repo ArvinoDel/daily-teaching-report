@@ -4,6 +4,7 @@ const https        = require('https');
 const cloudinary   = require('cloudinary').v2;
 const Backup       = require('../models/Backup');
 const backupService = require('../services/backupService');
+const { recordCronRun } = require('../services/cronRunService');
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -264,10 +265,29 @@ exports.pruneBackupsManual = async (req, res) => {
     const isPreview = req.query.preview === '1' || req.body.preview === true || req.body.preview === '1';
     const sweepOrphans = req.query.sweepOrphans === '1' || req.body.sweepOrphans === true || req.body.sweepOrphans === '1';
 
-    const summary = await backupService.pruneExpiredBackups({
-      dryRun: isPreview,
-      sweepOrphans,
-    });
+    let summary;
+    if (!isPreview) {
+      summary = await recordCronRun('manual-prune', 'manual', async () => {
+        const res = await backupService.pruneExpiredBackups({
+          dryRun: false,
+          sweepOrphans,
+        });
+        return {
+          ...res,
+          summary: {
+            deletedCount: res.deletedCount || 0,
+            freedBytes: res.freedBytes || 0,
+            expiredCount: res.expiredCount || 0,
+            orphanCount: res.orphanCount || 0,
+          },
+        };
+      });
+    } else {
+      summary = await backupService.pruneExpiredBackups({
+        dryRun: true,
+        sweepOrphans,
+      });
+    }
 
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
       return res.json({
