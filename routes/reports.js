@@ -4,6 +4,15 @@ const ctrl        = require('../controllers/reportsController');
 const crosscheck  = require('../controllers/rewardCrosscheckController');
 const teacherSalaryCtrl = require('../controllers/teacherSalaryController');
 const { trackOnboardingVisit } = require('../services/onboardingService');
+const { createCspMiddleware } = require('../middleware/csp');
+
+// Per-route CSP exception for WebAssembly (OCR engine on reward crosscheck page)
+const wasmCspMiddleware = (req, res, next) => {
+  if (process.env.NODE_ENV === 'production') {
+    return createCspMiddleware({ wasm: true })(req, res, next);
+  }
+  next();
+};
 
 router.get('/', ctrl.index);
 router.get('/new', ctrl.newForm);
@@ -16,7 +25,7 @@ router.get('/my-salary',          trackOnboardingVisit('my_salary'), teacherSala
 router.get('/my-salary/:id/slip', trackOnboardingVisit('my_salary'), teacherSalaryCtrl.mySalarySlip);
 
 // Reward crosscheck routes (must be before /:id wildcard)
-router.get('/reward-crosscheck',         crosscheck.renderPage);
+router.get('/reward-crosscheck',         wasmCspMiddleware, crosscheck.renderPage);
 router.get('/api/daily-summary',         crosscheck.getMonthReportsApi);
 router.get('/api/reports-by-dates',      crosscheck.getReportsByDates);
 router.post('/api/analyze-sheet',        crosscheck.analyzeSheet);

@@ -43,6 +43,18 @@ const ENV_REGISTRY = [
     required: false,
     validate: (v) => ['true', 'false', '1', '0'].includes(String(v).trim().toLowerCase()),
   },
+  {
+    name: 'CSP_ENFORCE',
+    group: 'Security',
+    required: false,
+    validate: (v) => ['true', 'false', '1', '0'].includes(String(v).trim().toLowerCase()),
+  },
+  {
+    name: 'TAILWIND_CDN',
+    group: 'UI / Assets',
+    required: false,
+    validate: (v) => ['true', 'false', '1', '0'].includes(String(v).trim().toLowerCase()),
+  },
   // Cloudinary
   {
     name: 'CLOUDINARY_CLOUD_NAME',

@@ -33,7 +33,7 @@ function scanFile(filePath) {
   const eventMatches = withoutEjs.match(eventRegex) || [];
   const eventHandlers = eventMatches.length;
 
-  // 2. Executable inline script blocks: <script> without src and type != 'application/json' (and not nonce-authorized)
+  // 2. Executable inline script blocks: <script> without src and type != 'application/json'
   const scriptRegex = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
   let inlineScripts = 0;
   let m;
@@ -41,8 +41,7 @@ function scanFile(filePath) {
     const attrs = m[1] || '';
     const hasSrc = /\bsrc\s*=/i.test(attrs);
     const isJson = /\btype\s*=\s*['"]application\/json['"]/i.test(attrs);
-    const hasNonce = /\bnonce\s*=/i.test(attrs);
-    if (!hasSrc && !isJson && !hasNonce) {
+    if (!hasSrc && !isJson) {
       inlineScripts++;
     }
   }

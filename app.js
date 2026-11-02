@@ -21,6 +21,7 @@ const notificationRoutes = require('./routes/notifications');
 const publicCardRoutes   = require('./routes/publicCard');
 const cronRoutes         = require('./routes/cron');
 const cspReportRoutes    = require('./routes/cspReport');
+const { getCspDirectives, isCspReportOnly, createCspMiddleware } = require('./middleware/csp');
 const materialRoutes     = require('./routes/materials');
 const onboardingRoutes   = require('./routes/onboarding');
 const { trackOnboardingVisit, getNavOnboardingRemainingCount } = require('./services/onboardingService');
@@ -68,6 +69,7 @@ if (process.env.NODE_ENV === 'production') {
 // Per-request CSP nonce generation
 app.use((req, res, next) => {
   res.locals.cspNonce = crypto.randomBytes(16).toString('base64');
+  res.locals.useTailwindCdn = process.env.TAILWIND_CDN === 'true';
   next();
 });
 
@@ -75,51 +77,8 @@ app.use((req, res, next) => {
 app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === 'production'
     ? {
-      reportOnly: process.env.CSP_REPORT_ONLY === 'true',
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: [
-          "'self'",
-          (req, res) => `'nonce-${res.locals.cspNonce}'`,
-          "https://cdn.tailwindcss.com",
-          "https://cdn.jsdelivr.net",
-          "https://cdnjs.cloudflare.com",
-          "https://vercel.live"
-        ],
-        workerSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net"],
-        childSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net", "https://vercel.live"],
-        scriptSrcAttr: ["'none'"],
-        styleSrc: [
-          "'self'",
-          "'unsafe-inline'",
-          "https://cdn.tailwindcss.com",
-          "https://fonts.googleapis.com",
-          "https://cdn.jsdelivr.net",
-          "https://vercel.live"
-        ],
-        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://vercel.live", "https://assets.vercel.com"],
-        imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://vercel.live", "https://vercel.com"],
-        mediaSrc: ["'self'", "https://res.cloudinary.com"],
-        connectSrc: [
-          "'self'",
-          "blob:",
-          "data:",
-          "https://cdn.tailwindcss.com",
-          "https://cdn.jsdelivr.net",
-          "https://tessdata.projectnaptha.com",
-          "https://raw.githubusercontent.com",
-          "https://api.cloudinary.com",
-          "https://vercel.live",
-          "https://*.pusher.com",
-          "wss://*.pusher.com"
-        ],
-        frameSrc: ["'self'", "https://vercel.live"],
-        objectSrc: ["'none'"],
-        baseUri: ["'self'"],
-        formAction: ["'self'"],
-        frameAncestors: ["'self'"],
-        reportUri: ["/csp-report"],
-      },
+      reportOnly: isCspReportOnly(),
+      directives: getCspDirectives({ wasm: false }),
     }
     : false,
 }));
