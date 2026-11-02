@@ -82,9 +82,15 @@ exports.acknowledge = async (req, res) => {
       if (!teacherId) {
         return res.status(400).json({ ok: false, error: 'Teacher is required for teacher_silent gaps.' });
       }
+      if (dateStr && !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return res.status(400).json({ ok: false, error: 'Date must be in YYYY-MM-DD format.' });
+      }
     } else if (kind === 'group_silent') {
       if (!groupStr) {
         return res.status(400).json({ ok: false, error: 'Group is required for group_silent gaps.' });
+      }
+      if (dateStr && !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return res.status(400).json({ ok: false, error: 'Date must be in YYYY-MM-DD format.' });
       }
     }
 

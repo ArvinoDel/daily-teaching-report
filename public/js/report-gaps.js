@@ -77,6 +77,9 @@
     if (kind === 'teacher_day' && date) {
       if (dateRow) dateRow.classList.remove('hidden');
       if (dateLabel) dateLabel.textContent = `${weekday ? weekday + ', ' : ''}${date}`;
+    } else if (date) {
+      if (dateRow) dateRow.classList.remove('hidden');
+      if (dateLabel) dateLabel.textContent = `Episode last report: ${date}`;
     } else {
       if (dateRow) dateRow.classList.add('hidden');
     }

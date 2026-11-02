@@ -209,6 +209,7 @@
                     data-kind="teacher_silent"
                     data-teacher-id="<%= gap.teacherId %>"
                     data-target-name="<%= gap.teacherName %>"
+                    data-date="<%= gap.lastReportDate || '' %>"
                     class="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition shadow-sm">
                     Mark as no class
                   </button>
@@ -285,6 +286,7 @@
                   data-action="open-ack-modal"
                   data-kind="group_silent"
                   data-group="<%= gap.groupName %>"
+                  data-date="<%= gap.lastDate || '' %>"
                   data-target-name="<%= gap.groupName %>"
                   class="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition shadow-sm">
                   Mark as no class

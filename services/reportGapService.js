@@ -386,8 +386,9 @@ function detectReportGaps({
     }
 
     if (silent) {
-      // Check acknowledgement
-      const ackKey = `teacher_silent:${tid}::`;
+      // Check acknowledgement for current episode date (or empty if missing)
+      const episodeDate = tData.lastReportDate || '';
+      const ackKey = `teacher_silent:${tid}::${episodeDate}`;
       if (!ackSet.has(ackKey)) {
         teacherSilentGaps.push({
           kind: 'teacher_silent',
@@ -438,8 +439,9 @@ function detectReportGaps({
     }
 
     if (silent) {
-      // Check acknowledgement
-      const ackKey = `group_silent::${className}:`;
+      // Check acknowledgement for current episode date (or empty if missing)
+      const episodeDate = lastDate || '';
+      const ackKey = `group_silent::${className}:${episodeDate}`;
       if (!ackSet.has(ackKey)) {
         groupSilentGaps.push({
           kind: 'group_silent',

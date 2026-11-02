@@ -298,7 +298,7 @@ test('Report Gap Detector - teacher_silent rules', async (t) => {
     assert.equal(result.teacherSilentGaps.length, 0, 'Report within 10 days means teacher is not silent');
   });
 
-  await t.test('acknowledgement suppresses teacher_silent gap', () => {
+  await t.test('acknowledgement suppresses teacher_silent gap with matching episode date', () => {
     const teacherReports = [
       { teacher: teacherId, localDate: '2026-10-12', count: 8 },
     ];
@@ -307,6 +307,7 @@ test('Report Gap Detector - teacher_silent rules', async (t) => {
       {
         kind: 'teacher_silent',
         teacher: teacherId,
+        date: '2026-10-12',
         reason: 'other',
         note: 'Teacher on extended sabbatical',
       },
@@ -322,6 +323,65 @@ test('Report Gap Detector - teacher_silent rules', async (t) => {
     });
 
     assert.equal(result.teacherSilentGaps.length, 0, 'Acknowledged teacher_silent gap must be suppressed');
+  });
+
+  await t.test('acknowledgement with different episode date does NOT suppress teacher_silent', () => {
+    const teacherReports = [
+      { teacher: teacherId, localDate: '2026-10-12', count: 8 },
+    ];
+
+    const acks = [
+      {
+        kind: 'teacher_silent',
+        teacher: teacherId,
+        date: '2026-09-01', // different episode date
+        reason: 'other',
+        note: 'Old sabbatical ack',
+      },
+    ];
+
+    const result = detectReportGaps({
+      teacherReports,
+      classReports: [],
+      teachers,
+      noClassDates: [],
+      acks,
+      now,
+    });
+
+    assert.equal(result.teacherSilentGaps.length, 1, 'Mismatched episode date must not suppress gap');
+  });
+
+  await t.test('teacher reporting again and going silent later is flagged again', () => {
+    // Acked previous episode date '2026-10-12'
+    const acks = [
+      {
+        kind: 'teacher_silent',
+        teacher: teacherId,
+        date: '2026-10-12',
+        reason: 'other',
+        note: 'Acked October silence',
+      },
+    ];
+
+    // Later, in December (now is 2026-12-15), teacher reported in November (2026-11-20)
+    // 8 reports in 8 weeks, but 25 days since last report (2026-11-20)
+    const futureNow = new Date('2026-12-15T07:00:00.000Z');
+    const laterReports = [
+      { teacher: teacherId, localDate: '2026-11-20', count: 8 },
+    ];
+
+    const result = detectReportGaps({
+      teacherReports: laterReports,
+      classReports: [],
+      teachers,
+      noClassDates: [],
+      acks,
+      now: futureNow,
+    });
+
+    assert.equal(result.teacherSilentGaps.length, 1, 'New episode silence must be flagged again');
+    assert.equal(result.teacherSilentGaps[0].lastReportDate, '2026-11-20');
   });
 });
 
@@ -398,7 +458,7 @@ test('Report Gap Detector - group_silent rules', async (t) => {
     assert.deepEqual(matchStage.session_type, { $ne: 'competition' });
   });
 
-  await t.test('acknowledgement suppresses group_silent gap', () => {
+  await t.test('acknowledgement suppresses group_silent gap with matching episode date', () => {
     const classReports = [
       { _id: 'Saturday-Kids', count: 5, lastDate: '2026-10-16' },
     ];
@@ -407,6 +467,7 @@ test('Report Gap Detector - group_silent rules', async (t) => {
       {
         kind: 'group_silent',
         group: 'Saturday-Kids',
+        date: '2026-10-16',
         reason: 'no_class',
         note: 'Course completed for the term',
       },
@@ -422,6 +483,63 @@ test('Report Gap Detector - group_silent rules', async (t) => {
     });
 
     assert.equal(result.groupSilentGaps.length, 0, 'Acknowledged group_silent gap must be suppressed');
+  });
+
+  await t.test('acknowledgement with different episode date does NOT suppress group_silent', () => {
+    const classReports = [
+      { _id: 'Saturday-Kids', count: 5, lastDate: '2026-10-16' },
+    ];
+
+    const acks = [
+      {
+        kind: 'group_silent',
+        group: 'Saturday-Kids',
+        date: '2026-09-01', // different date
+        reason: 'no_class',
+        note: 'Previous term ack',
+      },
+    ];
+
+    const result = detectReportGaps({
+      teacherReports: [],
+      classReports,
+      teachers: [],
+      noClassDates: [],
+      acks,
+      now,
+    });
+
+    assert.equal(result.groupSilentGaps.length, 1, 'Mismatched episode date must not suppress group_silent');
+  });
+
+  await t.test('group reporting again and going silent later is flagged again', () => {
+    const acks = [
+      {
+        kind: 'group_silent',
+        group: 'Saturday-Kids',
+        date: '2026-10-16',
+        reason: 'no_class',
+        note: 'October ack',
+      },
+    ];
+
+    // Later in December, group reported on 2026-11-25, but silent since
+    const futureNow = new Date('2026-12-15T07:00:00.000Z');
+    const classReports = [
+      { _id: 'Saturday-Kids', count: 5, lastDate: '2026-11-25' },
+    ];
+
+    const result = detectReportGaps({
+      teacherReports: [],
+      classReports,
+      teachers: [],
+      noClassDates: [],
+      acks,
+      now: futureNow,
+    });
+
+    assert.equal(result.groupSilentGaps.length, 1, 'New episode silence must be flagged again for group');
+    assert.equal(result.groupSilentGaps[0].lastDate, '2026-11-25');
   });
 });
 
