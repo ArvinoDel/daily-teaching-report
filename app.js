@@ -82,6 +82,46 @@ app.use(helmet({
     }
     : false,
 }));
+// Rate limiting - login brute force protection
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Too many login attempts, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// General API rate limit
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.originalUrl.startsWith('/api/cron') || req.originalUrl.startsWith('/auth/heartbeat'),
+});
+
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+
+const { renderMaterialBody, safeJson } = require('./services/materialContentService');
+app.locals.renderMaterialBody = renderMaterialBody;
+app.locals.safeJson = safeJson;
+
+app.use(generalLimiter);
+app.use(compression()); // ⚡ gzip all responses — reduces page size by 70–85%
+
+// Body size limits — 10MB to accommodate image uploads & large JSON payloads
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '10mb' }));
+// Only allow method override via POST body hidden field (not query string)
+app.use(methodOverride(function (req) {
+  if (req.body && typeof req.body === 'object' && '_method' in req.body) {
+    const method = req.body._method;
+    delete req.body._method;
+    return method;
+  }
+}));
+
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: process.env.NODE_ENV === 'production' ? '7d' : 0, // ⚡ 7d cache in prod, instant reload in dev
   etag:   true,
