@@ -110,6 +110,11 @@ app.locals.safeJson = safeJson;
 app.use(generalLimiter);
 app.use(compression()); // ⚡ gzip all responses — reduces page size by 70–85%
 
+// CSP violation reporting — mounted before the global body parsers so the
+// route-local express.json({ limit: '8kb' }) is the first (and only) body
+// parser that runs for these requests.  Exempt from session & CSRF too.
+app.use('/csp-report', cspReportRoutes);
+
 // Body size limits — 10MB to accommodate image uploads & large JSON payloads
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.json({ limit: '10mb' }));
@@ -129,9 +134,6 @@ app.use(express.static(path.join(__dirname, 'public'), {
 
 // Cron endpoints (triggered by Vercel Cron, authenticated via Bearer token)
 app.use('/api/cron', cronRoutes);
-
-// CSP violation reporting (rate limited, 8kb limit, exempt from session/csrf)
-app.use('/csp-report', cspReportRoutes);
 
 app.use(session({
   secret: SESSION_SECRET,
@@ -287,7 +289,7 @@ app.use(async (err, req, res, next) => {
   if (req.path.includes('/api/') || (req.headers.accept && req.headers.accept.includes('application/json'))) {
     return res.status(statusCode).json({ error: err.message || 'Internal server error.' });
   }
-  res.status(500).render('error', { message: 'Internal server error.' });
+  res.status(statusCode).render('error', { message: statusCode < 500 ? err.message : 'Internal server error.' });
 });
 
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {

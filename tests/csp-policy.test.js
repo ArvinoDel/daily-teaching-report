@@ -1,7 +1,7 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
 const express = require('express');
-const { getCspDirectives, isCspReportOnly, createCspMiddleware } = require('../middleware/csp');
+const { getCspDirectives, isCspReportOnly, createCspMiddleware, isVercelProduction } = require('../middleware/csp');
 
 describe('CSP Production Policy Guard', () => {
   test('production directives have no unsafe-inline or unsafe-eval in script-src and script-src-attr is none', () => {
@@ -140,5 +140,116 @@ describe('CSP Production Policy Guard', () => {
       if (origReportOnly !== undefined) process.env.CSP_REPORT_ONLY = origReportOnly;
       else delete process.env.CSP_REPORT_ONLY;
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // VERCEL_ENV guard: preview/dev hosts vs production
+  // ---------------------------------------------------------------------------
+  describe('VERCEL_ENV host guard', () => {
+    /**
+     * Helper: save/restore VERCEL_ENV around a test callback.
+     */
+    function withVercelEnv(value, fn) {
+      return async () => {
+        const orig = process.env.VERCEL_ENV;
+        if (value === undefined) delete process.env.VERCEL_ENV;
+        else process.env.VERCEL_ENV = value;
+        try {
+          await fn();
+        } finally {
+          if (orig === undefined) delete process.env.VERCEL_ENV;
+          else process.env.VERCEL_ENV = orig;
+        }
+      };
+    }
+
+    test(
+      'isVercelProduction() returns true only when VERCEL_ENV === production',
+      withVercelEnv('production', () => {
+        assert.strictEqual(isVercelProduction(), true, 'isVercelProduction() must be true when VERCEL_ENV=production');
+      })
+    );
+
+    test(
+      'isVercelProduction() returns false when VERCEL_ENV is preview',
+      withVercelEnv('preview', () => {
+        assert.strictEqual(isVercelProduction(), false, 'isVercelProduction() must be false when VERCEL_ENV=preview');
+      })
+    );
+
+    test(
+      'isVercelProduction() returns false when VERCEL_ENV is unset (local dev)',
+      withVercelEnv(undefined, () => {
+        assert.strictEqual(isVercelProduction(), false, 'isVercelProduction() must be false when VERCEL_ENV is unset');
+      })
+    );
+
+    test(
+      'VERCEL_ENV=production: vercel.live and pusher.com are NOT in any directive',
+      withVercelEnv('production', () => {
+        const d = getCspDirectives({ wasm: false });
+
+        const flattenDir = (arr) =>
+          (arr || []).map(s => (typeof s === 'function' ? s.toString() : s)).join(' ');
+
+        const allDirectiveValues = [
+          ...Object.values(d).map(flattenDir),
+        ].join(' ');
+
+        assert.ok(
+          !allDirectiveValues.includes('vercel.live'),
+          'When VERCEL_ENV=production, vercel.live must NOT appear in any CSP directive'
+        );
+        assert.ok(
+          !allDirectiveValues.includes('pusher.com'),
+          'When VERCEL_ENV=production, pusher.com must NOT appear in any CSP directive'
+        );
+        assert.ok(
+          !allDirectiveValues.includes('vercel.com'),
+          'When VERCEL_ENV=production, vercel.com must NOT appear in any CSP directive'
+        );
+      })
+    );
+
+    test(
+      'VERCEL_ENV unset (local): vercel.live is in scriptSrc and pusher.com is in connectSrc',
+      withVercelEnv(undefined, () => {
+        const d = getCspDirectives({ wasm: false });
+
+        const flattenDir = (arr) =>
+          (arr || []).map(s => (typeof s === 'function' ? s.toString() : s)).join(' ');
+
+        const scriptSrcStr  = flattenDir(d.scriptSrc);
+        const connectSrcStr = flattenDir(d.connectSrc);
+
+        assert.ok(
+          scriptSrcStr.includes('vercel.live'),
+          'When VERCEL_ENV is unset, vercel.live must be in scriptSrc (for Vercel toolbar)'
+        );
+        assert.ok(
+          connectSrcStr.includes('pusher.com'),
+          'When VERCEL_ENV is unset, pusher.com must be in connectSrc (for Vercel toolbar WebSocket)'
+        );
+      })
+    );
+
+    test(
+      'VERCEL_ENV=preview: vercel.live is in scriptSrc and pusher.com is in connectSrc',
+      withVercelEnv('preview', () => {
+        const d = getCspDirectives({ wasm: false });
+
+        const flattenDir = (arr) =>
+          (arr || []).map(s => (typeof s === 'function' ? s.toString() : s)).join(' ');
+
+        assert.ok(
+          flattenDir(d.scriptSrc).includes('vercel.live'),
+          'When VERCEL_ENV=preview, vercel.live must be in scriptSrc'
+        );
+        assert.ok(
+          flattenDir(d.connectSrc).includes('pusher.com'),
+          'When VERCEL_ENV=preview, pusher.com must be in connectSrc'
+        );
+      })
+    );
   });
 });
