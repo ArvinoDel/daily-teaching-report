@@ -827,16 +827,19 @@ async function pruneExpiredBackups({
   return summary;
 }
 
+let scheduledTasks = [];
+
 /**
  * Initializes schedulers:
  * - Weekly backup: Sunday at 00:00 (midnight WIB).
  * - Daily retention cleanup: 01:30 WIB (18:30 UTC).
  */
 function initScheduler() {
+  stopScheduler();
   const { recordCronRun } = require('./cronRunService');
 
   // Weekly backup
-  cron.schedule('0 0 * * 0', async () => {
+  const task1 = cron.schedule('0 0 * * 0', async () => {
     console.log('⏰ Starting automated weekly backup...');
     try {
       await recordCronRun('backup', 'scheduler', async () => {
@@ -876,7 +879,7 @@ function initScheduler() {
   });
 
   // Daily cleanup
-  cron.schedule('30 1 * * *', async () => {
+  const task2 = cron.schedule('30 1 * * *', async () => {
     console.log('⏰ Starting daily scheduled backup retention cleanup...');
     try {
       await recordCronRun('backup-cleanup', 'scheduler', async () => {
@@ -894,7 +897,23 @@ function initScheduler() {
     }
   });
 
+  scheduledTasks = [task1, task2];
   console.log('⏰ Backup schedulers initialized (Weekly: Sun 00:00, Daily Cleanup: 01:30).');
+  return scheduledTasks;
+}
+
+/**
+ * Stops any active node-cron scheduler tasks.
+ */
+function stopScheduler() {
+  if (Array.isArray(scheduledTasks)) {
+    scheduledTasks.forEach(task => {
+      if (task && typeof task.stop === 'function') {
+        task.stop();
+      }
+    });
+  }
+  scheduledTasks = [];
 }
 
 /**
@@ -933,5 +952,6 @@ module.exports = {
   pruneExpiredBackups,
   pruneOldAutomatedBackups: pruneExpiredBackups, // Backward-compatible alias
   initScheduler,
+  stopScheduler,
   getNextBackupDate,
 };

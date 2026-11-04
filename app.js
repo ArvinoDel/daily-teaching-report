@@ -46,8 +46,11 @@ if (!SESSION_SECRET) {
   process.exit(1);
 }
 
-mongoose.connect(MONGO_URI, {
-  serverSelectionTimeoutMS: 8000,
+const timeoutMatch = MONGO_URI.match(/serverSelectionTimeoutMS=(\d+)/);
+const serverSelectionTimeoutMS = timeoutMatch ? parseInt(timeoutMatch[1], 10) : 8000;
+
+app.mongoConnectionPromise = mongoose.connect(MONGO_URI, {
+  serverSelectionTimeoutMS,
   maxPoolSize: 20, // ⚡ allow more concurrent DB operations (default is 5)
   minPoolSize: 5,
 })
@@ -135,11 +138,14 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // Cron endpoints (triggered by Vercel Cron, authenticated via Bearer token)
 app.use('/api/cron', cronRoutes);
 
+const sessionStore = MongoStore.create({ mongoUrl: MONGO_URI });
+app.sessionStore = sessionStore;
+
 app.use(session({
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  store: MongoStore.create({ mongoUrl: MONGO_URI }),
+  store: sessionStore,
   name: 'sid',
   cookie: {
     maxAge: 1000 * 60 * 60 * 24 * 7,
@@ -292,8 +298,28 @@ app.use(async (err, req, res, next) => {
   res.status(statusCode).render('error', { message: statusCode < 500 ? err.message : 'Internal server error.' });
 });
 
+let server = null;
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-  app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+  server = app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
 }
+app.server = server;
+
+app.close = async function() {
+  if (app.server) {
+    await new Promise(resolve => app.server.close(resolve));
+    app.server = null;
+  }
+  if (app.sessionStore && typeof app.sessionStore.close === 'function') {
+    await app.sessionStore.close().catch(() => {});
+  }
+  try {
+    const backupService = require('./services/backupService');
+    if (typeof backupService.stopScheduler === 'function') {
+      backupService.stopScheduler();
+    }
+  } catch (_) {}
+  const mongoose = require('mongoose');
+  await mongoose.disconnect().catch(() => {});
+};
 
 module.exports = app;

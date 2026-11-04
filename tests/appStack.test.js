@@ -2,183 +2,208 @@
 /**
  * tests/appStack.test.js
  *
- * Static guard: reads app.js as a string and asserts every required Express
- * middleware / configuration statement is present.  Fails with a clear,
- * descriptive message naming the missing statement so no-one has to grep.
+ * Static guard suite for app.js Express middleware and configuration stack.
  *
- * This test does NOT start the server — it only inspects the source text.
+ * Tests:
+ *   1. stripComments state machine unit tests (strings with //, template literals,
+ *      regex literals, nested quotes, block comments inside strings).
+ *   2. Real app.js validation via checkAppStack (must have 0 missing/misordered statements).
+ *   3. Mutation tests: each required statement deleted and commented out must report
+ *      exactly that rule ID.
+ *   4. Ordering mutation tests: /api/cron deleted or moved after session must fail.
+ *   5. Comment insulation: an express.json mention inside comments cannot satisfy express-json.
  */
 
-const { test } = require('node:test');
-const assert   = require('node:assert');
-const fs       = require('fs');
-const path     = require('path');
+const { test, describe } = require('node:test');
+const assert = require('node:assert');
+const fs     = require('fs');
+const path   = require('path');
 
-const appSrc = fs.readFileSync(path.resolve(__dirname, '../app.js'), 'utf8');
+const {
+  stripComments,
+  checkAppStack,
+  REQUIRED_RULES,
+} = require('./helpers/appStack');
 
-function assertMatches(pattern, message) {
-  assert.ok(
-    pattern.test(appSrc),
-    `MISSING STATEMENT: ${message}\n  Pattern: ${pattern}`
-  );
-}
+const APP_PATH = path.resolve(__dirname, '../app.js');
+const appSrc   = fs.readFileSync(APP_PATH, 'utf8');
 
 // ---------------------------------------------------------------------------
-// 1. trust proxy
+// 1. stripComments unit tests
 // ---------------------------------------------------------------------------
-test("app.js must set trust proxy 1", () => {
-  assertMatches(
-    /app\.set\(\s*['"]trust proxy['"]\s*,\s*1\s*\)/,
-    "app.set('trust proxy', 1)"
-  );
+describe('stripComments state machine', () => {
+  test('preserves string containing // (e.g. URLs)', () => {
+    const input = 'const url = "https://example.com/api";';
+    assert.strictEqual(stripComments(input), input);
+  });
+
+  test('preserves template literal containing //', () => {
+    const input = 'const msg = `hello // world ${name}`;';
+    assert.strictEqual(stripComments(input), input);
+  });
+
+  test('preserves regex literal with slash and comment-like characters', () => {
+    const input = 'const r = /\\/\\* [a-z]+ \\*\\//;';
+    assert.strictEqual(stripComments(input), input);
+  });
+
+  test('preserves nested quotes inside strings', () => {
+    const input1 = `const s = 'nested "double" quotes inside';`;
+    const input2 = `const s = "nested 'single' quotes inside";`;
+    assert.strictEqual(stripComments(input1), input1);
+    assert.strictEqual(stripComments(input2), input2);
+  });
+
+  test('preserves block comment syntax when inside a string', () => {
+    const input = 'const s = "this has /* block comment */ inside string";';
+    assert.strictEqual(stripComments(input), input);
+  });
+
+  test('strips real single-line comments but preserves newlines and code', () => {
+    const input = 'const a = 1; // line comment\nconst b = 2;';
+    const stripped = stripComments(input);
+    assert.ok(!stripped.includes('line comment'));
+    assert.ok(stripped.includes('const a = 1;'));
+    assert.ok(stripped.includes('const b = 2;'));
+  });
+
+  test('strips real block comments but preserves newlines and code', () => {
+    const input = 'const a = 1; /* block\ncomment */ const b = 2;';
+    const stripped = stripComments(input);
+    assert.ok(!stripped.includes('block'));
+    assert.ok(!stripped.includes('comment'));
+    assert.ok(stripped.includes('const a = 1;'));
+    assert.ok(stripped.includes('const b = 2;'));
+  });
+
+  test('handles comments with quote characters without getting stuck in string mode', () => {
+    const input = "// it's a test with quotes: \"hello\"\nconst c = 3;";
+    const stripped = stripComments(input);
+    assert.ok(!stripped.includes("it's a test"));
+    assert.ok(stripped.includes('const c = 3;'));
+  });
 });
 
 // ---------------------------------------------------------------------------
-// 2. View engine
+// 2. Real app.js validation
 // ---------------------------------------------------------------------------
-test("app.js must set view engine to ejs", () => {
-  assertMatches(
-    /app\.set\(\s*['"]view engine['"]\s*,\s*['"]ejs['"]\s*\)/,
-    "app.set('view engine', 'ejs')"
-  );
-});
-
-test("app.js must set views directory", () => {
-  assertMatches(
-    /app\.set\(\s*['"]views['"]\s*,/,
-    "app.set('views', <path>)"
-  );
+describe('Real app.js stack guard', () => {
+  test('app.js satisfies all required middleware, configs, and ordering rules', () => {
+    const issues = checkAppStack(appSrc);
+    assert.deepStrictEqual(
+      issues,
+      [],
+      `app.js is missing or has misordered statements: ${JSON.stringify(issues, null, 2)}`
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
-// 3. Body parsers & middleware
+// 3. Anchoring & comment insulation
 // ---------------------------------------------------------------------------
-test("app.js must register express.urlencoded body parser", () => {
-  assertMatches(
-    /express\.urlencoded\s*\(/,
-    "express.urlencoded({ extended: true, ... })"
-  );
-});
-
-test("app.js must register express.json body parser", () => {
-  assertMatches(
-    /express\.json\s*\(/,
-    "express.json({ limit: ... })"
-  );
-});
-
-test("app.js must register methodOverride", () => {
-  assertMatches(
-    /methodOverride\s*\(/,
-    "methodOverride(...)"
-  );
-});
-
-test("app.js must use compression()", () => {
-  assertMatches(
-    /compression\s*\(\s*\)/,
-    "compression()"
-  );
+describe('Pattern anchoring and comment insulation', () => {
+  test('a comment mentioning express.json does not satisfy express-json pattern', () => {
+    const fakeSource = `
+      // Here is a comment mentioning express.json({ limit: '8kb' })
+      /* Another comment with app.use(express.json()) */
+      app.set('trust proxy', 1);
+    `;
+    const issues = checkAppStack(fakeSource);
+    const jsonIssue = issues.find(i => i.id === 'express-json');
+    assert.ok(jsonIssue, 'Expected express-json to be reported missing when only in comments');
+  });
 });
 
 // ---------------------------------------------------------------------------
-// 4. Rate limiters — definition & mounting
+// 4. Mutation tests for all required statements
 // ---------------------------------------------------------------------------
-test("loginLimiter must be defined with windowMs 15 min and max 20", () => {
-  // Look for the loginLimiter block: windowMs: 15 * 60 * 1000 then max: 20
-  // within roughly 300 chars of each other to avoid false positives.
-  const match = /windowMs\s*:\s*15\s*\*\s*60\s*\*\s*1000[\s\S]{0,300}max\s*:\s*20/.test(appSrc)
-             || /max\s*:\s*20[\s\S]{0,300}windowMs\s*:\s*15\s*\*\s*60\s*\*\s*1000/.test(appSrc);
-  assert.ok(
-    match,
-    'MISSING STATEMENT: loginLimiter must have windowMs: 15 * 60 * 1000 and max: 20'
-  );
-});
+describe('Mutation tests for required statements', () => {
+  // Mapping of rule IDs to their exact unique anchor string in the real app.js
+  const STATEMENT_ANCHORS = {
+    'trust-proxy': "app.set('trust proxy', 1);",
+    'view-engine': "app.set('view engine', 'ejs');",
+    'views-dir': "app.set('views', path.join(__dirname, 'views'));",
+    'express-urlencoded': "app.use(express.urlencoded({ extended: true, limit: '10mb' }));",
+    'express-json': "app.use(express.json({ limit: '10mb' }));",
+    'method-override': "app.use(methodOverride(function (req) {",
+    'compression': "app.use(compression());",
+    'general-limiter-def': "const generalLimiter = rateLimit({",
+    'general-limiter-mount': "app.use(generalLimiter);",
+    'login-limiter-def': "const loginLimiter = rateLimit({",
+    'login-limiter-mount': "app.use('/auth/login', loginLimiter);",
+    'csp': "contentSecurityPolicy: process.env.NODE_ENV === 'production'",
+    'csp-report-mount': "app.use('/csp-report', cspReportRoutes);",
+    'cron-mount': "app.use('/api/cron', cronRoutes);",
+    'session': "app.use(session({",
+    'csrf': "app.use(csrfProtection);",
+  };
 
-test("loginLimiter must be applied to /auth/login route", () => {
-  assertMatches(
-    /app\.use\(\s*['"]\/auth\/login['"]\s*,\s*loginLimiter\s*\)/,
-    "app.use('/auth/login', loginLimiter)"
-  );
-});
+  for (const rule of REQUIRED_RULES) {
+    const anchor = STATEMENT_ANCHORS[rule.id];
+    if (!anchor) continue;
 
-test("generalLimiter must have max 300", () => {
-  assertMatches(
-    /max\s*:\s*300/,
-    "generalLimiter max: 300"
-  );
-});
+    test(`mutation: deleting line for ${rule.id} causes checkAppStack to report ${rule.id}`, () => {
+      assert.ok(appSrc.includes(anchor), `Anchor for ${rule.id} not found in app.js: "${anchor}"`);
+      const mutated = appSrc.replace(anchor, '');
+      const issues = checkAppStack(mutated);
+      const found = issues.find(i => i.id === rule.id);
+      assert.ok(found, `Expected checkAppStack to report ${rule.id} missing when deleted`);
+    });
 
-test("generalLimiter skip must cover /api/cron and /auth/heartbeat", () => {
-  // Both paths must appear in the skip expression (order may vary)
-  const hasCron      = /\/api\/cron/.test(appSrc);
-  const hasHeartbeat = /\/auth\/heartbeat/.test(appSrc);
-  assert.ok(
-    hasCron && hasHeartbeat,
-    'MISSING STATEMENT: generalLimiter skip must reference /api/cron and /auth/heartbeat'
-  );
-});
-
-test("generalLimiter must be mounted with app.use(generalLimiter)", () => {
-  assertMatches(
-    /app\.use\(\s*generalLimiter\s*\)/,
-    "app.use(generalLimiter)"
-  );
-});
-
-// ---------------------------------------------------------------------------
-// 5. Session middleware
-// ---------------------------------------------------------------------------
-test("app.js must mount session middleware", () => {
-  assertMatches(
-    /app\.use\(\s*session\s*\(/,
-    "app.use(session({ ... }))"
-  );
+    test(`mutation: commenting out line for ${rule.id} causes checkAppStack to report ${rule.id}`, () => {
+      assert.ok(appSrc.includes(anchor), `Anchor for ${rule.id} not found in app.js: "${anchor}"`);
+      const mutated = appSrc.replace(anchor, '// ' + anchor);
+      const issues = checkAppStack(mutated);
+      const found = issues.find(i => i.id === rule.id);
+      assert.ok(found, `Expected checkAppStack to report ${rule.id} missing when commented out`);
+    });
+  }
 });
 
 // ---------------------------------------------------------------------------
-// 6. CSRF protection
+// 5. Ordering mutations
 // ---------------------------------------------------------------------------
-test("app.js must mount CSRF protection", () => {
-  // accept csrfProtection, csurf, csrf — the actual symbol may vary
-  assertMatches(
-    /app\.use\(\s*csrfProtection\s*\)/,
-    "app.use(csrfProtection)"
-  );
-});
+describe('Ordering mutations', () => {
+  const cronLine = "app.use('/api/cron', cronRoutes);";
+  const sessionLine = "app.use(session({";
 
-// ---------------------------------------------------------------------------
-// 7. CSP via Helmet
-// ---------------------------------------------------------------------------
-test("app.js must configure CSP (createCspMiddleware or contentSecurityPolicy)", () => {
-  assertMatches(
-    /createCspMiddleware|contentSecurityPolicy/,
-    "createCspMiddleware() or helmet.contentSecurityPolicy() must appear in app.js"
-  );
-});
+  test('mutation: deleting /api/cron mount entirely reports cron-mount', () => {
+    const mutated = appSrc.replace(cronLine, '');
+    const issues = checkAppStack(mutated);
+    assert.ok(issues.some(i => i.id === 'cron-mount'), 'Expected cron-mount issue');
+  });
 
-// ---------------------------------------------------------------------------
-// 8. CSP report endpoint
-// ---------------------------------------------------------------------------
-test("app.js must mount /csp-report route", () => {
-  assertMatches(
-    /app\.use\(\s*['"]\/csp-report['"]/,
-    "app.use('/csp-report', ...)"
-  );
-});
+  test('mutation: moving /api/cron mount after session middleware reports cron-before-session', () => {
+    assert.ok(appSrc.includes(cronLine));
+    assert.ok(appSrc.includes(sessionLine));
 
-// ---------------------------------------------------------------------------
-// 9. Ordering: /api/cron must be mounted BEFORE the session middleware
-// ---------------------------------------------------------------------------
-test("/api/cron must be mounted before session middleware", () => {
-  const cronIdx    = appSrc.indexOf("'/api/cron'");
-  const sessionIdx = appSrc.search(/app\.use\(\s*session\s*\(/);
+    // Remove cron from original place
+    const withoutCron = appSrc.replace(cronLine, '');
+    // Insert cron after the session block
+    const sessionIdx = withoutCron.indexOf(sessionLine);
+    const sessionEnd = withoutCron.indexOf('}));', sessionIdx) + 4;
+    const mutated = withoutCron.slice(0, sessionEnd) + '\n' + cronLine + '\n' + withoutCron.slice(sessionEnd);
 
-  assert.ok(cronIdx !== -1,   "MISSING STATEMENT: app.use('/api/cron', ...) not found in app.js");
-  assert.ok(sessionIdx !== -1, "MISSING STATEMENT: app.use(session(...)) not found in app.js");
-  assert.ok(
-    cronIdx < sessionIdx,
-    `ORDERING VIOLATION: '/api/cron' mount (offset ${cronIdx}) must appear BEFORE session middleware (offset ${sessionIdx}).` +
-    ' Cron routes must not require a session so they can be authenticated cheaply via Bearer token.'
-  );
+    const issues = checkAppStack(mutated);
+    assert.ok(
+      issues.some(i => i.id === 'cron-before-session'),
+      `Expected cron-before-session when /api/cron is after session. Got: ${JSON.stringify(issues)}`
+    );
+  });
+
+  test('mutation: moving /csp-report mount after session middleware reports csp-report-before-session', () => {
+    const cspReportLine = "app.use('/csp-report', cspReportRoutes);";
+    assert.ok(appSrc.includes(cspReportLine));
+
+    const withoutCspReport = appSrc.replace(cspReportLine, '');
+    const sessionIdx = withoutCspReport.indexOf(sessionLine);
+    const sessionEnd = withoutCspReport.indexOf('}));', sessionIdx) + 4;
+    const mutated = withoutCspReport.slice(0, sessionEnd) + '\n' + cspReportLine + '\n' + withoutCspReport.slice(sessionEnd);
+
+    const issues = checkAppStack(mutated);
+    assert.ok(
+      issues.some(i => i.id === 'csp-report-before-session'),
+      `Expected csp-report-before-session when /csp-report is after session. Got: ${JSON.stringify(issues)}`
+    );
+  });
 });
