@@ -43,6 +43,26 @@
     });
   }
 
+  if (typeof registerAction === 'function') {
+    registerAction('toggleSuspendInput', function () {
+      var box = document.getElementById('suspend-box');
+      if (box) {
+        box.classList.toggle('hidden');
+        var input = document.getElementById('suspend-reason');
+        if (input && !box.classList.contains('hidden')) input.focus();
+      }
+    });
+
+    registerAction('toggleRejectInput', function () {
+      var box = document.getElementById('reject-box');
+      if (box) {
+        box.classList.toggle('hidden');
+        var input = document.getElementById('reject-reason');
+        if (input && !box.classList.contains('hidden')) input.focus();
+      }
+    });
+  }
+
   window.addEventListener('beforeunload', function (e) {
     if (dirty) { e.preventDefault(); e.returnValue = ''; }
   });

@@ -1,3 +1,4 @@
+const { activeUserFilter } = require('../services/userAccountService');
 const mongoose = require('mongoose');
 const Report   = require('../models/Report');
 const User     = require('../models/User');
@@ -123,7 +124,7 @@ async function getTeachersData() {
     return { json: _teachersJson, docs: _teachersDocs };
   }
   try {
-    const teachers = await User.find({ role: 'teacher' })
+    const teachers = await User.find(activeUserFilter({ role: 'teacher' }))
       .select('displayName username')
       .sort({ displayName: 1 })
       .lean();
@@ -407,7 +408,7 @@ exports.create = async (req, res) => {
       const [groupsJson, teachersJson, teachers, materialsJson] = await Promise.all([
         getGroupsJson(),
         getTeachersJson(),
-        isAdmin ? User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }) : Promise.resolve([]),
+        isAdmin ? User.find(activeUserFilter({ role: 'teacher' })).select('displayName username').sort({ displayName: 1 }) : Promise.resolve([]),
         getMaterialsJson(),
       ]);
       const formData = {
@@ -492,7 +493,7 @@ exports.create = async (req, res) => {
     const [groupsJson, teachersJson, teachers, materialsJson] = await Promise.all([
       getGroupsJson(),
       getTeachersJson(),
-      isAdmin ? User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }) : Promise.resolve([]),
+      isAdmin ? User.find(activeUserFilter({ role: 'teacher' })).select('displayName username').sort({ displayName: 1 }) : Promise.resolve([]),
       getMaterialsJson(),
     ]);
     res.render('reports/new', { teachingTypes: TEACHING_TYPES, errors, formData: req.body, groupsJson, teachersJson, teachers, materialsJson });

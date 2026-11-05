@@ -144,6 +144,283 @@
     registerAction('clearSelection', function () {
       clearSelection();
     });
+
+    registerAction('approveUser', function (e, el) {
+      var id = el.dataset.id;
+      var name = el.dataset.name || 'this teacher';
+      if (!id) return;
+
+      var doApprove = function () {
+        if (typeof Swal !== 'undefined') {
+          Swal.fire({
+            title: 'Approving…',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            showConfirmButton: false,
+            didOpen: function () { Swal.showLoading(); },
+          });
+        }
+        fetch('/admin/users/' + encodeURIComponent(id) + '/approve', {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'x-csrf-token': getCsrfToken(),
+          },
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data.ok) {
+              if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                  title: 'Approved!',
+                  text: name + ' has been approved and welcomed.',
+                  icon: 'success',
+                  confirmButtonColor: '#16a34a',
+                  timer: 1500,
+                  showConfirmButton: false,
+                  customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+                }).then(function () {
+                  window.location.reload();
+                });
+              } else {
+                window.location.reload();
+              }
+            } else {
+              if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                  title: 'Error',
+                  text: data.error || 'Failed to approve.',
+                  icon: 'error',
+                  confirmButtonColor: '#ef4444',
+                  customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+                });
+              } else {
+                alert(data.error || 'Failed to approve.');
+              }
+            }
+          })
+          .catch(function () {
+            if (typeof Swal !== 'undefined') {
+              Swal.fire({
+                title: 'Network Error',
+                text: 'Could not reach the server.',
+                icon: 'error',
+                confirmButtonColor: '#ef4444',
+                customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+              });
+            } else {
+              alert('Could not reach the server.');
+            }
+          });
+      };
+
+      if (typeof Swal !== 'undefined') {
+        Swal.fire({
+          title: 'Approve ' + name + '?',
+          text: 'This account will become active and receive a welcome notification.',
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonColor: '#16a34a',
+          cancelButtonColor: '#64748b',
+          confirmButtonText: 'Yes, approve',
+          cancelButtonText: 'Cancel',
+          reverseButtons: true,
+          focusCancel: true,
+          customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl', cancelButton: 'rounded-xl' },
+        }).then(function (result) {
+          if (result.isConfirmed) doApprove();
+        });
+      } else {
+        if (confirm('Approve ' + name + '?')) doApprove();
+      }
+    });
+
+    registerAction('rejectUser', function (e, el) {
+      var id = el.dataset.id;
+      var name = el.dataset.name || 'this registration';
+      if (!id) return;
+
+      var sendReject = function (reason) {
+        if (typeof Swal !== 'undefined') {
+          Swal.fire({
+            title: 'Rejecting…',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            showConfirmButton: false,
+            didOpen: function () { Swal.showLoading(); },
+          });
+        }
+        fetch('/admin/users/' + encodeURIComponent(id) + '/reject', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'x-csrf-token': getCsrfToken(),
+          },
+          body: JSON.stringify({ reason: reason || '' }),
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data.ok) {
+              if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                  title: 'Rejected',
+                  text: name + ' has been rejected.',
+                  icon: 'info',
+                  confirmButtonColor: '#64748b',
+                  timer: 1500,
+                  showConfirmButton: false,
+                  customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+                }).then(function () {
+                  window.location.reload();
+                });
+              } else {
+                window.location.reload();
+              }
+            } else {
+              if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                  title: 'Error',
+                  text: data.error || 'Failed to reject.',
+                  icon: 'error',
+                  confirmButtonColor: '#ef4444',
+                  customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+                });
+              } else {
+                alert(data.error || 'Failed to reject.');
+              }
+            }
+          })
+          .catch(function () {
+            if (typeof Swal !== 'undefined') {
+              Swal.fire({
+                title: 'Network Error',
+                text: 'Could not reach the server.',
+                icon: 'error',
+                confirmButtonColor: '#ef4444',
+                customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+              });
+            } else {
+              alert('Could not reach the server.');
+            }
+          });
+      };
+
+      if (typeof Swal !== 'undefined') {
+        Swal.fire({
+          title: 'Reject ' + name + '?',
+          input: 'text',
+          inputLabel: 'Rejection reason (optional, max 200 chars)',
+          inputPlaceholder: 'e.g. Unrecognized applicant or duplicate registration',
+          inputAttributes: { maxlength: '200' },
+          showCancelButton: true,
+          confirmButtonColor: '#ef4444',
+          cancelButtonColor: '#64748b',
+          confirmButtonText: 'Reject registration',
+          cancelButtonText: 'Cancel',
+          reverseButtons: true,
+          focusCancel: true,
+          customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl', cancelButton: 'rounded-xl' },
+        }).then(function (result) {
+          if (result.isConfirmed) sendReject(result.value);
+        });
+      } else {
+        var reason = prompt('Rejection reason (optional, max 200 chars):');
+        if (reason !== null) sendReject(reason);
+      }
+    });
+
+    registerAction('bulkApprovePending', function (e, el) {
+      var rawIds = el.dataset.userIds || '';
+      var ids = rawIds ? rawIds.split(',').map(function (s) { return s.trim(); }).filter(Boolean) : [];
+      if (!ids.length) return;
+
+      var doBulkApprove = function () {
+        if (typeof Swal !== 'undefined') {
+          Swal.fire({
+            title: 'Approving ' + ids.length + ' teachers…',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            showConfirmButton: false,
+            didOpen: function () { Swal.showLoading(); },
+          });
+        }
+        fetch('/admin/users/bulk-approve', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'x-csrf-token': getCsrfToken(),
+          },
+          body: JSON.stringify({ ids: ids }),
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            if (data.ok) {
+              if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                  title: 'Approved!',
+                  text: data.approvedCount + ' teacher(s) approved.',
+                  icon: 'success',
+                  confirmButtonColor: '#16a34a',
+                  timer: 1500,
+                  showConfirmButton: false,
+                  customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+                }).then(function () {
+                  window.location.reload();
+                });
+              } else {
+                window.location.reload();
+              }
+            } else {
+              if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                  title: 'Error',
+                  text: data.error || 'Failed to bulk approve.',
+                  icon: 'error',
+                  confirmButtonColor: '#ef4444',
+                  customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+                });
+              } else {
+                alert(data.error || 'Failed to bulk approve.');
+              }
+            }
+          })
+          .catch(function () {
+            if (typeof Swal !== 'undefined') {
+              Swal.fire({
+                title: 'Network Error',
+                text: 'Could not reach the server.',
+                icon: 'error',
+                confirmButtonColor: '#ef4444',
+                customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl' },
+              });
+            } else {
+              alert('Could not reach the server.');
+            }
+          });
+      };
+
+      if (typeof Swal !== 'undefined') {
+        Swal.fire({
+          title: 'Approve ' + ids.length + ' pending teachers?',
+          text: 'All selected teachers will be activated and will receive onboarding welcome notifications.',
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonColor: '#16a34a',
+          cancelButtonColor: '#64748b',
+          confirmButtonText: 'Yes, approve all',
+          cancelButtonText: 'Cancel',
+          reverseButtons: true,
+          focusCancel: true,
+          customClass: { popup: 'rounded-2xl', confirmButton: 'rounded-xl', cancelButton: 'rounded-xl' },
+        }).then(function (result) {
+          if (result.isConfirmed) doBulkApprove();
+        });
+      } else {
+        if (confirm('Approve ' + ids.length + ' pending teachers?')) doBulkApprove();
+      }
+    });
   }
 })();
 

@@ -1,3 +1,4 @@
+const { activeUserFilter } = require('./userAccountService');
 'use strict';
 /**
  * salaryService.js
@@ -161,7 +162,7 @@ async function generateSalariesForPeriod(opts) {
   const pd = payDate ? new Date(payDate) : pe;
 
   // Fetch all teachers with their salary profile + commission rates
-  const teachers = await User.find({ role: 'teacher' }).sort({ displayName: 1 });
+  const teachers = await User.find(activeUserFilter({ role: 'teacher' })).sort({ displayName: 1 });
 
   // ⚡ Perf fix: single aggregation pass replaces two separate DB scans
   const { sessionMap, daysMap } = await buildSessionAndDaysMap(ps, pe);

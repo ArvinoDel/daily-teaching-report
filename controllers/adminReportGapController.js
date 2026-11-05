@@ -1,3 +1,4 @@
+const { activeUserFilter } = require('../services/userAccountService');
 'use strict';
 
 const mongoose = require('mongoose');
@@ -141,8 +142,8 @@ exports.remindTeacher = async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Valid teacher ID is required.' });
     }
 
-    const teacher = await User.findById(teacherId).select('displayName username role reportGapReminders');
-    if (!teacher || teacher.role !== 'teacher') {
+    const teacher = await User.findOne(activeUserFilter({ _id: teacherId, role: 'teacher' })).select('displayName username role reportGapReminders');
+    if (!teacher) {
       return res.status(404).json({ ok: false, error: 'Teacher not found.' });
     }
 

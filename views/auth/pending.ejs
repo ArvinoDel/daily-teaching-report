@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Account Pending Approval — Teaching Report</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/favicon.png">
+  <% if (typeof useTailwindCdn !== 'undefined' && useTailwindCdn) { %>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/js/tailwind-config.js"></script>
+  <% } else { %>
+  <link rel="stylesheet" href="/css/tailwind.css">
+  <% } %>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style> body { font-family: 'Plus Jakarta Sans', sans-serif; } </style>
+</head>
+<body class="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-8">
+
+  <div class="w-full max-w-md">
+
+    <!-- Icon -->
+    <div class="text-center mb-6">
+      <div class="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto mb-4 text-amber-600 shadow-sm">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+      </div>
+      <h1 class="text-xl font-bold text-slate-900">Registration Received</h1>
+      <p class="text-sm text-slate-500 mt-1">Waiting for administrator approval</p>
+    </div>
+
+    <!-- Card -->
+    <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 sm:p-8 text-center space-y-4">
+      <div class="p-4 rounded-xl bg-slate-50 border border-slate-100 text-left space-y-2">
+        <p class="text-sm font-semibold text-slate-800">
+          Your account was created. An admin must approve it before you can log in.
+        </p>
+        <p class="text-xs text-slate-500 leading-relaxed">
+          Once your account is verified, you will be able to sign in and begin recording daily teaching reports and tracking your activities.
+        </p>
+        <% if (typeof displayName !== 'undefined' && displayName) { %>
+          <div class="pt-2 border-t border-slate-200/60 text-xs text-slate-600">
+            Account for: <span class="font-bold text-slate-800"><%= displayName %></span>
+          </div>
+        <% } %>
+      </div>
+
+      <div class="pt-2">
+        <a href="/auth/login"
+          class="inline-flex items-center justify-center w-full px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 active:scale-95 text-white text-sm font-semibold shadow transition">
+          Back to Sign In
+        </a>
+      </div>
+    </div>
+
+    <p class="text-center text-xs text-slate-400 mt-6">
+      Need urgent access? Please contact your program administrator.
+    </p>
+
+  </div>
+
+</body>
+</html>

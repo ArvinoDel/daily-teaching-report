@@ -27,6 +27,26 @@ const userSchema = new mongoose.Schema({
     enum: ['teacher', 'admin', 'superadmin'],
     default: 'teacher',
   },
+  accountStatus: {
+    type: String,
+    enum: ['pending', 'active', 'rejected', 'suspended'],
+    default: 'active',
+    index: true,
+  },
+  statusReason: {
+    type: String,
+    maxlength: [200, 'Status reason max 200 characters.'],
+    default: null,
+  },
+  statusChangedAt: {
+    type: Date,
+    default: null,
+  },
+  statusChangedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
   // When the teacher started working (month + year stored as Date day=1)
   joinDate: {
     type: Date,

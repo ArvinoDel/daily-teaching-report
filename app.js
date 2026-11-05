@@ -29,6 +29,7 @@ const User           = require('./models/User');
 const Notification   = require('./models/Notification');
 const Feedback = require('./models/Feedback');
 const { requireAuth } = require('./middleware/auth');
+const { checkSessionUser } = require('./services/userAccountService');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -180,9 +181,9 @@ app.use(async (req, res, next) => {
           req.session.user._id,
           { lastActiveAt: new Date(now) },
           { new: true }
-        ).select('username displayName role joinDate commission profilePicture lastActiveAt onboarding createdAt')
+        ).select('username displayName role accountStatus statusReason joinDate commission profilePicture lastActiveAt onboarding createdAt')
       : User.findById(req.session.user._id)
-          .select('username displayName role joinDate commission profilePicture lastActiveAt onboarding createdAt');
+          .select('username displayName role accountStatus statusReason joinDate commission profilePicture lastActiveAt onboarding createdAt');
 
     if (needsTrackUpdate) {
       req.session._lastTracked = now;
@@ -195,6 +196,17 @@ app.use(async (req, res, next) => {
         : Promise.resolve(null),
     ]);
 
+    // Validate account status & existence
+    const sessionCheck = checkSessionUser(user, req);
+    if (!sessionCheck.ok) {
+      return req.session.destroy(() => {
+        if (sessionCheck.status === 401) {
+          return res.status(401).json(sessionCheck.json);
+        }
+        res.redirect(`/auth/login?flash=${encodeURIComponent(sessionCheck.flash)}`);
+      });
+    }
+
     res.locals.currentUser = user || null;
     res.locals.onboardingRemainingCount = getNavOnboardingRemainingCount(user);
 
@@ -204,6 +216,7 @@ app.use(async (req, res, next) => {
     }
     res.locals.unreadNotificationCount = req.session._cachedUnreadCount || 0;
   } catch (e) {
+    // Keep fail-open behavior ONLY for database errors
     res.locals.currentUser = req.session.user || null;
     res.locals.onboardingRemainingCount = null;
     res.locals.unreadNotificationCount = 0;

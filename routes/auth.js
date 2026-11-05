@@ -1,3 +1,5 @@
+'use strict';
+
 const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/authController');
@@ -15,6 +17,7 @@ router.get('/login', redirectIfAuth, ctrl.loginForm);
 router.post('/login', redirectIfAuth, ctrl.login);
 router.post('/logout', ctrl.logout);
 router.get('/heartbeat', ctrl.heartbeat);
+router.get('/pending', redirectIfAuth, ctrl.pendingNotice);
 router.get('/register', ctrl.registerForm);
 router.post('/register', registerLimiter, ctrl.register);
 

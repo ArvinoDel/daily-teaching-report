@@ -35,6 +35,11 @@ router.post('/onboarding/:userId/remind', ctrl.onboardingSendReminder);
 
 // Users — bulk BEFORE /:id to avoid route conflict
 router.delete('/users/bulk',      ctrl.usersBulkDelete);
+router.post('/users/bulk-approve', ctrl.usersBulkApprove);
+router.post('/users/:id/approve', ctrl.userApprove);
+router.post('/users/:id/reject',  ctrl.userReject);
+router.post('/users/:id/suspend', ctrl.userSuspend);
+router.post('/users/:id/reactivate', ctrl.userReactivate);
 router.get('/users',              ctrl.usersList);
 router.get('/users/:id/edit',     ctrl.userEditForm);
 router.post('/users/:id',         ctrl.userUpdate);

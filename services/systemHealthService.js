@@ -237,6 +237,12 @@ const ENV_REGISTRY = [
     required: false,
     validate: (v) => !isNaN(Number(v)) && Number(v) > 0,
   },
+  {
+    name: 'REGISTRATION_MODE',
+    group: 'Security',
+    required: false,
+    validate: (v) => ['approval', 'closed'].includes(String(v).toLowerCase().trim()),
+  },
 ];
 
 const IGNORED_ENV_VARS = [

@@ -1,3 +1,4 @@
+const { activeUserFilter } = require('./userAccountService');
 'use strict';
 /**
  * reportGapService.js
@@ -496,7 +497,7 @@ async function getReportGapsData({ lookbackDays = 14, now = new Date(), periodSt
   const minDate = new Date(`${minDateStr}T00:00:00.000+07:00`);
 
   const [teachers, aggResults, noClassDates, acks] = await Promise.all([
-    User.find({ role: 'teacher' }).select('displayName username reportGapReminders').lean(),
+    User.find(activeUserFilter({ role: 'teacher' })).select('displayName username reportGapReminders').lean(),
     Report.aggregate(buildAggregationPipeline(minDate)),
     NoClassDate.find().sort({ from: 1 }).lean(),
     ReportGapAck.find().lean(),

@@ -1,3 +1,4 @@
+const { activeUserFilter } = require('../services/userAccountService');
 const reportGapService = require('../services/reportGapService');
 'use strict';
 /**
@@ -169,7 +170,7 @@ exports.salaryIndex = async (req, res) => {
     const pEnd   = salaries.length > 0 && salaries[0].periodEnd   ? salaries[0].periodEnd   : new Date(year, month, 0, 23, 59, 59, 999);
     const missingReportsCount = await reportGapService.countMissingReportsInPeriod(pStart, pEnd);
 
-    const activeTeachers = await User.find({ role: 'teacher' }).select('displayName username commission').lean();
+    const activeTeachers = await User.find(activeUserFilter({ role: 'teacher' })).select('displayName username commission').lean();
     const teachersWithoutRewards = getTeachersWithoutRewards(activeTeachers);
 
     res.render('admin/salaries/index', {
@@ -247,7 +248,7 @@ exports.salaryGenerate = async (req, res) => {
       meta: { month: m, year: y, count: saved.length },
     });
 
-    const activeTeachers = await User.find({ role: 'teacher' }).select('displayName username commission').lean();
+    const activeTeachers = await User.find(activeUserFilter({ role: 'teacher' })).select('displayName username commission').lean();
     const withoutRewards = getTeachersWithoutRewards(activeTeachers);
 
     let flashMsg = `Generated ${saved.length} salary drafts for ${pl}.`;
