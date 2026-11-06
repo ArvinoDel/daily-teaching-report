@@ -88,11 +88,13 @@ router.get('/commission', ctrl.commissionIndex);
 router.get('/salaries',              requireSuperAdmin, salaryCtrl.salaryIndex);
 router.post('/salaries/generate',    requireSuperAdmin, salaryCtrl.salaryGenerate);
 router.post('/salaries/publish',     requireSuperAdmin, salaryCtrl.salaryPublish);
+router.post('/salaries/mark-paid',   requireSuperAdmin, salaryCtrl.salaryMarkPaid); // ← must be before /:id
 router.get('/salaries/export',       requireSuperAdmin, salaryCtrl.salaryExport);
 router.post('/salaries/bulk-update', requireSuperAdmin, salaryCtrl.salaryBulkUpdate); // ← must be before /:id
 router.get('/salaries/:id/slip',     requireSuperAdmin, salaryCtrl.salarySlip);
 router.get('/salaries/:id/edit',     requireSuperAdmin, salaryCtrl.salaryEditForm);
 router.post('/salaries/:id/retract', requireSuperAdmin, salaryCtrl.salaryRetract);
+router.post('/salaries/:id/reopen',  requireSuperAdmin, salaryCtrl.salaryReopen);
 router.post('/salaries/:id',         requireSuperAdmin, salaryCtrl.salaryUpdate);
 
 // Feedbacks

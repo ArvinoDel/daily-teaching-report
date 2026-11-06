@@ -96,6 +96,15 @@
         <% if (sp.teacherTenureAtPeriod) { %>
           <p class="text-xs text-slate-400 mt-0.5">Tenure: <span class="font-semibold text-slate-600"><%= sp.teacherTenureAtPeriod %></span></p>
         <% } %>
+        <% if (sp.status === 'paid' && sp.paidAt) { 
+             const paidDateFormatted = new Date(sp.paidAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        %>
+          <div class="mt-2">
+            <span class="paid-stamp inline-flex items-center gap-1 border-2 border-emerald-600 text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded font-extrabold text-xs tracking-wider uppercase">
+              ✓ Paid on <%= paidDateFormatted %>
+            </span>
+          </div>
+        <% } %>
       </div>
     </div>
   </div>
@@ -251,6 +260,12 @@
       border-radius: 0 !important;
       max-width: 100% !important;
       margin: 0 !important;
+    }
+    .paid-stamp {
+      border-color: #059669 !important;
+      color: #047857 !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
     .print-page { page-break-after: avoid; }
     main { padding: 0 !important; max-width: 100% !important; }

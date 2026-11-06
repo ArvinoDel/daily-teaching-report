@@ -14,7 +14,7 @@ const auditLogSchema = new mongoose.Schema({
     type: String,
     enum: [
       'update', 'delete', 'salary_generate', 'salary_publish',
-      'salary_update', 'merge', 'salary_bulk_update', 'import_groups',
+      'salary_update', 'salary_mark_paid', 'salary_reopen', 'merge', 'salary_bulk_update', 'import_groups',
       'group_student_add', 'group_student_remove', 'group_student_move',
       'group_student_rename',
       'group_roster_repair',

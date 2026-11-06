@@ -1,4 +1,5 @@
 const { activeUserFilter } = require('./userAccountService');
+const { planGenerationAction } = require('./salaryStatusService');
 'use strict';
 /**
  * salaryService.js
@@ -168,6 +169,9 @@ async function generateSalariesForPeriod(opts) {
   const { sessionMap, daysMap } = await buildSessionAndDaysMap(ps, pe);
 
   const saved = [];
+  const skipped = [];
+  let createdCount = 0;
+  let updatedDraftsCount = 0;
 
   for (const teacher of teachers) {
     const sp   = teacher.salaryProfile || {};
@@ -192,7 +196,18 @@ async function generateSalariesForPeriod(opts) {
     // Try to find an existing record
     let salary = await Salary.findOne({ teacher: teacher._id, year, month });
 
-    if (salary && preserveEdits) {
+    const action = planGenerationAction(salary, preserveEdits);
+    if (action === 'skip') {
+      skipped.push({
+        teacherId: teacher._id,
+        name: teacher.displayName || teacher.username || 'Unknown Teacher',
+        status: salary.status,
+      });
+      continue;
+    }
+
+    if (action === 'update_preserve') {
+      updatedDraftsCount++;
       // Only refresh auto-calculated fields; don't overwrite admin edits.
       // We update: tenure snapshot, teachingReward, distinctDays suggestions
       // but we do NOT overwrite fields the admin may have manually adjusted.
@@ -217,6 +232,11 @@ async function generateSalariesForPeriod(opts) {
       // ── Sync teaching reward ──
       salary.teachingReward = teachingReward;
     } else {
+      if (action === 'create') {
+        createdCount++;
+      } else {
+        updatedDraftsCount++;
+      }
       // ── Fresh draft — no existing record for this month (or preserveEdits=false) ──
       //
       // Seeding priority:
@@ -309,6 +329,11 @@ async function generateSalariesForPeriod(opts) {
     await salary.save();
     saved.push(salary);
   }
+
+  saved.skipped = skipped;
+  saved.skippedCount = skipped.length;
+  saved.createdCount = createdCount;
+  saved.updatedDraftsCount = updatedDraftsCount;
 
   return saved;
 }

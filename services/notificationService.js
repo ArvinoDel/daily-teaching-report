@@ -174,6 +174,61 @@ async function removeSalaryNotification(salaryId) {
 }
 
 /**
+ * Specialized helper: Send notification when a teacher's salary is marked as paid
+ * @param {Object} salary
+ * @param {Object} [teacher=null]
+ * @returns {Promise<Notification|null>}
+ */
+async function notifySalaryPaid(salary, teacher = null) {
+  const teacherId = teacher?._id || salary.teacher?._id || salary.teacher;
+  if (!teacherId) return null;
+
+  const monthDate = new Date(salary.year, salary.month - 1, 1);
+  const monthYear = monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const paidDate = salary.paidAt ? new Date(salary.paidAt) : new Date();
+  const paidDateStr = paidDate.toLocaleDateString('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  const title = 'Salary paid';
+  const message = `Your salary for ${monthYear} was paid on ${paidDateStr}.`;
+  const link = `/reports/my-salary/${salary._id}/slip`;
+
+  return await sendNotification({
+    recipient: teacherId,
+    type: 'salary_paid',
+    category: 'salary',
+    title,
+    message,
+    link,
+    metadata: {
+      salaryId: salary._id,
+      month: salary.month,
+      year: salary.year,
+      paidAt: salary.paidAt,
+    },
+  });
+}
+
+/**
+ * Cleanup helper: Remove notification when a paid salary is reopened back to published
+ * @param {string|mongoose.Types.ObjectId} salaryId
+ * @returns {Promise<number>} count of deleted notifications
+ */
+async function removeSalaryPaidNotification(salaryId) {
+  if (!salaryId) return 0;
+  const result = await Notification.deleteMany({
+    type: 'salary_paid',
+    'metadata.salaryId': salaryId,
+  });
+  return result.deletedCount || 0;
+}
+
+/**
  * Fetch notifications for a user with optional filtering and pagination
  * @param {string|mongoose.Types.ObjectId} userId
  * @param {Object} [options]
@@ -280,6 +335,8 @@ module.exports = {
   notifySalaryPublished,
   notifyTeacherWelcome,
   removeSalaryNotification,
+  notifySalaryPaid,
+  removeSalaryPaidNotification,
   getTeacherNotifications,
   getUnreadCount,
   markAsRead,
