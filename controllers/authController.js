@@ -1,9 +1,20 @@
+'use strict';
+
 const User = require('../models/User');
 const notificationService = require('../services/notificationService');
+const {
+  canLogin,
+  activeUserFilter,
+  decideRegistration,
+} = require('../services/userAccountService');
 
 // GET /auth/login
 exports.loginForm = (req, res) => {
-  res.render('auth/login', { error: null });
+  const flash = req.query.flash || (req.session && req.session.flash) || null;
+  if (req.session && req.session.flash) {
+    delete req.session.flash;
+  }
+  res.render('auth/login', { error: flash });
 };
 
 // POST /auth/login
@@ -22,6 +33,12 @@ exports.login = async (req, res) => {
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.render('auth/login', { error: 'Invalid username or password.' });
+    }
+
+    // Check account status ONLY after password is verified
+    const loginStatus = canLogin(user);
+    if (!loginStatus.ok) {
+      return res.render('auth/login', { error: loginStatus.message });
     }
 
     // Update lastActiveAt immediately on login
@@ -69,10 +86,43 @@ exports.heartbeat = (req, res) => {
   res.status(200).json({ ok: true, isOnline, unreadCount });
 };
 
+// GET /auth/pending
+exports.pendingNotice = (req, res) => {
+  res.render('auth/pending');
+};
+
 // GET /auth/register
-exports.registerForm = (req, res) => {
+exports.registerForm = async (req, res) => {
   const currentYear = new Date().getFullYear();
-  res.render('auth/register', { error: null, success: null, currentYear });
+  try {
+    const pendingCount = await User.countDocuments({ accountStatus: 'pending' });
+    const decision = decideRegistration({
+      mode: process.env.REGISTRATION_MODE,
+      pendingCount,
+    });
+    if (!decision.allowed) {
+      return res.render('auth/register', {
+        error: decision.error,
+        success: null,
+        currentYear,
+        registrationClosed: decision.code === 'closed',
+      });
+    }
+    res.render('auth/register', {
+      error: null,
+      success: null,
+      currentYear,
+      registrationClosed: false,
+    });
+  } catch (err) {
+    console.error('[auth] registerForm error:', err);
+    res.render('auth/register', {
+      error: null,
+      success: null,
+      currentYear,
+      registrationClosed: false,
+    });
+  }
 };
 
 // POST /auth/register
@@ -80,72 +130,104 @@ exports.register = async (req, res) => {
   const currentYear = new Date().getFullYear();
 
   try {
+    const pendingCount = await User.countDocuments({ accountStatus: 'pending' });
+    const decision = decideRegistration({
+      mode: process.env.REGISTRATION_MODE,
+      pendingCount,
+    });
+    if (!decision.allowed) {
+      return res.render('auth/register', {
+        error: decision.error,
+        success: null,
+        currentYear,
+        registrationClosed: decision.code === 'closed',
+      });
+    }
+
     const { username, password, displayName, joinMonth, joinYear } = req.body;
 
     if (!username || !password || !displayName) {
       return res.render('auth/register', {
-        error: 'Please fill in all fields.', success: null, currentYear,
+        error: 'Please fill in all fields.',
+        success: null,
+        currentYear,
+        registrationClosed: false,
       });
     }
 
     // Parse join date
     let joinDate = null;
     if (joinMonth && joinYear) {
-      const m = parseInt(joinMonth);
-      const y = parseInt(joinYear);
+      const m = parseInt(joinMonth, 10);
+      const y = parseInt(joinYear, 10);
       if (m >= 1 && m <= 12 && y >= 1970 && y <= currentYear) {
         joinDate = new Date(y, m - 1, 1);
         // Clamp to not be in the future
-        if (joinDate > new Date()) joinDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        if (joinDate > new Date()) {
+          joinDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        }
       }
     }
 
     const exists = await User.findOne({ username: username.toLowerCase().trim() });
     if (exists) {
       return res.render('auth/register', {
-        error: 'Username already taken.', success: null, currentYear,
+        error: 'Username already taken.',
+        success: null,
+        currentYear,
+        registrationClosed: false,
       });
     }
 
-    const regNow = new Date();
+    const cleanDisplayName = String(displayName).replace(/[\r\n\t]/g, ' ').trim().slice(0, 50);
+
     const newUser = await User.create({
-      username,
+      username: username.toLowerCase().trim(),
       password,
-      displayName,
+      displayName: cleanDisplayName,
+      role: 'teacher', // strictly teacher (ignore any role in request)
+      accountStatus: 'pending', // pending approval
       joinDate,
-      lastActiveAt: regNow,
+      lastActiveAt: null,
       onboarding: {
         version: 1,
         legacy: false,
-        startedAt: regNow,
+        startedAt: null, // Starts on approval
         dismissedAt: null,
         completedAt: null,
       },
     });
 
-    // Send welcome notification instructing teacher to fill teaching reward amount
+    // Notify all active admins and superadmins
     try {
-      await notificationService.notifyTeacherWelcome(newUser);
+      const admins = await User.find(activeUserFilter({ role: { $in: ['admin', 'superadmin'] } })).select('_id');
+      const safeTextName = cleanDisplayName.replace(/<[^>]*>/g, '').trim().slice(0, 40) || 'New teacher';
+      for (const a of admins) {
+        notificationService.sendNotification({
+          recipient: a._id,
+          category: 'system',
+          type: 'registration_pending',
+          title: 'New teacher registration',
+          message: `${safeTextName} asked for an account.`,
+          link: '/admin/users?status=pending',
+          metadata: { userId: newUser._id, username: newUser.username },
+        }).catch(e => console.error('[auth] Failed to notify admin of pending registration:', e.message));
+      }
     } catch (notifErr) {
-      console.error('[auth] Failed to send welcome notification:', notifErr);
+      console.error('[auth] Error notifying admins of pending registration:', notifErr.message);
     }
 
-    // Automatically authenticate the newly registered user
-    req.session.user = {
-      _id: newUser._id,
-      username: newUser.username,
-      displayName: newUser.displayName,
-      role: newUser.role,
-      profilePicture: newUser.profilePicture || null,
-    };
-    req.session._lastTracked = regNow.getTime();
-    req.session.flash = `Welcome, ${newUser.displayName}! Your account is ready.`;
-
-    return res.redirect('/reports');
+    // Redirect to /auth/pending (user is NOT logged in, no session created)
+    return res.redirect('/auth/pending');
   } catch (err) {
     const msg = err.errors
       ? Object.values(err.errors).map(e => e.message).join(' ')
       : 'Something went wrong.';
-    res.render('auth/register', { error: msg, success: null, currentYear });
+    res.render('auth/register', {
+      error: msg,
+      success: null,
+      currentYear,
+      registrationClosed: false,
+    });
   }
 };

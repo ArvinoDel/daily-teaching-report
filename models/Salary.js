@@ -32,9 +32,14 @@ const salarySchema = new mongoose.Schema({
   // draft     → admin is editing
   // published → bulk-sent to teacher (teacher can now see it, read-only)
   // paid      → marked as physically paid
-  status:      { type: String, enum: ['draft', 'published', 'paid'], default: 'draft' },
-  publishedAt: { type: Date, default: null },
-  paidAt:      { type: Date, default: null },
+  status:       { type: String, enum: ['draft', 'published', 'paid'], default: 'draft' },
+  publishedAt:  { type: Date, default: null },
+  paidAt:       { type: Date, default: null },
+  paidBy:       { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  paymentNote:  { type: String, trim: true, maxlength: [200, 'Payment note max 200 chars.'], default: '' },
+  reopenedAt:   { type: Date, default: null },
+  reopenedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  reopenReason: { type: String, trim: true, maxlength: [200, 'Reopen reason max 200 chars.'], default: '' },
 
   /* ══════════════════════════════════════════
      EARNINGS

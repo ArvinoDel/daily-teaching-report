@@ -60,7 +60,11 @@ test('Daily Summary - Detail table view includes # column without overflow risk'
 
 test('Daily Summary - Client-side script renders order number and sorts chronologically', () => {
   const scriptPath = path.join(__dirname, '../views/partials/dashboard/_scripts.ejs');
-  const scriptContent = fs.readFileSync(scriptPath, 'utf8');
+  let scriptContent = fs.readFileSync(scriptPath, 'utf8');
+  const srcMatch = scriptContent.match(/src="([^"]+)"/);
+  if (srcMatch) {
+    scriptContent = fs.readFileSync(path.join(__dirname, '..', 'public', srcMatch[1]), 'utf8');
+  }
 
   // Verify client-side sorting exists
   assert.match(scriptContent, /reports\.sort/, 'Client-side script must sort reports');

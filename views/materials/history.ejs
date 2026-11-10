@@ -143,7 +143,7 @@
 
               <% if (!isCurrent) { %>
                 <form method="POST" action="/materials/<%= material._id %>/history/<%= rev.version %>/restore"
-                      onsubmit="return confirm('Restore version <%= rev.version %>? This will create a new current version with this content.');">
+                      data-action="confirmSubmit" data-confirm="Restore version <%= rev.version %>? This will create a new current version with this content.">
                   <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                   <button type="submit"
                           class="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-brand text-white hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-1 transition shadow-sm">
@@ -267,42 +267,6 @@
   <% } %>
 </div>
 
-<script>
-  (function() {
-    const items = document.querySelectorAll('.rev-timeline-item');
-    const panes = document.querySelectorAll('.rev-preview-pane');
-
-    function selectVersion(v) {
-      items.forEach(function(el) {
-        const matches = el.getAttribute('data-version') === String(v);
-        if (matches) {
-          el.classList.add('border-brand', 'bg-brand/5', 'ring-1', 'ring-brand');
-          el.classList.remove('border-slate-200', 'bg-white');
-        } else {
-          el.classList.remove('border-brand', 'bg-brand/5', 'ring-1', 'ring-brand');
-          el.classList.add('border-slate-200', 'bg-white');
-        }
-      });
-      panes.forEach(function(pane) {
-        if (pane.id === 'rev-preview-' + v) {
-          pane.classList.remove('hidden');
-        } else {
-          pane.classList.add('hidden');
-        }
-      });
-    }
-
-    items.forEach(function(item) {
-      const v = item.getAttribute('data-version');
-      item.addEventListener('click', function() { selectVersion(v); });
-      item.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          selectVersion(v);
-        }
-      });
-    });
-  })();
-</script>
+<script src="/js/pages/material-history.js"></script>
 
 <%- include('../partials/footer') %>

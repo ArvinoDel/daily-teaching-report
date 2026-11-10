@@ -99,20 +99,65 @@ async function matchOrCreateStudent(rawName) {
     return { student, created: false };
   }
 
-  // Create new
-  const [barcode, student_code] = await Promise.all([
-    generateBarcode(),
-    generateStudentCode(),
-  ]);
+  // Create new with retry on duplicate barcode/student_code
+  const gradeSchool = extractGradeSchool(rawName);
+  const initialHistory = gradeSchool ? [{ grade_school: gradeSchool, at: new Date(), source: 'manual' }] : [];
 
-  student = await Student.create({
-    student_code,
-    barcode,
-    full_name:       extractFullName(rawName),
-    raw_name:        rawName.trim(),
-    normalized_name: normalized,
-    grade_school:    extractGradeSchool(rawName),
-  });
+  let attempts = 0;
+  while (attempts < 5) {
+    attempts++;
+    try {
+      const [barcode, student_code] = await Promise.all([
+        generateBarcode(),
+        generateStudentCode(),
+      ]);
+
+      student = await Student.create({
+        student_code,
+        barcode,
+        full_name:       extractFullName(rawName),
+        raw_name:        rawName.trim(),
+        normalized_name: normalized,
+        grade_school:    gradeSchool,
+        grade_history:   initialHistory,
+      });
+      break;
+    } catch (err) {
+      if (err.code === 11000 || (err.message && err.message.includes('E11000'))) {
+        if (attempts >= 5) throw err;
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  // Race-safety check:
+  // Re-query find({ normalized_name }).sort({ createdAt: 1, _id: 1 });
+  // If another document with the same normalized_name exists and is older,
+  // delete the new one (only if it has no references yet) and return the oldest.
+  const allSameNorm = await Student.find({ normalized_name: normalized }).sort({ createdAt: 1, _id: 1 });
+  if (allSameNorm.length > 1) {
+    const oldest = allSameNorm[0];
+    if (String(oldest._id) !== String(student._id)) {
+      const Group = require('../models/Group');
+      let hasRefs = false;
+      if (mongoose.connection && mongoose.connection.readyState === 1) {
+        try {
+          hasRefs = await Promise.all([
+            Group.exists({ student_ids: student._id }),
+            AcTransaction.exists({ student: student._id }),
+          ]).then(results => results.some(Boolean));
+        } catch (_) {
+          hasRefs = false;
+        }
+      }
+
+      if (!hasRefs) {
+        await Student.deleteOne({ _id: student._id });
+      }
+      return { student: oldest, created: false };
+    }
+  }
 
   return { student, created: true };
 }

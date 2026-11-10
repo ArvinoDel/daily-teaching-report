@@ -20,6 +20,7 @@
 const crypto = require('crypto');
 const Backup = require('../models/Backup');
 const backupService = require('../services/backupService');
+const { recordCronRun } = require('../services/cronRunService');
 
 /**
  * Validates the Authorization header against CRON_SECRET using timing-safe comparison.
@@ -61,66 +62,80 @@ function verifyCronSecret(req, res) {
 exports.cronBackup = async (req, res) => {
   if (!verifyCronSecret(req, res)) return;
 
-  const startTime = Date.now();
-  let backup = null;
-  let backupErr = null;
-  let pruneStatus = null;
-
   try {
-    backup = await backupService.performBackup(null, 'System (Automated)', 'json_gz');
-  } catch (err) {
-    backupErr = err;
-    console.error('[cron] Automated backup failed:', err.message);
+    const result = await recordCronRun('backup', 'vercel-cron', async () => {
+      const startTime = Date.now();
+      let backup = null;
+      let backupErr = null;
+      let pruneStatus = null;
 
-    await Backup.create({
-      initiatedBy:     null,
-      initiatedByName: 'System (Automated)',
-      status:          'failed',
-      errorMessage:    backupService.sanitizeErrorMessage(err.message),
-      recordCounts:    {},
-    }).catch(() => {});
-  } finally {
-    try {
-      const elapsed = Date.now() - startTime;
-      const maxFunctionMs = parseInt(process.env.MAX_FUNCTION_MS, 10) || 60000;
-      const safetyMarginMs = 10000;
-      const remainingBudget = Math.max(0, (maxFunctionMs - safetyMarginMs) - elapsed);
+      try {
+        backup = await backupService.performBackup(null, 'System (Automated)', 'json_gz');
+      } catch (err) {
+        backupErr = err;
+        console.error('[cron] Automated backup failed:', err.message);
 
-      if (remainingBudget < 5000) {
-        console.warn(`[cron] Skipping retention prune: remaining budget (${remainingBudget}ms) is under 5s.`);
-        pruneStatus = 'skipped: low budget';
-      } else {
-        const pruneResult = await backupService.pruneExpiredBackups({ budgetMs: remainingBudget });
-        pruneStatus = {
-          deletedCount: pruneResult.deletedCount,
-          freedBytes:   pruneResult.freedBytes,
-          failedCount:  pruneResult.failedCount,
-        };
+        await Backup.create({
+          initiatedBy:     null,
+          initiatedByName: 'System (Automated)',
+          status:          'failed',
+          errorMessage:    backupService.sanitizeErrorMessage(err.message),
+          recordCounts:    {},
+        }).catch(() => {});
+      } finally {
+        try {
+          const elapsed = Date.now() - startTime;
+          const maxFunctionMs = parseInt(process.env.MAX_FUNCTION_MS, 10) || 60000;
+          const safetyMarginMs = 10000;
+          const remainingBudget = Math.max(0, (maxFunctionMs - safetyMarginMs) - elapsed);
+
+          if (remainingBudget < 5000) {
+            console.warn(`[cron] Skipping retention prune: remaining budget (${remainingBudget}ms) is under 5s.`);
+            pruneStatus = 'skipped: low budget';
+          } else {
+            const pruneResult = await backupService.pruneExpiredBackups({ budgetMs: remainingBudget });
+            pruneStatus = {
+              deletedCount: pruneResult.deletedCount,
+              freedBytes:   pruneResult.freedBytes,
+              failedCount:  pruneResult.failedCount,
+            };
+          }
+        } catch (e) {
+          console.error('[cron] Retention cleanup error (non-fatal):', e.message);
+          pruneStatus = 'error: ' + backupService.sanitizeErrorMessage(e.message);
+        }
       }
-    } catch (e) {
-      console.error('[cron] Retention cleanup error (non-fatal):', e.message);
-      pruneStatus = 'error: ' + backupService.sanitizeErrorMessage(e.message);
-    }
-  }
 
-  const durationMs = Date.now() - startTime;
-  if (backupErr) {
-    return res.status(500).json({ ok: false, message: 'Backup failed', durationMs, pruned: pruneStatus });
-  }
+      const durationMs = Date.now() - startTime;
+      if (backupErr) {
+        throw new Error(`Backup failed: ${backupErr.message}`);
+      }
 
-  console.log(`[cron] Automated backup completed in ${durationMs}ms (ID: ${backup._id})`);
-  if (durationMs > 40000) {
-    console.warn(`[cron] Warning: Backup took ${durationMs}ms, approaching 60s function limit.`);
-  }
+      console.log(`[cron] Automated backup completed in ${durationMs}ms (ID: ${backup._id})`);
+      if (durationMs > 40000) {
+        console.warn(`[cron] Warning: Backup took ${durationMs}ms, approaching 60s function limit.`);
+      }
 
-  return res.status(200).json({
-    ok: true,
-    backupId: backup._id,
-    fileSizeBytes: backup.fileSizeBytes,
-    checksum: backup.checksum,
-    durationMs,
-    pruned: pruneStatus,
-  });
+      return {
+        ok: true,
+        backupId: backup._id,
+        fileSizeBytes: backup.fileSizeBytes,
+        checksum: backup.checksum,
+        durationMs,
+        pruned: pruneStatus,
+        summary: {
+          fileSizeBytes: backup.fileSizeBytes,
+          totalRecords: backup.recordCounts
+            ? Object.values(backup.recordCounts).reduce((s, n) => s + (typeof n === 'number' ? n : 0), 0)
+            : 0,
+        },
+      };
+    });
+
+    return res.status(200).json(result);
+  } catch (err) {
+    return res.status(500).json({ ok: false, message: 'Backup failed' });
+  }
 };
 
 /**
@@ -130,17 +145,26 @@ exports.cronBackup = async (req, res) => {
 exports.cronCleanup = async (req, res) => {
   if (!verifyCronSecret(req, res)) return;
 
-  const startTime = Date.now();
   try {
-    const result = await backupService.pruneExpiredBackups();
-    const durationMs = Date.now() - startTime;
-    console.log(`[cron] Scheduled cleanup completed in ${durationMs}ms`);
+    const data = await recordCronRun('backup-cleanup', 'vercel-cron', async () => {
+      const startTime = Date.now();
+      const result = await backupService.pruneExpiredBackups();
+      const durationMs = Date.now() - startTime;
+      console.log(`[cron] Scheduled cleanup completed in ${durationMs}ms`);
 
-    return res.status(200).json({
-      ok: true,
-      result,
-      durationMs,
+      return {
+        ok: true,
+        result,
+        durationMs,
+        summary: {
+          deletedCount: result.deletedCount || 0,
+          freedBytes: result.freedBytes || 0,
+          expiredCount: result.expiredCount || 0,
+        },
+      };
     });
+
+    return res.status(200).json(data);
   } catch (err) {
     console.error('[cron] Scheduled cleanup failed:', err.message);
     return res.status(500).json({ ok: false, message: 'Cleanup failed' });

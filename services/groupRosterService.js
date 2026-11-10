@@ -14,6 +14,7 @@ const Student = require('../models/Student');
 const Group = require('../models/Group');
 const { normalizeName, extractFullName, extractGradeSchool } = require('../models/Student');
 const studentService = require('./studentService');
+const { assessNameMatch, recordGradeChange } = require('./studentIdentityService');
 
 /* ═══════════════════════════════════════════════════════════════
    1. PURE DB-FREE HELPERS
@@ -317,7 +318,7 @@ async function resolveGroupPairs(group) {
  * @param {string[]} rawNames - List of raw student names
  * @returns {Promise<{ added: Array, skipped: Array, group: Object }>}
  */
-async function addStudentsToGroup(group, rawNames) {
+async function addStudentsToGroup(group, rawNames, options = {}) {
   const names = Array.isArray(rawNames) ? rawNames : [rawNames];
   const currentPairs = await resolveGroupPairs(group);
 
@@ -327,6 +328,68 @@ async function addStudentsToGroup(group, rawNames) {
     err.needsRepair = true;
     err.groupId = group._id ? String(group._id) : '';
     err.groupName = group.group_name || '';
+    throw err;
+  }
+
+  const confirmedNames = new Set(
+    Array.isArray(options.confirmSameStudent) ? options.confirmSameStudent : []
+  );
+
+  // Pre-check for possible namesakes across incoming names.
+  // If ANY name resolves to a likely namesake without confirmation, return 409 and ADD NOTHING.
+  const possibleNamesakes = [];
+  for (const raw of names) {
+    const trimmed = (raw || '').trim();
+    if (!trimmed || trimmed.length > 100) continue;
+    const norm = normalizeName(trimmed);
+    if (!norm) continue;
+
+    const existingDoc = await Student.findOne({ normalized_name: norm });
+    if (existingDoc) {
+      let groupNames = [];
+      if (Array.isArray(existingDoc.groups) && existingDoc.groups.length > 0) {
+        groupNames = existingDoc.groups
+          .map(g => (typeof g === 'object' && g ? (g.group_name || g.name) : String(g)))
+          .filter(Boolean);
+      }
+      if (mongoose.connection && mongoose.connection.readyState === 1) {
+        try {
+          const sGroups = await Group.find({
+            $or: [
+              { student_ids: existingDoc._id },
+              { students: new RegExp(norm, 'i') },
+            ],
+          }).select('group_name').lean();
+          if (sGroups && sGroups.length) {
+            groupNames = sGroups.map(g => g.group_name).filter(Boolean);
+          }
+        } catch (_) {}
+      }
+      const docObj = typeof existingDoc.toObject === 'function' ? existingDoc.toObject() : existingDoc;
+      const matchResult = assessNameMatch({ ...docObj, groupNames }, trimmed);
+
+      if (matchResult.kind === 'likely_namesake') {
+        if (!confirmedNames.has(norm)) {
+          possibleNamesakes.push({
+            rawName: trimmed,
+            norm,
+            studentId: String(existingDoc._id),
+            name: existingDoc.full_name || existingDoc.raw_name,
+            grade_school: existingDoc.grade_school || '',
+            status: existingDoc.status || 'active',
+            groupNames,
+            gradeDelta: matchResult.gradeDelta,
+          });
+        }
+      }
+    }
+  }
+
+  if (possibleNamesakes.length > 0) {
+    const err = new Error('Possible namesake detected.');
+    err.status = 409;
+    err.code = 'POSSIBLE_NAMESAKE';
+    err.possibleNamesake = possibleNamesakes;
     throw err;
   }
 
@@ -352,10 +415,20 @@ async function addStudentsToGroup(group, rawNames) {
     let reactivated = false;
 
     if (studentDoc) {
+      let docModified = false;
+      const newGradeSchool = extractGradeSchool(trimmed);
+      if (newGradeSchool && newGradeSchool !== studentDoc.grade_school) {
+        if (recordGradeChange(studentDoc, newGradeSchool, 'manual')) {
+          docModified = true;
+        }
+      }
       if (studentDoc.status === 'inactive') {
         studentDoc.status = 'active';
-        await studentDoc.save();
         reactivated = true;
+        docModified = true;
+      }
+      if (docModified) {
+        await studentDoc.save();
       }
     } else {
       const matchResult = await studentService.matchOrCreateStudent(trimmed);
@@ -601,10 +674,16 @@ async function saveStudentAndGroupWithRollback(student, group, newStudentData, n
     grade_school: student.grade_school,
   };
 
+  const previousHistory = Array.isArray(student.grade_history) ? [...student.grade_history] : [];
+
   student.raw_name = newStudentData.raw_name;
   student.full_name = newStudentData.full_name;
   student.normalized_name = newStudentData.normalized_name;
   student.grade_school = newStudentData.grade_school;
+
+  if (newStudentData.grade_school && newStudentData.grade_school !== previousState.grade_school) {
+    recordGradeChange(student, newStudentData.grade_school, 'manual');
+  }
 
   try {
     await student.save();
@@ -617,6 +696,53 @@ async function saveStudentAndGroupWithRollback(student, group, newStudentData, n
       throw conflictErr;
     }
     throw studentErr;
+  }
+
+  // Count other students with the new normalized_name and roll back with a 409 if any exist
+  let duplicateCount = 0;
+  if (mongoose.connection && mongoose.connection.readyState === 1) {
+    duplicateCount = await Student.countDocuments({
+      normalized_name: newStudentData.normalized_name,
+      _id: { $ne: student._id },
+    });
+  } else if (Student.countDocuments !== mongoose.Model.countDocuments) {
+    duplicateCount = await Student.countDocuments({
+      normalized_name: newStudentData.normalized_name,
+      _id: { $ne: student._id },
+    });
+  } else if (Student.findOne !== mongoose.Model.findOne) {
+    const dup = await Student.findOne({
+      normalized_name: newStudentData.normalized_name,
+      _id: { $ne: student._id },
+    });
+    duplicateCount = dup ? 1 : 0;
+  } else if (Student.find !== mongoose.Model.find) {
+    const others = await Student.find({
+      normalized_name: newStudentData.normalized_name,
+      _id: { $ne: student._id },
+    });
+    const list = others && typeof others.lean === 'function' ? await others.lean() : others;
+    duplicateCount = Array.isArray(list)
+      ? list.filter(s => s && s.normalized_name === newStudentData.normalized_name && String(s._id) !== String(student._id)).length
+      : 0;
+  }
+
+  if (duplicateCount > 0) {
+    try {
+      student.raw_name = previousState.raw_name;
+      student.full_name = previousState.full_name;
+      student.normalized_name = previousState.normalized_name;
+      student.grade_school = previousState.grade_school;
+      student.grade_history = previousHistory;
+      await student.save();
+    } catch (restoreErr) {
+      console.error('Failed to restore student after duplicate count failure:', restoreErr);
+    }
+    const conflictErr = new Error('A student with this name already exists in the system.');
+    conflictErr.status = 409;
+    conflictErr.code = 'CONFLICT';
+    conflictErr.conflict = true;
+    throw conflictErr;
   }
 
   group.students = newGroupRoster.students;

@@ -11,11 +11,20 @@ const achievementsCtrl = require('../controllers/adminStudentAchievementsControl
 const acScanCtrl       = require('../controllers/adminAcScanController');
 const printCardsCtrl   = require('../controllers/adminPrintCardsController');
 const salaryCtrl = require('../controllers/adminSalaryController');
+const reportGapCtrl = require('../controllers/adminReportGapController');
 
 router.use(requireAuth, requireAdmin);
 
 // Dashboard
 router.get('/', ctrl.dashboard);
+
+// Report gaps (possible missing reports)
+router.get('/report-gaps', reportGapCtrl.index);
+router.post('/report-gaps/ack', reportGapCtrl.acknowledge);
+router.post('/report-gaps/remind', reportGapCtrl.remindTeacher);
+router.post('/report-gaps/no-class-dates', reportGapCtrl.addNoClassDate);
+router.post('/report-gaps/no-class-dates/:id/delete', reportGapCtrl.deleteNoClassDate);
+router.delete('/report-gaps/no-class-dates/:id', reportGapCtrl.deleteNoClassDate);
 
 // Audit log
 router.get('/audit-log', ctrl.auditLogIndex);
@@ -26,6 +35,11 @@ router.post('/onboarding/:userId/remind', ctrl.onboardingSendReminder);
 
 // Users — bulk BEFORE /:id to avoid route conflict
 router.delete('/users/bulk',      ctrl.usersBulkDelete);
+router.post('/users/bulk-approve', ctrl.usersBulkApprove);
+router.post('/users/:id/approve', ctrl.userApprove);
+router.post('/users/:id/reject',  ctrl.userReject);
+router.post('/users/:id/suspend', ctrl.userSuspend);
+router.post('/users/:id/reactivate', ctrl.userReactivate);
 router.get('/users',              ctrl.usersList);
 router.get('/users/:id/edit',     ctrl.userEditForm);
 router.post('/users/:id',         ctrl.userUpdate);
@@ -74,11 +88,13 @@ router.get('/commission', ctrl.commissionIndex);
 router.get('/salaries',              requireSuperAdmin, salaryCtrl.salaryIndex);
 router.post('/salaries/generate',    requireSuperAdmin, salaryCtrl.salaryGenerate);
 router.post('/salaries/publish',     requireSuperAdmin, salaryCtrl.salaryPublish);
+router.post('/salaries/mark-paid',   requireSuperAdmin, salaryCtrl.salaryMarkPaid); // ← must be before /:id
 router.get('/salaries/export',       requireSuperAdmin, salaryCtrl.salaryExport);
 router.post('/salaries/bulk-update', requireSuperAdmin, salaryCtrl.salaryBulkUpdate); // ← must be before /:id
 router.get('/salaries/:id/slip',     requireSuperAdmin, salaryCtrl.salarySlip);
 router.get('/salaries/:id/edit',     requireSuperAdmin, salaryCtrl.salaryEditForm);
 router.post('/salaries/:id/retract', requireSuperAdmin, salaryCtrl.salaryRetract);
+router.post('/salaries/:id/reopen',  requireSuperAdmin, salaryCtrl.salaryReopen);
 router.post('/salaries/:id',         requireSuperAdmin, salaryCtrl.salaryUpdate);
 
 // Feedbacks
@@ -96,6 +112,13 @@ router.get('/backups/export',       requireSuperAdmin, backupCtrl.exportDirect);
 router.get('/backups/:id/download', requireSuperAdmin, backupCtrl.downloadBackup);
 router.post('/backups/:id/pin',     requireSuperAdmin, backupCtrl.togglePinBackup);
 router.delete('/backups/:id',       requireSuperAdmin, backupCtrl.deleteBackup);
+
+const systemCtrl = require('../controllers/adminSystemController');
+
+// System Health — superadmin only
+router.get('/system',                  requireSuperAdmin, systemCtrl.systemHealthIndex);
+router.post('/system/test-cloudinary', requireSuperAdmin, systemCtrl.testCloudinary);
+router.post('/system/cleanup-preview', requireSuperAdmin, systemCtrl.cleanupPreview);
 
 // Student Achievements — named routes BEFORE the main index
 router.get('/student-achievements/scan',         achievementsCtrl.lookupByBarcode);

@@ -6,7 +6,7 @@
 
     <div class="lg:col-span-2 space-y-4">
       <div id="rp-students-container"></div>
-      <button onclick="addRpStudent()"
+      <button type="button" data-add-student="rp"
         class="w-full py-3 rounded-xl border border-dashed border-slate-300 text-sm font-semibold text-slate-400 hover:border-brand-400 hover:text-brand-600 hover:bg-brand-50 transition flex items-center justify-center gap-2">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
         Add Student
@@ -32,6 +32,7 @@
             <tr class="hover:bg-slate-50"><td class="px-5 py-3 text-center font-mono text-slate-700">11 – 15</td><td class="px-5 py-3 text-center"><span class="inline-block bg-sky-100 text-sky-700 text-xs font-bold px-2.5 py-1 rounded-full">7</span></td></tr>
             <tr class="hover:bg-slate-50"><td class="px-5 py-3 text-center font-mono text-slate-700">16 – 20</td><td class="px-5 py-3 text-center"><span class="inline-block bg-amber-100 text-amber-700 text-xs font-bold px-2.5 py-1 rounded-full">6</span></td></tr>
             <tr class="hover:bg-slate-50"><td class="px-5 py-3 text-center font-mono text-slate-700">21 – 25</td><td class="px-5 py-3 text-center"><span class="inline-block bg-red-100 text-red-600 text-xs font-bold px-2.5 py-1 rounded-full">5</span></td></tr>
+            <tr class="hover:bg-slate-50"><td class="px-5 py-3 text-center font-mono text-slate-700">26+</td><td class="px-5 py-3 text-center"><span class="inline-block bg-red-100 text-red-600 text-xs font-bold px-2.5 py-1 rounded-full">4</span></td></tr>
           </tbody>
         </table>
       </div>

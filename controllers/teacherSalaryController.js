@@ -11,6 +11,7 @@
 
 const mongoose = require('mongoose');
 const Salary = require('../models/Salary');
+const { formatDisplayDate } = require('../services/salaryStatusService');
 
 function formatIDR(n) {
   if (!n || n === 0) return 'Rp\u00a00';
@@ -35,6 +36,8 @@ exports.mySalaryIndex = async (req, res) => {
     const rows = salaries.map(s => ({
       ...s,
       totalSalaryFormatted: formatIDR(s.totalSalary),
+      publishedAtFormatted: s.publishedAt ? formatDisplayDate(s.publishedAt) : null,
+      paidAtFormatted:      s.paidAt ? formatDisplayDate(s.paidAt) : null,
       monthLabel: new Date(s.year, s.month - 1, 1)
         .toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
     }));

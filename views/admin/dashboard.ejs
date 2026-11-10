@@ -14,6 +14,27 @@
   </div>
 </div>
 
+<% if (typeof pendingTeachersCount !== 'undefined' && pendingTeachersCount > 0) { %>
+  <div class="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0 text-amber-700">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+        </svg>
+      </div>
+      <div>
+        <p class="text-sm font-bold text-amber-900">
+          <%= pendingTeachersCount %> teacher<%= pendingTeachersCount === 1 ? '' : 's' %> waiting for approval
+        </p>
+        <p class="text-xs text-amber-700 mt-0.5">Review and approve new teacher registrations before they can access the platform.</p>
+      </div>
+    </div>
+    <a href="/admin/users?status=pending" class="inline-flex items-center justify-center px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-xl transition shadow-sm self-start sm:self-auto">
+      Review accounts
+    </a>
+  </div>
+<% } %>
+
 <!-- Stats -->
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
   <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
@@ -39,7 +60,7 @@
 </div>
 
 <!-- Quick Nav Cards — 4 cards (added Audit Log) -->
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
 
   <a href="/admin/users"
     class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:border-brand-300 hover:shadow-md transition group flex items-center gap-4">
@@ -96,6 +117,21 @@
       <p class="text-xs text-slate-400 mt-0.5">Admin activity history</p>
     </div>
     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-300 group-hover:text-violet-400 transition ml-auto flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+  </a>
+
+  <!-- Missing Reports nav card -->
+  <a href="/admin/report-gaps"
+    class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:border-amber-300 hover:shadow-md transition group flex items-center gap-4">
+    <div class="w-11 h-11 bg-amber-50 rounded-xl flex items-center justify-center flex-shrink-0">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+      </svg>
+    </div>
+    <div>
+      <p class="text-sm font-bold text-slate-800 group-hover:text-amber-700 transition">Missing Reports</p>
+      <p class="text-xs text-slate-400 mt-0.5">Possible report gaps</p>
+    </div>
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-300 group-hover:text-amber-400 transition ml-auto flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
   </a>
 
 </div>
@@ -183,69 +219,6 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script id="chartTeachersData" type="application/json"><%- chartTeachersJson %></script>
 <script id="dailyTrendData" type="application/json"><%- dailyTrendJson %></script>
-<script>
-  var chartTeachers = JSON.parse(document.getElementById('chartTeachersData').textContent);
-  var dailyTrend    = JSON.parse(document.getElementById('dailyTrendData').textContent);
-
-  var chartDefaults = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false }, tooltip: { cornerRadius: 8 } },
-  };
-
-  // Bar chart — reports per teacher
-  if (chartTeachers.length === 0) {
-    document.getElementById('chartTeachersEmpty').classList.remove('hidden');
-  } else {
-    new Chart(document.getElementById('chartTeachers'), {
-      type: 'bar',
-      data: {
-        labels: chartTeachers.map(function(t) { return t.name; }),
-        datasets: [{
-          data: chartTeachers.map(function(t) { return t.count; }),
-          backgroundColor: 'rgba(99,102,241,0.15)',
-          borderColor: 'rgba(99,102,241,0.7)',
-          borderWidth: 2,
-          borderRadius: 6,
-          borderSkipped: false,
-        }],
-      },
-      options: Object.assign({}, chartDefaults, {
-        scales: {
-          y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 11 } }, grid: { color: 'rgba(148,163,184,0.12)' } },
-          x: { ticks: { font: { size: 11 } }, grid: { display: false } },
-        },
-      }),
-    });
-  }
-
-  // Line chart — daily trend
-  if (dailyTrend.length === 0) {
-    document.getElementById('chartTrendEmpty').classList.remove('hidden');
-  } else {
-    new Chart(document.getElementById('chartDailyTrend'), {
-      type: 'line',
-      data: {
-        labels: dailyTrend.map(function(d) { return d.date.substring(8); }), // day number
-        datasets: [{
-          data: dailyTrend.map(function(d) { return d.count; }),
-          borderColor: 'rgba(16,185,129,0.8)',
-          backgroundColor: 'rgba(16,185,129,0.08)',
-          borderWidth: 2.5,
-          pointRadius: 4,
-          pointHoverRadius: 6,
-          tension: 0.3,
-          fill: true,
-        }],
-      },
-      options: Object.assign({}, chartDefaults, {
-        scales: {
-          y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 11 } }, grid: { color: 'rgba(148,163,184,0.12)' } },
-          x: { ticks: { font: { size: 11 } }, grid: { display: false } },
-        },
-      }),
-    });
-  }
-</script>
+<script src="/js/pages/admin-dashboard.js"></script>
 
 <%- include('../partials/footer') %>

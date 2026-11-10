@@ -65,7 +65,7 @@
               </svg>
             </label>
             <input id="profilePicture" type="file" name="profilePicture"
-              accept="image/jpeg,image/png,image/webp" class="hidden" onchange="previewAvatar(this)">
+              accept="image/jpeg,image/png,image/webp" class="hidden" data-action="previewAvatar">
           </div>
           <div>
             <p class="text-sm font-semibold text-slate-700"><%= user.displayName %></p>
@@ -215,45 +215,8 @@
       File too large! Maximum size is 2MB.
     </div>
 
-    <script>
-      function showSizeError() {
-        const toast = document.getElementById('size-toast');
-        toast.classList.remove('hidden');
-        setTimeout(() => toast.classList.add('hidden'), 3000);
-      }
+    <script src="/js/pages/profile-edit.js" defer></script>
 
-      function previewAvatar(input) {
-        if (input.files && input.files[0]) {
-          const file = input.files[0];
-          if (file.size > 2 * 1024 * 1024) {
-            input.value = '';
-            showSizeError();
-            return;
-          }
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const preview  = document.getElementById('avatar-preview');
-            const initials = document.getElementById('avatar-initials');
-            preview.src = e.target.result;
-            preview.classList.remove('hidden');
-            if (initials) initials.classList.add('hidden');
-          };
-          reader.readAsDataURL(file);
-        }
-      }
-
-      // Auto-scroll and highlight commission section if linked via #commission-section
-      if (window.location.hash === '#commission-section') {
-        const el = document.getElementById('commission-section');
-        if (el) {
-          setTimeout(() => {
-            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            el.classList.add('ring-2', 'ring-brand-500', 'ring-offset-2');
-            setTimeout(() => el.classList.remove('ring-2', 'ring-brand-500', 'ring-offset-2'), 2500);
-          }, 150);
-        }
-      }
-    </script>
   </div>
 
 <%- include('../partials/footer') %>

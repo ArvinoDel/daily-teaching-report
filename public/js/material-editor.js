@@ -219,6 +219,14 @@
       }
     };
 
+    if (typeof registerAction === 'function') {
+      registerAction('openEditorSlides', function () {
+        if (typeof window.openEditorSlides === 'function') {
+          window.openEditorSlides();
+        }
+      });
+    }
+
     if (btnShowAddFile) btnShowAddFile.disabled = resources.length >= 20;
     if (btnShowAddLink) btnShowAddLink.disabled = resources.length >= 20;
 

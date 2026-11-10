@@ -534,7 +534,13 @@ exports.groupAddStudents = async (req, res) => {
       return res.status(404).json({ ok: false, message: 'Group not found.' });
     }
 
-    const { added, skipped } = await groupRosterService.addStudentsToGroup(group, names);
+    const confirmSameStudent = Array.isArray(req.body.confirmSameStudent)
+      ? req.body.confirmSameStudent
+      : [];
+
+    const { added, skipped } = await groupRosterService.addStudentsToGroup(group, names, {
+      confirmSameStudent,
+    });
 
     for (const student of added) {
       await logAudit(req, 'group_student_add', group._id, group.group_name, {
@@ -548,6 +554,13 @@ exports.groupAddStudents = async (req, res) => {
     return res.json({ ok: true, added, skipped });
   } catch (err) {
     console.error('groupAddStudents error:', err);
+    if (err.possibleNamesake || err.code === 'POSSIBLE_NAMESAKE') {
+      return res.status(409).json({
+        ok: false,
+        possibleNamesake: err.possibleNamesake,
+        message: 'Possible namesake detected. Confirmation required.',
+      });
+    }
     if (err.needsRepair) {
       return res.status(409).json({
         ok: false,

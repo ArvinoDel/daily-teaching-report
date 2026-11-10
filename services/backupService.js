@@ -50,6 +50,9 @@ const BACKUP_COLLECTIONS = [
 
 const EXCLUDED_MODELS = {
   Backup: 'Backup stores metadata about the backup archives themselves; backing it up into backups would be circular and redundant.',
+  ReportGapAck: 'ReportGapAck stores admin acknowledgements of heuristic report gaps and can be re-evaluated from raw reports.',
+  NoClassDate: 'NoClassDate stores calendar exceptions for report gap heuristics and does not form part of core teaching data backups.',
+  CronRun: 'CronRun stores telemetry about background cron executions and has its own 120-day TTL lifecycle.',
 };
 
 /* ───────────────────────────────────────────────
@@ -824,47 +827,93 @@ async function pruneExpiredBackups({
   return summary;
 }
 
+let scheduledTasks = [];
+
 /**
  * Initializes schedulers:
  * - Weekly backup: Sunday at 00:00 (midnight WIB).
  * - Daily retention cleanup: 01:30 WIB (18:30 UTC).
  */
 function initScheduler() {
+  stopScheduler();
+  const { recordCronRun } = require('./cronRunService');
+
   // Weekly backup
-  cron.schedule('0 0 * * 0', async () => {
+  const task1 = cron.schedule('0 0 * * 0', async () => {
     console.log('⏰ Starting automated weekly backup...');
     try {
-      const backup = await performBackup(null, 'System (Automated)', 'json_gz');
-      console.log(`✅ Automated weekly backup succeeded: ${backup.fileUrl}`);
-    } catch (err) {
-      console.error('❌ Automated weekly backup failed:', err);
-      await Backup.create({
-        initiatedBy:     null,
-        initiatedByName: 'System (Automated)',
-        status:          'failed',
-        errorMessage:    sanitizeErrorMessage(err.message),
-        recordCounts:    {},
-      }).catch(() => {});
-    } finally {
-      try {
-        await pruneExpiredBackups();
-      } catch (e) {
-        console.error('⚠ Retention cleanup error (non-fatal):', e.message);
-      }
+      await recordCronRun('backup', 'scheduler', async () => {
+        try {
+          const backup = await performBackup(null, 'System (Automated)', 'json_gz');
+          console.log(`✅ Automated weekly backup succeeded: ${backup.fileUrl}`);
+          return {
+            backupId: backup._id,
+            summary: {
+              fileSizeBytes: backup.fileSizeBytes,
+              totalRecords: backup.recordCounts
+                ? Object.values(backup.recordCounts).reduce((s, n) => s + (typeof n === 'number' ? n : 0), 0)
+                : 0,
+            },
+          };
+        } catch (err) {
+          console.error('❌ Automated weekly backup failed:', err);
+          await Backup.create({
+            initiatedBy:     null,
+            initiatedByName: 'System (Automated)',
+            status:          'failed',
+            errorMessage:    sanitizeErrorMessage(err.message),
+            recordCounts:    {},
+          }).catch(() => {});
+          throw err;
+        } finally {
+          try {
+            await pruneExpiredBackups();
+          } catch (e) {
+            console.error('⚠ Retention cleanup error (non-fatal):', e.message);
+          }
+        }
+      });
+    } catch (e) {
+      // Logged in recordCronRun and console
     }
   });
 
   // Daily cleanup
-  cron.schedule('30 1 * * *', async () => {
+  const task2 = cron.schedule('30 1 * * *', async () => {
     console.log('⏰ Starting daily scheduled backup retention cleanup...');
     try {
-      await pruneExpiredBackups();
+      await recordCronRun('backup-cleanup', 'scheduler', async () => {
+        const result = await pruneExpiredBackups();
+        return {
+          summary: {
+            deletedCount: result.deletedCount || 0,
+            freedBytes: result.freedBytes || 0,
+            expiredCount: result.expiredCount || 0,
+          },
+        };
+      });
     } catch (err) {
       console.error('⚠ Scheduled backup retention cleanup error:', err.message);
     }
   });
 
+  scheduledTasks = [task1, task2];
   console.log('⏰ Backup schedulers initialized (Weekly: Sun 00:00, Daily Cleanup: 01:30).');
+  return scheduledTasks;
+}
+
+/**
+ * Stops any active node-cron scheduler tasks.
+ */
+function stopScheduler() {
+  if (Array.isArray(scheduledTasks)) {
+    scheduledTasks.forEach(task => {
+      if (task && typeof task.stop === 'function') {
+        task.stop();
+      }
+    });
+  }
+  scheduledTasks = [];
 }
 
 /**
@@ -903,5 +952,6 @@ module.exports = {
   pruneExpiredBackups,
   pruneOldAutomatedBackups: pruneExpiredBackups, // Backward-compatible alias
   initScheduler,
+  stopScheduler,
   getNextBackupDate,
 };

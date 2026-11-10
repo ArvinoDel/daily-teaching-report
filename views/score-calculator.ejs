@@ -6,9 +6,17 @@
 <%- include('./partials/calculator/_panel-rp') %>
 <%- include('./partials/calculator/_panel-general') %>
 <%- include('./partials/calculator/_panel-ielts') %>
-<%- include('./partials/calculator/_panel-ielts-listening') %>
+<%- include('./partials/calculator/_panel-toefl-itp') %>
+<%- include('./partials/calculator/_panel-toeic') %>
 
 <%- include('./partials/calculator/_templates') %>
-<%- include('./partials/calculator/_scripts') %>
+
+<script src="/js/calculator/engine.js"></script>
+<script src="/js/calculator/tables/ielts-listening.js"></script>
+<script src="/js/calculator/tables/ielts-reading-center.js"></script>
+<script src="/js/calculator/tables/toefl-itp.js"></script>
+<script src="/js/calculator/tables/toeic-lr.js"></script>
+<script src="/js/calculator/tests-config.js"></script>
+<script src="/js/calculator/ui.js"></script>
 
 <%- include('./partials/footer') %>

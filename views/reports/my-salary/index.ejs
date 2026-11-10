@@ -33,9 +33,9 @@
               <p class="text-white font-bold text-base"><%= s.monthLabel %></p>
               <p class="text-brand-200 text-xs mt-0.5"><%= s.periodLabel || '—' %></p>
             </div>
-            <span class="text-xs font-bold px-2 py-1 rounded-full mt-0.5
+            <span class="text-xs font-bold px-2.5 py-1 rounded-full mt-0.5
               <%= s.status === 'paid' ? 'bg-sky-400/20 text-sky-100' : 'bg-emerald-400/20 text-emerald-100' %>">
-              <%= s.status === 'paid' ? 'Paid' : 'Sent' %>
+              <%= s.status === 'paid' ? (s.paidAtFormatted ? 'Paid on ' + s.paidAtFormatted : 'Paid') : 'Published' %>
             </span>
           </div>
         </div>

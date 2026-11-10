@@ -11,6 +11,14 @@ const {
   validateCompetition,
 } = require('../services/reportInputService');
 const onboardingService = require('../services/onboardingService');
+const {
+  activeUserFilter,
+  isModeratable,
+  isJsonRequest,
+  planStatusChange,
+  buildStatusChangeFilter,
+} = require('../services/userAccountService');
+const notificationService = require('../services/notificationService');
 
 const TEACHING_TYPES = [
   'Prime Teacher (Full)',
@@ -120,7 +128,7 @@ async function getGroupsJson() {
 // 🟢 Fetch all teachers as safe JSON for partner-teacher autocomplete
 async function getTeachersJson() {
   try {
-    const teachers = await User.find({ role: 'teacher' })
+    const teachers = await User.find(activeUserFilter({ role: 'teacher' }))
       .select('displayName username')
       .sort({ displayName: 1 });
     return safeJson(teachers.map(t => ({
@@ -205,11 +213,12 @@ exports.dashboard = async (req, res) => {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-    const [totalUsers, onlineCount, totalReports, monthlyReports] = await Promise.all([
-      User.countDocuments({ role: 'teacher' }),
+    const [totalUsers, onlineCount, totalReports, monthlyReports, pendingTeachersCount] = await Promise.all([
+      User.countDocuments(activeUserFilter({ role: 'teacher' })),
       User.countDocuments({ lastActiveAt: { $gte: fiveMinAgo } }),
       Report.countDocuments(),
       Report.countDocuments({ date: { $gte: monthStart, $lte: monthEnd } }),
+      User.countDocuments({ role: 'teacher', accountStatus: 'pending' }),
     ]);
 
     const recentReports = await Report.find()
@@ -244,7 +253,7 @@ exports.dashboard = async (req, res) => {
     const dailyTrend = rawDailyTrend.map(r => ({ date: r._id, count: r.count }));
 
     res.render('admin/dashboard', {
-      totalUsers, onlineCount, totalReports, monthlyReports,
+      totalUsers, onlineCount, totalReports, monthlyReports, pendingTeachersCount,
       recentReports, typeBadgeColor,
       monthLabel:         now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
       chartTeachersJson:  safeJson(chartTeachers),
@@ -271,11 +280,23 @@ exports.usersList = async (req, res) => {
     reportCounts.forEach(r => { countMap[String(r._id)] = r.count; });
 
     let noRewardsCount = 0;
+    let pendingCount = 0;
+    let activeCount = 0;
+    let suspendedCount = 0;
+    let rejectedCount = 0;
+
     const allUsersData = users.map(u => {
       const comm = u.commission || {};
       const hasRewards = [comm.primeFull, comm.primeAssisted, comm.halfPrime, comm.assistant].some(v => (Number(v) || 0) > 0);
       const rewardsNotSet = u.role === 'teacher' && !hasRewards;
       if (rewardsNotSet) noRewardsCount++;
+
+      const st = u.accountStatus || 'active';
+      if (st === 'pending') pendingCount++;
+      else if (st === 'suspended') suspendedCount++;
+      else if (st === 'rejected') rejectedCount++;
+      else activeCount++;
+
       return {
         ...u.toObject({ virtuals: true }),
         isOnline:    !!(u.lastActiveAt && new Date(u.lastActiveAt).getTime() >= fiveMinAgo.getTime()),
@@ -284,16 +305,36 @@ exports.usersList = async (req, res) => {
       };
     });
 
-    const filter = req.query.filter || '';
-    const displayedUsers = filter === 'no-rewards'
-      ? allUsersData.filter(u => u.rewardsNotSet)
-      : allUsersData;
+    const filter = req.query.filter || req.query.status || '';
+    const pendingUsers = allUsersData.filter(u => u.accountStatus === 'pending');
+
+    let displayedUsers = allUsersData;
+    if (filter === 'no-rewards') {
+      displayedUsers = allUsersData.filter(u => u.rewardsNotSet);
+    } else if (filter === 'pending') {
+      displayedUsers = allUsersData.filter(u => u.accountStatus === 'pending');
+    } else if (filter === 'active') {
+      displayedUsers = allUsersData.filter(u => (u.accountStatus || 'active') === 'active');
+    } else if (filter === 'suspended') {
+      displayedUsers = allUsersData.filter(u => u.accountStatus === 'suspended');
+    } else if (filter === 'rejected') {
+      displayedUsers = allUsersData.filter(u => u.accountStatus === 'rejected');
+    }
+
+    const successMessage = req.session.flash || null;
+    delete req.session.flash;
 
     res.render('admin/users/index', {
       users: displayedUsers,
+      pendingUsers,
       totalUsersCount: allUsersData.length,
+      pendingCount,
+      activeCount,
+      suspendedCount,
+      rejectedCount,
       noRewardsCount,
       filter,
+      successMessage,
     });
   } catch (err) {
     console.error(err);
@@ -311,8 +352,21 @@ exports.userEditForm = async (req, res) => {
       return res.status(403).render('error', { message: 'Access denied. Admins cannot edit superadmins.' });
     }
 
+    const superadminCount = await User.countDocuments({ role: 'superadmin' });
+    const modCheck = isModeratable(req.session.user, user, { superadminCount });
+
+    const success = req.session.flash || null;
+    delete req.session.flash;
+
     const currentYear = new Date().getFullYear();
-    res.render('admin/users/edit', { user, errors: [], success: null, currentYear });
+    res.render('admin/users/edit', {
+      user,
+      errors: [],
+      success,
+      currentYear,
+      canModerate: modCheck.ok,
+      moderateDenialReason: modCheck.reason,
+    });
   } catch (err) {
     res.render('error', { message: 'User not found.' });
   }
@@ -445,6 +499,295 @@ exports.userUpdate = async (req, res) => {
   }
 };
 
+
+exports.userApprove = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      if (isJsonRequest(req)) return res.status(404).json({ error: 'User not found.' });
+      return res.status(404).render('error', { message: 'User not found.' });
+    }
+
+    const superadminCount = await User.countDocuments({ role: 'superadmin' });
+    const plan = planStatusChange(req.session?.user, user, 'approve', { superadminCount });
+    if (!plan.ok) {
+      if (isJsonRequest(req)) return res.status(plan.status).json({ error: plan.message });
+      return res.status(plan.status).render('error', { message: plan.message });
+    }
+
+    const now = new Date();
+    const filter = buildStatusChangeFilter(user._id, ['pending', 'rejected']);
+    const updateSet = {
+      accountStatus: 'active',
+      statusReason: '',
+      statusChangedAt: now,
+      statusChangedBy: req.session?.user?._id,
+    };
+    if (!user.onboarding?.startedAt) {
+      updateSet['onboarding.startedAt'] = now;
+    }
+
+    const updated = await User.findOneAndUpdate(filter, { $set: updateSet }, { new: true });
+
+    if (updated) {
+      try {
+        await notificationService.notifyTeacherWelcome(updated);
+      } catch (notifErr) {
+        console.error('Welcome notification failed (non-fatal):', notifErr);
+      }
+
+      await logAudit(req, 'user_approve', 'user', updated._id, `${updated.displayName} (@${updated.username})`, {
+        userId: updated._id,
+        username: updated.username,
+      });
+    }
+
+    if (isJsonRequest(req)) {
+      return res.status(200).json({ ok: true, message: 'Teacher approved successfully.' });
+    }
+    req.session.flash = `Approved account for ${user.displayName}.`;
+    return res.redirect('/admin/users');
+  } catch (err) {
+    console.error('userApprove error:', err);
+    if (isJsonRequest(req)) return res.status(500).json({ error: 'Failed to approve user.' });
+    return res.status(500).render('error', { message: 'Failed to approve user.' });
+  }
+};
+
+exports.userReject = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      if (isJsonRequest(req)) return res.status(404).json({ error: 'User not found.' });
+      return res.status(404).render('error', { message: 'User not found.' });
+    }
+
+    const superadminCount = await User.countDocuments({ role: 'superadmin' });
+    const plan = planStatusChange(req.session?.user, user, 'reject', { superadminCount });
+    if (!plan.ok) {
+      if (isJsonRequest(req)) return res.status(plan.status).json({ error: plan.message });
+      return res.status(plan.status).render('error', { message: plan.message });
+    }
+
+    const reason = (req.body?.reason || '').trim().slice(0, 200);
+    const filter = buildStatusChangeFilter(user._id, 'pending');
+    const updated = await User.findOneAndUpdate(
+      filter,
+      {
+        $set: {
+          accountStatus: 'rejected',
+          statusReason: reason,
+          statusChangedAt: new Date(),
+          statusChangedBy: req.session?.user?._id,
+        },
+      },
+      { new: true }
+    );
+
+    if (updated) {
+      await logAudit(req, 'user_reject', 'user', updated._id, `${updated.displayName} (@${updated.username})`, {
+        userId: updated._id,
+        username: updated.username,
+        reason,
+      });
+    }
+
+    if (isJsonRequest(req)) {
+      return res.status(200).json({ ok: true, message: 'Registration rejected.' });
+    }
+    req.session.flash = `Rejected registration for ${user.displayName}.`;
+    return res.redirect('/admin/users');
+  } catch (err) {
+    console.error('userReject error:', err);
+    if (isJsonRequest(req)) return res.status(500).json({ error: 'Failed to reject user.' });
+    return res.status(500).render('error', { message: 'Failed to reject user.' });
+  }
+};
+
+exports.usersBulkApprove = async (req, res) => {
+  try {
+    let ids = req.body?.ids || req.body?.userIds;
+    if (!ids) {
+      if (isJsonRequest(req)) return res.status(400).json({ error: 'No users selected.' });
+      return res.redirect('/admin/users');
+    }
+    if (typeof ids === 'string') ids = ids.split(',').map(s => s.trim()).filter(Boolean);
+    if (!Array.isArray(ids) || ids.length === 0) {
+      if (isJsonRequest(req)) return res.status(400).json({ error: 'No users selected.' });
+      return res.redirect('/admin/users');
+    }
+
+    const cappedIds = ids.slice(0, 100);
+    const users = await User.find({ _id: { $in: cappedIds } });
+
+    const superadminCount = await User.countDocuments({ role: 'superadmin' });
+    const allowedIds = [];
+    let skippedCount = 0;
+
+    for (const u of users) {
+      const plan = planStatusChange(req.session?.user, u, 'approve', { superadminCount });
+      if (plan.ok) {
+        allowedIds.push(u._id);
+      } else {
+        skippedCount++;
+      }
+    }
+
+    let approvedCount = 0;
+    if (allowedIds.length > 0) {
+      const now = new Date();
+      const filter = buildStatusChangeFilter(allowedIds, ['pending', 'rejected']);
+      await User.updateMany(filter, {
+        $set: {
+          accountStatus: 'active',
+          statusReason: '',
+          statusChangedAt: now,
+          statusChangedBy: req.session?.user?._id,
+        },
+      });
+
+      // Re-read accounts that were actually updated
+      const actuallyUpdated = await User.find({
+        _id: { $in: allowedIds },
+        accountStatus: 'active',
+        statusChangedAt: now,
+      });
+
+      for (const u of actuallyUpdated) {
+        if (!u.onboarding) u.onboarding = {};
+        if (!u.onboarding.startedAt) {
+          u.onboarding.startedAt = now;
+          await User.updateOne({ _id: u._id }, { $set: { 'onboarding.startedAt': now } });
+        }
+
+        try {
+          await notificationService.notifyTeacherWelcome(u);
+        } catch (e) {
+          console.error('Welcome notification failed for bulk approve:', e);
+        }
+
+        await logAudit(req, 'user_approve', 'user', u._id, `${u.displayName} (@${u.username})`, {
+          userId: u._id,
+          username: u.username,
+        });
+        approvedCount++;
+      }
+    }
+
+    if (isJsonRequest(req)) {
+      return res.status(200).json({ ok: true, approvedCount, skippedCount });
+    }
+    let flashMsg = `Approved ${approvedCount} teacher(s).`;
+    if (skippedCount > 0) {
+      flashMsg += ` (${skippedCount} skipped due to status or permissions)`;
+    }
+    req.session.flash = flashMsg;
+    return res.redirect('/admin/users');
+  } catch (err) {
+    console.error('usersBulkApprove error:', err);
+    if (isJsonRequest(req)) return res.status(500).json({ error: 'Failed to bulk approve users.' });
+    return res.status(500).render('error', { message: 'Failed to bulk approve users.' });
+  }
+};
+
+exports.userSuspend = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      if (isJsonRequest(req)) return res.status(404).json({ error: 'User not found.' });
+      return res.status(404).render('error', { message: 'User not found.' });
+    }
+
+    const reason = (req.body?.reason || '').trim().slice(0, 200);
+    const superadminCount = await User.countDocuments({ role: 'superadmin' });
+    const plan = planStatusChange(req.session?.user, user, 'suspend', { superadminCount, reason });
+    if (!plan.ok) {
+      if (isJsonRequest(req)) return res.status(plan.status).json({ error: plan.message });
+      return res.status(plan.status).render('error', { message: plan.message });
+    }
+
+    const filter = buildStatusChangeFilter(user._id, 'active');
+    const updated = await User.findOneAndUpdate(
+      filter,
+      {
+        $set: {
+          accountStatus: 'suspended',
+          statusReason: reason,
+          statusChangedAt: new Date(),
+          statusChangedBy: req.session?.user?._id,
+        },
+      },
+      { new: true }
+    );
+
+    if (updated) {
+      await logAudit(req, 'user_suspend', 'user', updated._id, `${updated.displayName} (@${updated.username})`, {
+        userId: updated._id,
+        username: updated.username,
+        reason,
+      });
+    }
+
+    if (isJsonRequest(req)) {
+      return res.status(200).json({ ok: true, message: 'User suspended.' });
+    }
+    req.session.flash = `Suspended ${user.displayName}.`;
+    return res.redirect(`/admin/users/${user._id}/edit`);
+  } catch (err) {
+    console.error('userSuspend error:', err);
+    if (isJsonRequest(req)) return res.status(500).json({ error: 'Failed to suspend user.' });
+    return res.status(500).render('error', { message: 'Failed to suspend user.' });
+  }
+};
+
+exports.userReactivate = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      if (isJsonRequest(req)) return res.status(404).json({ error: 'User not found.' });
+      return res.status(404).render('error', { message: 'User not found.' });
+    }
+
+    const superadminCount = await User.countDocuments({ role: 'superadmin' });
+    const plan = planStatusChange(req.session?.user, user, 'reactivate', { superadminCount });
+    if (!plan.ok) {
+      if (isJsonRequest(req)) return res.status(plan.status).json({ error: plan.message });
+      return res.status(plan.status).render('error', { message: plan.message });
+    }
+
+    const filter = buildStatusChangeFilter(user._id, 'suspended');
+    const updated = await User.findOneAndUpdate(
+      filter,
+      {
+        $set: {
+          accountStatus: 'active',
+          statusReason: '',
+          statusChangedAt: new Date(),
+          statusChangedBy: req.session?.user?._id,
+        },
+      },
+      { new: true }
+    );
+
+    if (updated) {
+      await logAudit(req, 'user_reactivate', 'user', updated._id, `${updated.displayName} (@${updated.username})`, {
+        userId: updated._id,
+        username: updated.username,
+      });
+    }
+
+    if (isJsonRequest(req)) {
+      return res.status(200).json({ ok: true, message: 'User reactivated.' });
+    }
+    req.session.flash = `Reactivated ${user.displayName}.`;
+    return res.redirect(`/admin/users/${user._id}/edit`);
+  } catch (err) {
+    console.error('userReactivate error:', err);
+    if (isJsonRequest(req)) return res.status(500).json({ error: 'Failed to reactivate user.' });
+    return res.status(500).render('error', { message: 'Failed to reactivate user.' });
+  }
+};
+
 exports.userDelete = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
@@ -558,7 +901,7 @@ exports.reportsList = async (req, res) => {
 
     const [reports, teachers] = await Promise.all([
       Report.find(filter).sort({ date: -1 }).populate('teacher', 'displayName username'),
-      User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),
+      User.find(activeUserFilter({ role: 'teacher' })).select('displayName username').sort({ displayName: 1 }),
     ]);
 
     // 🟡 Flash message support (from reportUpdate redirect)
@@ -588,7 +931,7 @@ exports.reportEditForm = async (req, res) => {
         .populate('material', 'hasContent'),
       getGroupsJson(),
       getTeachersJson(),
-      User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),
+      User.find(activeUserFilter({ role: 'teacher' })).select('displayName username').sort({ displayName: 1 }),
       getMaterialsJson(),
     ]);
     if (!report) return res.render('error', { message: 'Report not found.' });
@@ -635,7 +978,7 @@ exports.reportUpdate = async (req, res) => {
         Report.findById(req.params.id).populate('teacher', 'displayName username'),
         getGroupsJson(),
         getTeachersJson(),
-        User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),
+        User.find(activeUserFilter({ role: 'teacher' })).select('displayName username').sort({ displayName: 1 }),
         getMaterialsJson(),
       ]);
       const formData = {
@@ -759,7 +1102,7 @@ exports.reportUpdate = async (req, res) => {
       Report.findById(req.params.id).populate('teacher', 'displayName username').catch(() => null),
       getGroupsJson(),
       getTeachersJson(),
-      User.find({ role: 'teacher' }).select('displayName username').sort({ displayName: 1 }),
+      User.find(activeUserFilter({ role: 'teacher' })).select('displayName username').sort({ displayName: 1 }),
       getMaterialsJson(),
     ]);
     res.render('admin/reports/edit', { report, teachingTypes: TEACHING_TYPES, errors: ['Something went wrong.'], groupsJson, teachersJson, teachers, materialsJson });
@@ -841,7 +1184,7 @@ exports.commissionIndex = async (req, res) => {
     const { monthStart, monthEnd, prevMonth, nextMonth, isCurrentMonth, monthLabel, selectedMonthStr } =
       getMonthRange(req.query);
 
-    const teachers = await User.find({ role: 'teacher' }).sort({ displayName: 1 });
+    const teachers = await User.find(activeUserFilter({ role: 'teacher' })).sort({ displayName: 1 });
 
     // Single aggregate instead of N individual Report.find() calls
     const reportAgg = await Report.aggregate([
@@ -1004,8 +1347,7 @@ exports.onboardingReport = async (req, res) => {
   try {
     const now = new Date();
     const teachers = await User.find({
-      role: 'teacher',
-      'onboarding.startedAt': { $ne: null },
+      ...activeUserFilter({ role: 'teacher' }), 'onboarding.startedAt': { $ne: null },
       'onboarding.legacy': { $ne: true },
     })
       .select('_id displayName username profilePicture commission onboarding createdAt')

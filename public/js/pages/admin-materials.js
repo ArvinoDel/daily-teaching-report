@@ -1,0 +1,572 @@
+(function() {
+  setTimeout(function () { var t = document.getElementById('flash-message'); if (t) t.remove(); }, 4000);
+})();
+
+    setTimeout(function () {
+      var t = document.getElementById('flash-toast');
+      if (t) { t.style.opacity = '0'; t.style.transform = 'translateX(16px)'; }
+    }, 3500);
+  </script>
+<% } %>
+
+<% if (flashError) { %>
+  <div id="flash-error-toast" class="fixed top-20 right-4 z-50 bg-rose-600 text-white text-sm font-medium px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 transition-all duration-300">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+    </svg>
+    <%= flashError %>
+  </div>
+  <script>
+    setTimeout(function () {
+      var t = document.getElementById('flash-error-toast');
+      if (t) { t.style.opacity = '0'; t.style.transform = 'translateX(16px)'; }
+    }, 5000);
+  </script>
+<% } %>
+
+<!-- Filters -->
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm px-4 sm:px-5 py-3.5 mb-5">
+  <form id="materials-filter-form" method="GET" action="/admin/materials" class="flex flex-wrap items-center gap-x-4 gap-y-3">
+    <!-- Search Input -->
+    <div class="flex items-center gap-2 flex-1 min-w-[200px]">
+      <div class="relative flex-1">
+        <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 15.803a7.5 7.5 0 0 0 10.607 0Z" />
+        </svg>
+        <input
+          type="text"
+          name="q"
+          value="<%= searchQuery %>"
+          placeholder="Search material name…"
+          autocomplete="off"
+          class="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300 transition">
+      </div>
+      <button type="submit" class="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg transition">Go</button>
+      <% if (searchQuery || selectedLevel || noContentFilter || sortQuery) { %>
+        <a href="/admin/materials" class="text-xs text-slate-400 hover:text-slate-600 transition">Clear</a>
+      <% } %>
+    </div>
+
+    <span class="self-stretch w-px bg-slate-100 hidden sm:block"></span>
+
+    <!-- Level Filter -->
+    <div class="flex items-center gap-2">
+      <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Level</span>
+      <select
+        name="level"
+        data-action="autoSubmitForm"
+        class="text-xs font-semibold rounded-lg border border-slate-200 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-300 bg-white text-slate-700 cursor-pointer">
+        <option value="" <%= !selectedLevel ? 'selected' : '' %>>All Levels</option>
+        <option value="NONE" <%= selectedLevel === 'NONE' ? 'selected' : '' %>>No Level</option>
+        <% availableLevels.forEach(function(l) { %>
+          <option value="<%= l %>" <%= selectedLevel === l ? 'selected' : '' %>>
+            <%= l %> <% if (LEVEL_LABELS[l]) { %>— <%= LEVEL_LABELS[l] %><% } %>
+          </option>
+        <% }); %>
+      </select>
+    </div>
+
+    <!-- Content Filter -->
+    <div class="flex items-center gap-2">
+      <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Content</span>
+      <select
+        name="noContent"
+        data-action="autoSubmitForm"
+        class="text-xs font-semibold rounded-lg border border-slate-200 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-300 bg-white text-slate-700 cursor-pointer">
+        <option value="" <%= !noContentFilter ? 'selected' : '' %>>All</option>
+        <option value="1" <%= noContentFilter ? 'selected' : '' %>>No content yet</option>
+      </select>
+    </div>
+
+    <!-- Sort Dropdown -->
+    <div class="flex items-center gap-2">
+      <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Sort</span>
+      <select
+        name="sort"
+        data-action="autoSubmitForm"
+        class="text-xs font-semibold rounded-lg border border-slate-200 px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-300 bg-white text-slate-700 cursor-pointer">
+        <option value="" <%= !sortQuery ? 'selected' : '' %>>Usage (Highest)</option>
+        <option value="usage_asc" <%= sortQuery === 'usage_asc' ? 'selected' : '' %>>Usage (Lowest)</option>
+        <option value="name" <%= sortQuery === 'name' ? 'selected' : '' %>>Name (A → Z)</option>
+      </select>
+    </div>
+  </form>
+</div>
+
+<!-- Table Card -->
+<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
+  <div class="overflow-x-auto">
+    <table class="w-full text-left border-collapse">
+      <thead>
+        <tr class="border-b border-slate-100 bg-slate-50/60 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+          <th class="px-5 py-3.5">Material Name</th>
+          <th class="px-5 py-3.5">Level</th>
+          <th class="px-5 py-3.5">Content</th>
+          <th class="px-5 py-3.5">Usage</th>
+          <th class="px-5 py-3.5">Last Used</th>
+          <th class="px-5 py-3.5">Created By</th>
+          <th class="px-5 py-3.5 text-right">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100 text-sm">
+        <% if (materials.length === 0) { %>
+          <tr>
+            <td colspan="6" class="px-5 py-12 text-center text-slate-400 text-sm">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 mx-auto mb-2 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+              </svg>
+              No materials found matching your criteria.
+            </td>
+          </tr>
+        <% } %>
+        <% materials.forEach(function(mat) { %>
+          <tr class="data-row hover:bg-slate-50/50 transition" id="mat-row-<%= mat._id %>">
+            <!-- Name -->
+            <td class="px-5 py-3.5">
+              <div class="font-semibold text-slate-800"><%= mat.name %></div>
+              <div class="text-[11px] text-slate-400 font-mono mt-0.5"><%= mat.nameNormalized %></div>
+            </td>
+            <!-- Level -->
+            <td class="px-5 py-3.5 whitespace-nowrap">
+              <% if (mat.level) { %>
+                <span class="inline-flex items-center text-xs font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
+                  <%= mat.level %>
+                </span>
+              <% } else { %>
+                <span class="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">
+                  No level
+                </span>
+              <% } %>
+            </td>
+            <!-- Content Badge -->
+            <td class="px-5 py-3.5 whitespace-nowrap">
+              <% const status = (typeof contentStatusMap !== 'undefined' && contentStatusMap[String(mat._id)]) || { label: 'No content', type: 'none' }; %>
+              <% if (status.type === 'files') { %>
+                <span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                  <%= status.label %>
+                </span>
+              <% } else if (status.type === 'text') { %>
+                <span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                  Text only
+                </span>
+              <% } else { %>
+                <span class="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                  No content
+                </span>
+              <% } %>
+            </td>
+            <!-- Usage Count -->
+            <td class="px-5 py-3.5 whitespace-nowrap">
+              <span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                <%= mat.usageCount || 0 %> report<%= (mat.usageCount === 1) ? '' : 's' %>
+              </span>
+            </td>
+            <!-- Last Used -->
+            <td class="px-5 py-3.5 whitespace-nowrap text-xs text-slate-500">
+              <% if (mat.lastUsedAt) { %>
+                <%= new Date(mat.lastUsedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) %>
+              <% } else { %>
+                <span class="text-slate-300">—</span>
+              <% } %>
+            </td>
+            <!-- Created By -->
+            <td class="px-5 py-3.5 whitespace-nowrap text-xs text-slate-600">
+              <% if (mat.createdBy) { %>
+                <%= mat.createdBy.displayName || mat.createdBy.username %>
+              <% } else { %>
+                <span class="text-slate-300">—</span>
+              <% } %>
+            </td>
+            <!-- Actions -->
+            <td class="px-5 py-3.5 whitespace-nowrap text-right">
+              <div class="inline-flex items-center gap-1.5">
+                <!-- View content page -->
+                <a href="/materials/<%= mat._id %>"
+                  class="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition"
+                  title="View material content page">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.641 0-8.573-3.007-9.964-7.178Z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                  </svg>
+                </a>
+
+                <!-- Edit content -->
+                <a href="/materials/<%= mat._id %>/edit"
+                  class="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition"
+                  title="Edit content">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/>
+                  </svg>
+                </a>
+
+                <!-- Edit / Rename -->
+                <button
+                  type="button"
+                  data-id="<%= mat._id %>"
+                  data-name="<%= mat.name %>"
+                  data-level="<%= mat.level || '' %>"
+                  data-action="openEditModal"
+                  class="p-1.5 rounded-lg text-slate-400 hover:text-teal-600 hover:bg-teal-50 transition"
+                  title="Edit or rename material">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                  </svg>
+                </button>
+
+                <!-- Merge -->
+                <button
+                  type="button"
+                  data-id="<%= mat._id %>"
+                  data-name="<%= mat.name %>"
+                  data-level="<%= mat.level || '' %>"
+                  data-usage="<%= mat.usageCount || 0 %>"
+                  data-action="openMergeModal"
+                  class="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition"
+                  title="Merge into another material">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+                  </svg>
+                </button>
+
+                <!-- Delete -->
+                <button
+                  type="button"
+                  data-id="<%= mat._id %>"
+                  data-name="<%= mat.name %>"
+                  data-level="<%= mat.level || '' %>"
+                  data-usage="<%= mat.usageCount || 0 %>"
+                  data-action="openDeleteModal"
+                  class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                  title="Delete material suggestion">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                  </svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  <% if (totalPages > 1) { %>
+    <div class="px-5 py-3.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+      <div>
+        Showing page <span class="font-bold text-slate-700"><%= page %></span> of <span class="font-bold text-slate-700"><%= totalPages %></span> (<%= filteredCount %> items)
+      </div>
+      <div class="flex items-center gap-1.5">
+        <% if (page > 1) { %>
+          <a href="/admin/materials?q=<%= encodeURIComponent(searchQuery) %>&level=<%= encodeURIComponent(selectedLevel) %>&noContent=<%= noContentFilter ? '1' : '' %>&sort=<%= encodeURIComponent(sortQuery) %>&page=<%= page - 1 %>"
+             class="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition font-medium text-slate-700">Previous</a>
+        <% } %>
+        <% if (page < totalPages) { %>
+          <a href="/admin/materials?q=<%= encodeURIComponent(searchQuery) %>&level=<%= encodeURIComponent(selectedLevel) %>&noContent=<%= noContentFilter ? '1' : '' %>&sort=<%= encodeURIComponent(sortQuery) %>&page=<%= page + 1 %>"
+             class="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition font-medium text-slate-700">Next</a>
+        <% } %>
+      </div>
+    </div>
+  <% } %>
+</div>
+
+<!-- Recent Content Edits -->
+<% if (typeof recentEdits !== 'undefined' && recentEdits && recentEdits.length > 0) { %>
+  <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
+    <div class="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+      <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+        Recent Content Edits (Last <%= recentEdits.length %>)
+      </h3>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-left border-collapse text-xs">
+        <thead>
+          <tr class="border-b border-slate-100 bg-slate-50/60 font-semibold text-slate-400 uppercase tracking-wider">
+            <th class="px-5 py-2.5">Material</th>
+            <th class="px-5 py-2.5">Editor</th>
+            <th class="px-5 py-2.5">Date</th>
+            <th class="px-5 py-2.5">Note</th>
+            <th class="px-5 py-2.5 text-right">Action</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100">
+          <% recentEdits.forEach(function(rev) { %>
+            <tr class="hover:bg-slate-50/50 transition">
+              <td class="px-5 py-2.5 font-semibold text-slate-800">
+                <% if (rev.material) { %>
+                  <a href="/materials/<%= rev.material._id %>" class="hover:text-brand-600 hover:underline">
+                    <%= rev.material.name %>
+                    <% if (rev.material.level) { %><span class="text-[10px] bg-slate-100 text-slate-500 px-1 rounded ml-1"><%= rev.material.level %></span><% } %>
+                  </a>
+                <% } else { %>
+                  <span class="text-slate-400 italic">Deleted Material</span>
+                <% } %>
+              </td>
+              <td class="px-5 py-2.5 text-slate-600"><%= rev.editedByName || '—' %></td>
+              <td class="px-5 py-2.5 text-slate-400"><%= new Date(rev.editedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) %></td>
+              <td class="px-5 py-2.5 text-slate-500 truncate max-w-xs"><%= rev.note || '—' %></td>
+              <td class="px-5 py-2.5 text-right whitespace-nowrap">
+                <% if (rev.material) { %>
+                  <a href="/materials/<%= rev.material._id %>" class="text-brand-600 hover:underline font-medium">View</a>
+                <% } %>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+<% } %>
+
+<!-- Embedded materials json for merge modal -->
+<script id="admin-materials-json" type="application/json"><%- materialsJson %></script>
+
+<!-- ============================================================
+     Edit / Rename Modal
+     ============================================================ -->
+<div id="edit-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+  <div class="bg-white rounded-2xl shadow-xl border border-slate-100 max-w-md w-full p-6 animate-fade-in">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-bold text-slate-900">Edit Material</h3>
+      <button type="button" data-action="closeEditModal" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+    <form id="edit-form" method="POST" action="">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="space-y-4">
+        <div>
+          <label for="edit-name" class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Material Name <span class="text-red-500">*</span></label>
+          <input type="text" id="edit-name" name="name" required maxlength="100"
+            class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-400 transition" />
+          <p class="text-xs text-slate-400 mt-1">Max 100 characters. Letters, numbers, and symbols are normalized.</p>
+        </div>
+        <div>
+          <label for="edit-level" class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Associated Level</label>
+          <select id="edit-level" name="level"
+            class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white transition">
+            <option value="">No Level (Universal / Private / Competition)</option>
+            <% LEVELS.forEach(function(l) { %>
+              <option value="<%= l %>"><%= l %> <% if (LEVEL_LABELS[l]) { %>— <%= LEVEL_LABELS[l] %><% } %></option>
+            <% }); %>
+          </select>
+          <p class="text-xs text-slate-400 mt-1">Leave blank if this material applies to any class level.</p>
+        </div>
+        <div class="flex items-start gap-2.5 pt-1">
+          <input type="checkbox" id="edit-update-reports" name="updateReportsSubject" value="true" checked
+            class="mt-0.5 rounded border-slate-300 text-teal-600 focus:ring-teal-500 w-4 h-4 cursor-pointer" />
+          <label for="edit-update-reports" class="text-xs text-slate-600 leading-snug cursor-pointer select-none">
+            Also update the material name on existing reports
+          </label>
+        </div>
+      </div>
+      <div class="mt-6 flex items-center justify-end gap-2.5">
+        <button type="button" data-action="closeEditModal" class="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 transition">Cancel</button>
+        <button type="submit" class="px-4 py-2 rounded-xl text-sm font-semibold bg-teal-600 hover:bg-teal-700 text-white shadow-sm transition">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============================================================
+     Merge Modal
+     ============================================================ -->
+<div id="merge-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+  <div class="bg-white rounded-2xl shadow-xl border border-slate-100 max-w-md w-full p-6 animate-fade-in">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-bold text-slate-900">Merge Materials</h3>
+      <button type="button" data-action="closeMergeModal" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+    <form id="merge-form" method="POST" action="">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      
+      <!-- Source summary -->
+      <div class="mb-4 bg-slate-50 border border-slate-200 rounded-xl p-3.5">
+        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Source (will be deleted)</p>
+        <p id="merge-source-name" class="font-bold text-slate-800 text-sm"></p>
+        <p id="merge-source-details" class="text-xs text-slate-500 mt-0.5"></p>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label for="merge-target" class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Target Material (will absorb usage) <span class="text-red-500">*</span></label>
+          <select id="merge-target" name="targetId" required data-action="handleMergeTargetChange"
+            class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white transition">
+            <option value="">— Select target material —</option>
+          </select>
+          <p class="text-xs text-slate-400 mt-1">All usage counts will be combined into this target material.</p>
+        </div>
+
+        <!-- Warning line when both have content -->
+        <div id="merge-content-warning" class="hidden p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 leading-relaxed">
+          <strong>Notice:</strong> Both materials have attached content or resources. Merging will keep the target's content as active and save the source's content as a revision of the target with note <code class="bg-amber-100 px-1 rounded font-mono">Merged from &lt;source&gt;</code> so nothing is lost.
+        </div>
+
+        <div class="flex items-start gap-2.5 pt-1">
+          <input type="checkbox" id="merge-update-reports" name="updateReportsSubject" value="true" checked
+            class="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer" />
+          <label for="merge-update-reports" class="text-xs text-slate-600 leading-snug cursor-pointer select-none">
+            Also update the material name on existing reports
+          </label>
+        </div>
+      </div>
+
+      <div class="mt-6 flex items-center justify-end gap-2.5">
+        <button type="button" data-action="closeMergeModal" class="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 transition">Cancel</button>
+        <button type="submit" class="px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition">Confirm Merge</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============================================================
+     Delete Confirmation Modal
+     ============================================================ -->
+<div id="delete-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+  <div class="bg-white rounded-2xl shadow-xl border border-slate-100 max-w-sm w-full p-6 animate-fade-in text-center">
+    <div class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 mx-auto flex items-center justify-center mb-3">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+      </svg>
+    </div>
+    <h3 class="text-base font-bold text-slate-900 mb-1">Delete Material</h3>
+    <p id="delete-modal-msg" class="text-xs text-slate-500 mb-5 leading-relaxed"></p>
+
+    <form id="delete-form" method="POST" action="">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="_method" value="DELETE">
+      <div class="flex items-center justify-center gap-2.5">
+        <button type="button" data-action="closeDeleteModal" class="px-4 py-2 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-100 transition">Cancel</button>
+        <button type="submit" class="px-4 py-2 rounded-xl text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-sm transition">Delete Material</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  var _allMaterials = [];
+  var _currentMergeSourceHasContent = false;
+  try {
+    var rawMat = document.getElementById('admin-materials-json');
+    if (rawMat && rawMat.textContent) {
+      _allMaterials = JSON.parse(rawMat.textContent);
+    }
+  } catch (e) {
+    _allMaterials = [];
+  }
+
+  function escapeHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /* Edit Modal */
+  function openEditModal(id, name, level) {
+    var form = document.getElementById('edit-form');
+    form.action = '/admin/materials/' + id + '/edit';
+    document.getElementById('edit-name').value = name;
+    document.getElementById('edit-level').value = level || '';
+    document.getElementById('edit-modal').classList.remove('hidden');
+  }
+  function closeEditModal() {
+    document.getElementById('edit-modal').classList.add('hidden');
+  }
+
+  /* Merge Modal */
+  function handleMergeTargetChange() {
+    var warn = document.getElementById('merge-content-warning');
+    var targetId = document.getElementById('merge-target').value;
+    var targetObj = _allMaterials.find(function(m) { return m._id === targetId; });
+    var targetHasContent = targetObj ? Boolean(targetObj.hasContent) : false;
+    if (_currentMergeSourceHasContent && targetHasContent) {
+      warn.classList.remove('hidden');
+    } else {
+      warn.classList.add('hidden');
+    }
+  }
+
+  function openMergeModal(id, name, level, usage) {
+    var form = document.getElementById('merge-form');
+    form.action = '/admin/materials/' + id + '/merge';
+    document.getElementById('merge-source-name').textContent = name;
+    document.getElementById('merge-source-details').textContent =
+      (level ? 'Level ' + level : 'No level') + ' • ' + usage + ' usage count';
+
+    var srcObj = _allMaterials.find(function(m) { return m._id === id; });
+    _currentMergeSourceHasContent = srcObj ? Boolean(srcObj.hasContent) : false;
+
+    var targetSelect = document.getElementById('merge-target');
+    targetSelect.innerHTML = '<option value="">— Select target material —</option>' +
+      _allMaterials
+        .filter(function (m) { return m._id !== id; })
+        .map(function (m) {
+          var lvl = m.level ? ' [' + escapeHtml(m.level) + ']' : ' [No level]';
+          var cnt = m.hasContent ? ' ★ has content' : '';
+          return '<option value="' + m._id + '">' + escapeHtml(m.name) + lvl + ' (' + m.usageCount + ' usages' + cnt + ')</option>';
+        }).join('');
+
+    handleMergeTargetChange();
+    document.getElementById('merge-modal').classList.remove('hidden');
+  }
+  function closeMergeModal() {
+    document.getElementById('merge-modal').classList.add('hidden');
+  }
+
+  /* Delete Modal */
+  function openDeleteModal(id, name, level, usage) {
+    var form = document.getElementById('delete-form');
+    form.action = '/admin/materials/' + id + '?_method=DELETE';
+    var lvlTxt = level ? ' (Level ' + level + ')' : '';
+    document.getElementById('delete-modal-msg').innerHTML =
+      'Are you sure you want to delete <span class="font-bold text-slate-800">"' + escapeHtml(name) + '"</span>' + escapeHtml(lvlTxt) + '?<br><br>' +
+      'This removes it from future autocomplete suggestions. Existing reports keep their text.<br><br>' +
+      '<span class="text-rose-600 font-semibold">Note: Any written content, revisions, and attached media for this material will also be permanently deleted.</span>';
+    document.getElementById('delete-modal').classList.remove('hidden');
+  }
+  function closeDeleteModal() {
+    document.getElementById('delete-modal').classList.add('hidden');
+  }
+
+  // Close modals on Esc
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      closeEditModal();
+      closeMergeModal();
+      closeDeleteModal();
+    }
+  });
+
+  if (typeof registerAction === 'function') {
+    registerAction('openEditModal', function (e, el) {
+      openEditModal(el.dataset.id, el.dataset.name, el.dataset.level);
+    });
+    registerAction('closeEditModal', function () {
+      closeEditModal();
+    });
+    registerAction('openMergeModal', function (e, el) {
+      openMergeModal(el.dataset.id, el.dataset.name, el.dataset.level, Number(el.dataset.usage));
+    });
+    registerAction('closeMergeModal', function () {
+      closeMergeModal();
+    });
+    registerAction('handleMergeTargetChange', function () {
+      handleMergeTargetChange();
+    });
+    registerAction('openDeleteModal', function (e, el) {
+      openDeleteModal(el.dataset.id, el.dataset.name, el.dataset.level, Number(el.dataset.usage));
+    });
+    registerAction('closeDeleteModal', function () {
+      closeDeleteModal();
+    });
+  }

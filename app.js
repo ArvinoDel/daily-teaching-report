@@ -1,4 +1,5 @@
 require('dotenv').config();
+const crypto = require('crypto');
 const express = require('express');
 const mongoose = require('mongoose');
 const path = require('path');
@@ -19,6 +20,8 @@ const feedbackRoutes    = require('./routes/feedback');
 const notificationRoutes = require('./routes/notifications');
 const publicCardRoutes   = require('./routes/publicCard');
 const cronRoutes         = require('./routes/cron');
+const cspReportRoutes    = require('./routes/cspReport');
+const { getCspDirectives, isCspReportOnly, createCspMiddleware } = require('./middleware/csp');
 const materialRoutes     = require('./routes/materials');
 const onboardingRoutes   = require('./routes/onboarding');
 const { trackOnboardingVisit, getNavOnboardingRemainingCount } = require('./services/onboardingService');
@@ -26,6 +29,7 @@ const User           = require('./models/User');
 const Notification   = require('./models/Notification');
 const Feedback = require('./models/Feedback');
 const { requireAuth } = require('./middleware/auth');
+const { checkSessionUser } = require('./services/userAccountService');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -43,8 +47,11 @@ if (!SESSION_SECRET) {
   process.exit(1);
 }
 
-mongoose.connect(MONGO_URI, {
-  serverSelectionTimeoutMS: 8000,
+const timeoutMatch = MONGO_URI.match(/serverSelectionTimeoutMS=(\d+)/);
+const serverSelectionTimeoutMS = timeoutMatch ? parseInt(timeoutMatch[1], 10) : 8000;
+
+app.mongoConnectionPromise = mongoose.connect(MONGO_URI, {
+  serverSelectionTimeoutMS,
   maxPoolSize: 20, // ⚡ allow more concurrent DB operations (default is 5)
   minPoolSize: 5,
 })
@@ -63,59 +70,22 @@ if (process.env.NODE_ENV === 'production') {
   app.set('view cache', true);
 }
 
+// Per-request CSP nonce generation
+app.use((req, res, next) => {
+  res.locals.cspNonce = crypto.randomBytes(16).toString('base64');
+  res.locals.useTailwindCdn = process.env.TAILWIND_CDN === 'true';
+  next();
+});
+
 // Security headers via Helmet
 app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === 'production'
     ? {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: [
-          "'self'",
-          "'unsafe-inline'",
-          "'unsafe-eval'",
-          "blob:",
-          "data:",
-          "https://cdn.tailwindcss.com",
-          "https://*.tailwindcss.com",
-          "https://cdn.jsdelivr.net",
-          "https://cdnjs.cloudflare.com",
-          "https://unpkg.com",
-          "https://vercel.live"
-        ],
-        workerSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net"],
-        childSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net", "https://vercel.live"],
-        scriptSrcAttr: ["'unsafe-inline'"],
-        styleSrc: [
-          "'self'",
-          "'unsafe-inline'",
-          "https://cdn.tailwindcss.com",
-          "https://*.tailwindcss.com",
-          "https://fonts.googleapis.com",
-          "https://cdn.jsdelivr.net",
-          "https://vercel.live"
-        ],
-        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://vercel.live", "https://assets.vercel.com"],
-        imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://vercel.live", "https://vercel.com"],
-        mediaSrc: ["'self'", "https://res.cloudinary.com"],
-        connectSrc: [
-          "'self'",
-          "blob:",
-          "data:",
-          "https://*.tailwindcss.com",
-          "https://cdn.jsdelivr.net",
-          "https://tessdata.projectnaptha.com",
-          "https://raw.githubusercontent.com",
-          "https://api.cloudinary.com",
-          "https://vercel.live",
-          "https://*.pusher.com",
-          "wss://*.pusher.com"
-        ],
-        frameSrc: ["'self'", "https://vercel.live"],
-      },
+      reportOnly: isCspReportOnly(),
+      directives: getCspDirectives({ wasm: false }),
     }
     : false,
 }));
-
 // Rate limiting - login brute force protection
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -144,6 +114,11 @@ app.locals.safeJson = safeJson;
 app.use(generalLimiter);
 app.use(compression()); // ⚡ gzip all responses — reduces page size by 70–85%
 
+// CSP violation reporting — mounted before the global body parsers so the
+// route-local express.json({ limit: '8kb' }) is the first (and only) body
+// parser that runs for these requests.  Exempt from session & CSRF too.
+app.use('/csp-report', cspReportRoutes);
+
 // Body size limits — 10MB to accommodate image uploads & large JSON payloads
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.json({ limit: '10mb' }));
@@ -155,6 +130,7 @@ app.use(methodOverride(function (req) {
     return method;
   }
 }));
+
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: process.env.NODE_ENV === 'production' ? '7d' : 0, // ⚡ 7d cache in prod, instant reload in dev
   etag:   true,
@@ -163,11 +139,14 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // Cron endpoints (triggered by Vercel Cron, authenticated via Bearer token)
 app.use('/api/cron', cronRoutes);
 
+const sessionStore = MongoStore.create({ mongoUrl: MONGO_URI });
+app.sessionStore = sessionStore;
+
 app.use(session({
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  store: MongoStore.create({ mongoUrl: MONGO_URI }),
+  store: sessionStore,
   name: 'sid',
   cookie: {
     maxAge: 1000 * 60 * 60 * 24 * 7,
@@ -202,9 +181,9 @@ app.use(async (req, res, next) => {
           req.session.user._id,
           { lastActiveAt: new Date(now) },
           { new: true }
-        ).select('username displayName role joinDate commission profilePicture lastActiveAt onboarding createdAt')
+        ).select('username displayName role accountStatus statusReason joinDate commission profilePicture lastActiveAt onboarding createdAt')
       : User.findById(req.session.user._id)
-          .select('username displayName role joinDate commission profilePicture lastActiveAt onboarding createdAt');
+          .select('username displayName role accountStatus statusReason joinDate commission profilePicture lastActiveAt onboarding createdAt');
 
     if (needsTrackUpdate) {
       req.session._lastTracked = now;
@@ -217,6 +196,17 @@ app.use(async (req, res, next) => {
         : Promise.resolve(null),
     ]);
 
+    // Validate account status & existence
+    const sessionCheck = checkSessionUser(user, req);
+    if (!sessionCheck.ok) {
+      return req.session.destroy(() => {
+        if (sessionCheck.status === 401) {
+          return res.status(401).json(sessionCheck.json);
+        }
+        res.redirect(`/auth/login?flash=${encodeURIComponent(sessionCheck.flash)}`);
+      });
+    }
+
     res.locals.currentUser = user || null;
     res.locals.onboardingRemainingCount = getNavOnboardingRemainingCount(user);
 
@@ -226,6 +216,7 @@ app.use(async (req, res, next) => {
     }
     res.locals.unreadNotificationCount = req.session._cachedUnreadCount || 0;
   } catch (e) {
+    // Keep fail-open behavior ONLY for database errors
     res.locals.currentUser = req.session.user || null;
     res.locals.onboardingRemainingCount = null;
     res.locals.unreadNotificationCount = 0;
@@ -317,11 +308,31 @@ app.use(async (err, req, res, next) => {
   if (req.path.includes('/api/') || (req.headers.accept && req.headers.accept.includes('application/json'))) {
     return res.status(statusCode).json({ error: err.message || 'Internal server error.' });
   }
-  res.status(500).render('error', { message: 'Internal server error.' });
+  res.status(statusCode).render('error', { message: statusCode < 500 ? err.message : 'Internal server error.' });
 });
 
+let server = null;
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
-  app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+  server = app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
 }
+app.server = server;
+
+app.close = async function() {
+  if (app.server) {
+    await new Promise(resolve => app.server.close(resolve));
+    app.server = null;
+  }
+  if (app.sessionStore && typeof app.sessionStore.close === 'function') {
+    await app.sessionStore.close().catch(() => {});
+  }
+  try {
+    const backupService = require('./services/backupService');
+    if (typeof backupService.stopScheduler === 'function') {
+      backupService.stopScheduler();
+    }
+  } catch (_) {}
+  const mongoose = require('mongoose');
+  await mongoose.disconnect().catch(() => {});
+};
 
 module.exports = app;
