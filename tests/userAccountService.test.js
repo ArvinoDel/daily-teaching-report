@@ -7,9 +7,12 @@ const ejs = require('ejs');
 const { Query } = require('mingo');
 
 const {
+  ACCOUNT_STATUSES,
   canLogin,
   activeUserFilter,
   isModeratable,
+  planStatusChange,
+  buildStatusChangeFilter,
   decideRegistration,
   checkSessionUser,
 } = require('../services/userAccountService');
@@ -239,5 +242,373 @@ describe('EJS XSS Escaping for Pending & User Views', () => {
     assert.ok(!html.includes('<script>alert("xss")</script>'));
     // Must contain escaped representation
     assert.ok(html.includes('&lt;script&gt;alert(&#34;xss&#34;)&lt;/script&gt;') || html.includes('&lt;script&gt;'));
+  });
+});
+
+describe('userAccountService - planStatusChange() Matrix', () => {
+  const roles = ['teacher', 'admin', 'superadmin'];
+  const actions = ['approve', 'reject', 'suspend', 'reactivate'];
+  const statuses = [undefined, 'active', 'pending', 'rejected', 'suspended'];
+
+  test('exhaustive matrix of actor role x target role x action x current status', () => {
+    for (const actorRole of roles) {
+      for (const targetRole of roles) {
+        for (const action of actions) {
+          for (const currentStatus of statuses) {
+            const actor = { _id: 'actor_1', role: actorRole };
+            const target = {
+              _id: 'target_2',
+              role: targetRole,
+              ...(currentStatus ? { accountStatus: currentStatus } : {}),
+            };
+
+            const options = {
+              superadminCount: 2,
+              reason: 'Valid policy reason',
+            };
+
+            const plan = planStatusChange(actor, target, action, options);
+
+            // 1. Teachers can never moderate anyone
+            if (actorRole === 'teacher') {
+              assert.equal(plan.ok, false, `Teacher cannot moderate ${targetRole}`);
+              assert.equal(plan.status, 403);
+              assert.equal(plan.code, 'forbidden');
+              continue;
+            }
+
+            // 2. Admins can ONLY moderate teachers
+            if (actorRole === 'admin' && targetRole !== 'teacher') {
+              assert.equal(plan.ok, false, `Admin cannot moderate ${targetRole}`);
+              assert.equal(plan.status, 403);
+              assert.equal(plan.code, 'forbidden');
+              continue;
+            }
+
+            // 3. Admin / Superadmin targets can NEVER be approved or rejected
+            if ((targetRole === 'admin' || targetRole === 'superadmin') && (action === 'approve' || action === 'reject')) {
+              assert.equal(plan.ok, false, `${targetRole} cannot be ${action}d`);
+              assert.equal(plan.status, 403);
+              assert.equal(plan.code, 'forbidden');
+              continue;
+            }
+
+            // Source status checks (missing is treated as active)
+            const effectiveStatus = currentStatus || 'active';
+
+            if (action === 'approve') {
+              if (effectiveStatus === 'pending' || effectiveStatus === 'rejected') {
+                assert.equal(plan.ok, true, `${actorRole} can approve ${targetRole} from ${effectiveStatus}`);
+                assert.equal(plan.status, 200);
+                assert.equal(plan.code, 'active');
+              } else {
+                assert.equal(plan.ok, false, `Cannot approve from ${effectiveStatus}`);
+                assert.equal(plan.status, 400);
+                assert.equal(plan.code, 'invalid_status');
+              }
+            } else if (action === 'reject') {
+              if (effectiveStatus === 'pending') {
+                assert.equal(plan.ok, true, `${actorRole} can reject ${targetRole} from ${effectiveStatus}`);
+                assert.equal(plan.status, 200);
+                assert.equal(plan.code, 'rejected');
+              } else {
+                assert.equal(plan.ok, false, `Cannot reject from ${effectiveStatus}`);
+                assert.equal(plan.status, 400);
+                assert.equal(plan.code, 'invalid_status');
+              }
+            } else if (action === 'suspend') {
+              if (effectiveStatus === 'active') {
+                assert.equal(plan.ok, true, `${actorRole} can suspend ${targetRole} from ${effectiveStatus}`);
+                assert.equal(plan.status, 200);
+                assert.equal(plan.code, 'suspended');
+              } else {
+                assert.equal(plan.ok, false, `Cannot suspend from ${effectiveStatus}`);
+                assert.equal(plan.status, 400);
+                assert.equal(plan.code, 'invalid_status');
+              }
+            } else if (action === 'reactivate') {
+              if (effectiveStatus === 'suspended') {
+                assert.equal(plan.ok, true, `${actorRole} can reactivate ${targetRole} from ${effectiveStatus}`);
+                assert.equal(plan.status, 200);
+                assert.equal(plan.code, 'active');
+              } else {
+                assert.equal(plan.ok, false, `Cannot reactivate from ${effectiveStatus}`);
+                assert.equal(plan.status, 400);
+                assert.equal(plan.code, 'invalid_status');
+              }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  test('nobody moderates themselves across any action', () => {
+    for (const role of roles) {
+      for (const action of actions) {
+        const user = { _id: 'same_user', role, accountStatus: 'active' };
+        const plan = planStatusChange(user, user, action, { superadminCount: 5, reason: 'test' });
+        assert.equal(plan.ok, false);
+        assert.equal(plan.status, 403);
+        assert.equal(plan.code, 'forbidden');
+      }
+    }
+  });
+
+  test('last remaining superadmin cannot be moderated', () => {
+    const actor = { _id: 'sa1', role: 'superadmin' };
+    const target = { _id: 'sa2', role: 'superadmin', accountStatus: 'active' };
+
+    const plan = planStatusChange(actor, target, 'suspend', { superadminCount: 1, reason: 'test' });
+    assert.equal(plan.ok, false);
+    assert.equal(plan.status, 403);
+    assert.equal(plan.code, 'forbidden');
+  });
+
+  test('suspend requires a non-empty reason', () => {
+    const actor = { _id: 'sa', role: 'superadmin' };
+    const target = { _id: 't', role: 'teacher', accountStatus: 'active' };
+
+    const noReason = planStatusChange(actor, target, 'suspend', { superadminCount: 2 });
+    assert.equal(noReason.ok, false);
+    assert.equal(noReason.status, 400);
+    assert.equal(noReason.code, 'reason_required');
+
+    const emptyReason = planStatusChange(actor, target, 'suspend', { superadminCount: 2, reason: '   ' });
+    assert.equal(emptyReason.ok, false);
+    assert.equal(emptyReason.status, 400);
+    assert.equal(emptyReason.code, 'reason_required');
+
+    const withReason = planStatusChange(actor, target, 'suspend', { superadminCount: 2, reason: 'Violation' });
+    assert.equal(withReason.ok, true);
+    assert.equal(withReason.status, 200);
+  });
+});
+
+describe('userAccountService - buildStatusChangeFilter() (Mingo Evaluation)', () => {
+  const docs = [
+    { _id: 'missing', username: 'legacy_doc' }, // missing accountStatus field
+    { _id: 'active', username: 'active_doc', accountStatus: 'active' },
+    { _id: 'pending', username: 'pending_doc', accountStatus: 'pending' },
+    { _id: 'rejected', username: 'rejected_doc', accountStatus: 'rejected' },
+    { _id: 'suspended', username: 'suspended_doc', accountStatus: 'suspended' },
+  ];
+
+  test('filter with active matches documents with active status AND missing field', () => {
+    const filter = buildStatusChangeFilter(undefined, 'active');
+    const matched = new Query(filter).find(docs).all().map(d => d._id);
+    assert.deepEqual(matched.sort(), ['active', 'missing']);
+  });
+
+  test('filter with pending matches only pending document', () => {
+    const filter = buildStatusChangeFilter(undefined, 'pending');
+    const matched = new Query(filter).find(docs).all().map(d => d._id);
+    assert.deepEqual(matched, ['pending']);
+  });
+
+  test('filter with rejected matches only rejected document', () => {
+    const filter = buildStatusChangeFilter(undefined, 'rejected');
+    const matched = new Query(filter).find(docs).all().map(d => d._id);
+    assert.deepEqual(matched, ['rejected']);
+  });
+
+  test('filter with suspended matches only suspended document', () => {
+    const filter = buildStatusChangeFilter(undefined, 'suspended');
+    const matched = new Query(filter).find(docs).all().map(d => d._id);
+    assert.deepEqual(matched, ['suspended']);
+  });
+
+  test('filter with [pending, rejected] matches pending and rejected documents', () => {
+    const filter = buildStatusChangeFilter(undefined, ['pending', 'rejected']);
+    const matched = new Query(filter).find(docs).all().map(d => d._id);
+    assert.deepEqual(matched.sort(), ['pending', 'rejected']);
+  });
+
+  test('filter with specific _id constrains query to that id', () => {
+    const filterActiveMissing = buildStatusChangeFilter('missing', 'active');
+    assert.deepEqual(new Query(filterActiveMissing).find(docs).all().map(d => d._id), ['missing']);
+
+    const filterActiveExplicit = buildStatusChangeFilter('active', 'active');
+    assert.deepEqual(new Query(filterActiveExplicit).find(docs).all().map(d => d._id), ['active']);
+
+    const filterPending = buildStatusChangeFilter('pending', 'pending');
+    assert.deepEqual(new Query(filterPending).find(docs).all().map(d => d._id), ['pending']);
+
+    const filterMismatch = buildStatusChangeFilter('suspended', 'active');
+    assert.deepEqual(new Query(filterMismatch).find(docs).all().map(d => d._id), []);
+  });
+});
+
+describe('Handler-level moderation and atomic transitions', () => {
+  const User = require('../models/User');
+  const AuditLog = require('../models/AuditLog');
+  const adminController = require('../controllers/adminController');
+  const notificationService = require('../services/notificationService');
+
+  function makeFakeReqRes({ actor, targetId, body = {}, isJson = true }) {
+    const req = {
+      session: { user: actor, flash: null },
+      params: { id: targetId },
+      body,
+      headers: isJson ? { accept: 'application/json' } : {},
+      xhr: isJson,
+    };
+    const res = {
+      statusCode: 200,
+      jsonPayload: null,
+      rendered: null,
+      redirectedTo: null,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload) {
+        this.jsonPayload = payload;
+        return this;
+      },
+      render(view, data) {
+        this.rendered = { view, data };
+        return this;
+      },
+      redirect(url) {
+        this.redirectedTo = url;
+        return this;
+      },
+    };
+    return { req, res };
+  }
+
+  test('admin cannot reject superadmin or another admin and target is untouched', async () => {
+    const origFindById = User.findById;
+    const origCountDocuments = User.countDocuments;
+    const origFindOneAndUpdate = User.findOneAndUpdate;
+    const origAuditLogCreate = AuditLog.create;
+
+    let updateCalled = false;
+    User.countDocuments = async () => 2;
+    User.findOneAndUpdate = async () => {
+      updateCalled = true;
+      return null;
+    };
+    AuditLog.create = async () => {};
+
+    try {
+      const adminActor = { _id: '507f191e810c19729de860e1', role: 'admin', displayName: 'Admin One', username: 'admin1' };
+      const superadminTarget = { _id: '507f191e810c19729de860e2', role: 'superadmin', accountStatus: 'active', displayName: 'Super User', username: 'superuser' };
+      const otherAdminTarget = { _id: '507f191e810c19729de860e3', role: 'admin', accountStatus: 'active', displayName: 'Admin Bob', username: 'adminbob' };
+
+      // Attempt 1: Admin rejects Superadmin
+      User.findById = async (id) => {
+        if (id === '507f191e810c19729de860e2') return superadminTarget;
+        return null;
+      };
+
+      const { req: req1, res: res1 } = makeFakeReqRes({ actor: adminActor, targetId: '507f191e810c19729de860e2' });
+      await adminController.userReject(req1, res1);
+
+      assert.equal(res1.statusCode, 403, 'Admin rejecting superadmin must return 403');
+      assert.equal(updateCalled, false, 'Database update must not be called');
+      assert.equal(superadminTarget.accountStatus, 'active', 'Target document must remain active');
+
+      // Attempt 2: Admin rejects other Admin
+      User.findById = async (id) => {
+        if (id === '507f191e810c19729de860e3') return otherAdminTarget;
+        return null;
+      };
+
+      const { req: req2, res: res2 } = makeFakeReqRes({ actor: adminActor, targetId: '507f191e810c19729de860e3' });
+      await adminController.userReject(req2, res2);
+
+      assert.equal(res2.statusCode, 403, 'Admin rejecting other admin must return 403');
+      assert.equal(updateCalled, false, 'Database update must not be called');
+      assert.equal(otherAdminTarget.accountStatus, 'active', 'Target document must remain active');
+
+      // Attempt 3: Admin rejects self
+      User.findById = async (id) => {
+        if (id === '507f191e810c19729de860e1') return adminActor;
+        return null;
+      };
+
+      const { req: req3, res: res3 } = makeFakeReqRes({ actor: adminActor, targetId: '507f191e810c19729de860e1' });
+      await adminController.userReject(req3, res3);
+
+      assert.equal(res3.statusCode, 403, 'Admin rejecting self must return 403');
+      assert.equal(updateCalled, false, 'Database update must not be called');
+    } finally {
+      User.findById = origFindById;
+      User.countDocuments = origCountDocuments;
+      User.findOneAndUpdate = origFindOneAndUpdate;
+      AuditLog.create = origAuditLogCreate;
+    }
+  });
+
+  test('double approval sends only one welcome notification', async () => {
+    const origFindById = User.findById;
+    const origCountDocuments = User.countDocuments;
+    const origFindOneAndUpdate = User.findOneAndUpdate;
+    const origNotifyWelcome = notificationService.notifyTeacherWelcome;
+    const origAuditLogCreate = AuditLog.create;
+
+    let welcomeNotificationsCount = 0;
+    notificationService.notifyTeacherWelcome = async () => {
+      welcomeNotificationsCount++;
+    };
+    AuditLog.create = async () => {};
+
+    const adminId = '507f191e810c19729de860e1';
+    const teacherId = '507f191e810c19729de860e2';
+
+    // Represents the DB state
+    let dbStatus = 'pending';
+    let dbDoc = {
+      _id: teacherId,
+      role: 'teacher',
+      accountStatus: 'pending',
+      displayName: 'Jane Doe',
+      username: 'janedoe',
+      onboarding: {},
+    };
+
+    User.countDocuments = async () => 2;
+    // Both simultaneous requests initially read the user as pending
+    User.findById = async () => ({ ...dbDoc, accountStatus: dbStatus });
+
+    // Atomic findOneAndUpdate: only succeeds if DB status is pending or rejected
+    User.findOneAndUpdate = async (filter, update) => {
+      if (dbStatus !== 'pending' && dbStatus !== 'rejected') {
+        return null; // Concurrency conflict: already updated by previous operation
+      }
+      dbStatus = 'active';
+      dbDoc = {
+        ...dbDoc,
+        accountStatus: 'active',
+        onboarding: { startedAt: update.$set['onboarding.startedAt'] || new Date() },
+      };
+      return dbDoc;
+    };
+
+    try {
+      const adminActor = { _id: adminId, role: 'admin', displayName: 'Admin One', username: 'adminone' };
+
+      // Request 1: First approval
+      const { req: req1, res: res1 } = makeFakeReqRes({ actor: adminActor, targetId: teacherId });
+      await adminController.userApprove(req1, res1);
+
+      assert.equal(res1.statusCode, 200);
+      assert.equal(welcomeNotificationsCount, 1, 'First approval must send welcome notification');
+      assert.ok(dbDoc.onboarding.startedAt, 'onboarding.startedAt must be set');
+
+      // Request 2: Concurrent double-click or simultaneous second approval
+      const { req: req2, res: res2 } = makeFakeReqRes({ actor: adminActor, targetId: teacherId });
+      await adminController.userApprove(req2, res2);
+
+      assert.equal(welcomeNotificationsCount, 1, 'Second approval must NOT send duplicate welcome notification');
+    } finally {
+      User.findById = origFindById;
+      User.countDocuments = origCountDocuments;
+      User.findOneAndUpdate = origFindOneAndUpdate;
+      notificationService.notifyTeacherWelcome = origNotifyWelcome;
+      AuditLog.create = origAuditLogCreate;
+    }
   });
 });

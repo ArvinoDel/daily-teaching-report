@@ -121,6 +121,194 @@ function isModeratable(actor, target, options = {}) {
 }
 
 /**
+ * Pure decision maker for account moderation status transitions.
+ *
+ * Rules:
+ *   - Applies isModeratable(actor, target, { superadminCount }) first.
+ *   - Nobody moderates themselves.
+ *   - Teachers cannot moderate anyone.
+ *   - Admins can only moderate teachers.
+ *   - Superadmins can moderate teachers and admins.
+ *   - The last remaining superadmin can NEVER be moderated.
+ *   - Admin and superadmin targets can only be suspended/reactivated by a superadmin and never rejected or approved.
+ *   - Allowed source statuses:
+ *       approve: from 'pending' or 'rejected'
+ *       reject: from 'pending' only
+ *       suspend: from 'active' only (reason required)
+ *       reactivate: from 'suspended' only
+ *   - Treats missing target.accountStatus as 'active'.
+ *
+ * @param {Object} actor - The acting user ({ _id, role })
+ * @param {Object} target - The target user ({ _id, role, accountStatus })
+ * @param {'approve'|'reject'|'suspend'|'reactivate'} action
+ * @param {Object} [options={}]
+ * @param {number} [options.superadminCount]
+ * @param {string} [options.reason]
+ * @returns {{ ok: boolean, status: number, code: string, targetStatus?: string, message: string }}
+ */
+function planStatusChange(actor, target, action, options = {}) {
+  if (!actor || !target) {
+    return {
+      ok: false,
+      status: 400,
+      code: 'invalid_user',
+      message: 'Invalid actor or target user.',
+    };
+  }
+
+  // 1. Role-based moderation authority check
+  const modCheck = isModeratable(actor, target, options);
+  if (!modCheck.ok) {
+    return {
+      ok: false,
+      status: 403,
+      code: 'forbidden',
+      message: modCheck.reason || 'You do not have permission to moderate this user.',
+    };
+  }
+
+  // 2. Admin & superadmin targets cannot be approved or rejected
+  if (target.role === 'admin' || target.role === 'superadmin') {
+    if (action === 'approve' || action === 'reject') {
+      return {
+        ok: false,
+        status: 403,
+        code: 'forbidden',
+        message: 'Admin and superadmin accounts cannot be approved or rejected.',
+      };
+    }
+  }
+
+  // Treat missing accountStatus as 'active'
+  const currentStatus = target.accountStatus || ACCOUNT_STATUSES.ACTIVE;
+
+  // 3. Action-specific validation and transition planning
+  switch (action) {
+    case 'approve': {
+      if (currentStatus !== ACCOUNT_STATUSES.PENDING && currentStatus !== ACCOUNT_STATUSES.REJECTED) {
+        return {
+          ok: false,
+          status: 400,
+          code: 'invalid_status',
+          message: `Cannot approve an account with '${currentStatus}' status. Only pending or rejected accounts can be approved.`,
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        code: ACCOUNT_STATUSES.ACTIVE,
+        targetStatus: ACCOUNT_STATUSES.ACTIVE,
+        message: 'Account approved.',
+      };
+    }
+
+    case 'reject': {
+      if (currentStatus !== ACCOUNT_STATUSES.PENDING) {
+        return {
+          ok: false,
+          status: 400,
+          code: 'invalid_status',
+          message: `Cannot reject an account with '${currentStatus}' status. Only pending accounts can be rejected.`,
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        code: ACCOUNT_STATUSES.REJECTED,
+        targetStatus: ACCOUNT_STATUSES.REJECTED,
+        message: 'Account rejected.',
+      };
+    }
+
+    case 'suspend': {
+      const reason = typeof options.reason === 'string' ? options.reason.trim() : '';
+      if (!reason) {
+        return {
+          ok: false,
+          status: 400,
+          code: 'reason_required',
+          message: 'Suspension reason is required.',
+        };
+      }
+      if (currentStatus !== ACCOUNT_STATUSES.ACTIVE) {
+        return {
+          ok: false,
+          status: 400,
+          code: 'invalid_status',
+          message: `Cannot suspend an account with '${currentStatus}' status. Only active accounts can be suspended.`,
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        code: ACCOUNT_STATUSES.SUSPENDED,
+        targetStatus: ACCOUNT_STATUSES.SUSPENDED,
+        message: 'Account suspended.',
+      };
+    }
+
+    case 'reactivate': {
+      if (currentStatus !== ACCOUNT_STATUSES.SUSPENDED) {
+        return {
+          ok: false,
+          status: 400,
+          code: 'invalid_status',
+          message: `Cannot reactivate an account with '${currentStatus}' status. Only suspended accounts can be reactivated.`,
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        code: ACCOUNT_STATUSES.ACTIVE,
+        targetStatus: ACCOUNT_STATUSES.ACTIVE,
+        message: 'Account reactivated.',
+      };
+    }
+
+    default:
+      return {
+        ok: false,
+        status: 400,
+        code: 'invalid_action',
+        message: `Unknown action '${action}'.`,
+      };
+  }
+}
+
+/**
+ * Returns a MongoDB/Mingo filter for atomic account status changes.
+ * Matches expected source status(es).
+ * If 'active' is one of the allowed statuses, it also matches documents where
+ * accountStatus is missing (legacy accounts) or null.
+ *
+ * @param {string|Array<string>} [id] - Single user ID or array of user IDs
+ * @param {string|Array<string>} fromStatuses - Allowed current status(es)
+ * @param {Object} [extra={}] - Additional query constraints
+ * @returns {Object}
+ */
+function buildStatusChangeFilter(id, fromStatuses, extra = {}) {
+  const statuses = Array.isArray(fromStatuses) ? fromStatuses : [fromStatuses];
+  const includesActive = statuses.includes(ACCOUNT_STATUSES.ACTIVE);
+
+  const filter = { ...extra };
+  if (id !== undefined && id !== null) {
+    filter._id = Array.isArray(id) ? { $in: id } : id;
+  }
+
+  if (includesActive) {
+    filter.$or = [
+      { accountStatus: { $in: statuses } },
+      { accountStatus: { $exists: false } },
+      { accountStatus: null },
+    ];
+  } else {
+    filter.accountStatus = statuses.length === 1 ? statuses[0] : { $in: statuses };
+  }
+
+  return filter;
+}
+
+/**
  * Pure decision maker for registration requests.
  * Evaluates mode ('approval' vs 'closed') and pending queue cap (50).
  *
@@ -228,6 +416,8 @@ module.exports = {
   canLogin,
   activeUserFilter,
   isModeratable,
+  planStatusChange,
+  buildStatusChangeFilter,
   decideRegistration,
   isJsonRequest,
   checkSessionUser,

@@ -31,6 +31,11 @@ const {
   getJakartaNoonDate,
   formatDisplayDate,
   validatePaidDate,
+  buildPublishFilter,
+  buildMarkPaidFilter,
+  buildRetractFilter,
+  buildReopenFilter,
+  buildDraftEditFilter,
 } = salaryStatusService;
 const notificationService = require('../services/notificationService');
 const { getTeachersWithoutRewards } = require('../services/onboardingService');
@@ -290,7 +295,7 @@ exports.salaryGenerate = async (req, res) => {
     res.redirect(`/admin/salaries?month=${y}-${String(m).padStart(2,'0')}`);
   } catch (err) {
     console.error('[salary] generate error:', err);
-    req.session.flash = { type: 'error', msg: 'Failed to generate salaries: ' + err.message };
+    req.session.flash = { type: 'error', msg: 'Failed to generate salaries.' };
     res.redirect('/admin/salaries');
   }
 };
@@ -330,7 +335,7 @@ exports.salaryPublish = async (req, res) => {
     res.redirect(`/admin/salaries?month=${y}-${String(m).padStart(2,'0')}`);
   } catch (err) {
     console.error('[salary] publish error:', err);
-    req.session.flash = { type: 'error', msg: 'Failed to publish salaries: ' + err.message };
+    req.session.flash = { type: 'error', msg: 'Failed to publish salaries.' };
     res.redirect('/admin/salaries');
   }
 };
@@ -454,7 +459,7 @@ exports.salaryUpdate = async (req, res) => {
     salary.recompute();
 
     const updated = await Salary.findOneAndUpdate(
-      { _id: salary._id, status: 'draft' },
+      buildDraftEditFilter(salary._id),
       {
         $set: {
           basicSalary: salary.basicSalary,
@@ -514,7 +519,7 @@ exports.salaryUpdate = async (req, res) => {
     res.redirect(`/admin/salaries/${updated._id}/edit`);
   } catch (err) {
     console.error('[salary] update error:', err);
-    req.session.flash = { type: 'error', msg: 'Failed to save salary: ' + err.message };
+    req.session.flash = { type: 'error', msg: 'Failed to save salary.' };
     res.redirect(`/admin/salaries/${req.params.id}/edit`);
   }
 };
@@ -665,7 +670,7 @@ exports.salaryBulkUpdate = async (req, res) => {
     return res.json({ ok: true, saved: items.length, savedIds, monthStr });
   } catch (err) {
     console.error('[salary] bulkUpdate error:', err);
-    return res.status(500).json({ ok: false, message: 'Failed to save salaries: ' + err.message });
+    return res.status(500).json({ ok: false, message: 'Failed to save salaries.' });
   }
 };
 
@@ -683,7 +688,7 @@ exports.salaryRetract = async (req, res) => {
 
     // Atomic retraction: published -> draft only
     const updated = await Salary.findOneAndUpdate(
-      { _id: req.params.id, status: 'published' },
+      buildRetractFilter(req.params.id),
       {
         $set: {
           status: 'draft',
@@ -744,7 +749,7 @@ exports.salaryRetract = async (req, res) => {
     res.redirect(`/admin/salaries?month=${updated.year}-${String(updated.month).padStart(2,'0')}`);
   } catch (err) {
     console.error('[salary] retract error:', err);
-    req.session.flash = { type: 'error', msg: 'Failed to retract salary: ' + err.message };
+    req.session.flash = { type: 'error', msg: 'Failed to retract salary slip.' };
     res.redirect('/admin/salaries');
   }
 };
@@ -794,10 +799,11 @@ exports.salaryMarkPaid = async (req, res) => {
     }
 
     const eligibleIds = plan.eligible.map(s => s._id);
+    let markedCount = 0;
 
     if (eligibleIds.length > 0) {
       await Salary.updateMany(
-        { _id: { $in: eligibleIds }, status: 'published' },
+        buildMarkPaidFilter(eligibleIds),
         {
           $set: {
             status: 'paid',
@@ -808,16 +814,24 @@ exports.salaryMarkPaid = async (req, res) => {
         }
       );
 
-      for (const s of plan.eligible) {
+      // Notify only the slips that were actually changed by the update
+      const updatedSlips = await Salary.find({
+        _id: { $in: eligibleIds },
+        status: 'paid',
+        paidAt: plan.paidAtNoonDate,
+      }).populate('teacher', 'displayName username');
+
+      markedCount = updatedSlips.length;
+
+      for (const s of updatedSlips) {
         try {
-          const notifiedSalary = { ...s.toObject(), paidAt: plan.paidAtNoonDate };
-          await notificationService.notifySalaryPaid(notifiedSalary, s.teacher);
+          await notificationService.notifySalaryPaid(s, s.teacher);
         } catch (notifErr) {
-          console.error('[salary] Failed to send salary paid notification:', notifErr.message);
+          console.error('[salary] Failed to send salary paid notification:', notifErr);
         }
       }
 
-      const sampleSlip = plan.eligible[0];
+      const sampleSlip = updatedSlips[0] || plan.eligible[0];
       await AuditLog.create({
         admin:     req.session.user?._id,
         adminName: req.session.user?.displayName || req.session.user?.username,
@@ -827,14 +841,14 @@ exports.salaryMarkPaid = async (req, res) => {
         meta: {
           month: sampleSlip ? sampleSlip.month : (month ? parseInt(month, 10) : null),
           year:  sampleSlip ? sampleSlip.year  : (year  ? parseInt(year, 10)  : null),
-          count: eligibleIds.length,
-          ids:   eligibleIds,
+          count: markedCount,
+          ids:   updatedSlips.map(s => s._id),
           paidAt: paidAtStr,
         },
       });
     }
 
-    let msg = `Marked ${eligibleIds.length} salary slip${eligibleIds.length !== 1 ? 's' : ''} as paid.`;
+    let msg = `Marked ${markedCount} salary slip${markedCount !== 1 ? 's' : ''} as paid.`;
     if (plan.skipped.length > 0) {
       const skippedSummary = plan.skipped.map(s => {
         let reasonLabel = s.reason;
@@ -849,7 +863,7 @@ exports.salaryMarkPaid = async (req, res) => {
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
       return res.json({
         ok: true,
-        markedCount: eligibleIds.length,
+        markedCount,
         skippedCount: plan.skipped.length,
         skipped: plan.skipped,
         message: msg,
@@ -858,16 +872,16 @@ exports.salaryMarkPaid = async (req, res) => {
 
     const redirectMonth = month && year ? `?month=${year}-${String(month).padStart(2,'0')}` : '';
     req.session.flash = {
-      type: eligibleIds.length > 0 ? 'success' : 'error',
+      type: markedCount > 0 ? 'success' : 'error',
       msg,
     };
     return res.redirect(`/admin/salaries${redirectMonth}`);
   } catch (err) {
     console.error('[salary] mark-paid error:', err);
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
-      return res.status(500).json({ ok: false, error: 'Failed to mark salary as paid: ' + err.message });
+      return res.status(500).json({ ok: false, error: 'Failed to mark salary as paid.' });
     }
-    req.session.flash = { type: 'error', msg: 'Failed to mark salary as paid: ' + err.message };
+    req.session.flash = { type: 'error', msg: 'Failed to mark salary as paid.' };
     return res.redirect('/admin/salaries');
   }
 };
@@ -901,7 +915,7 @@ exports.salaryReopen = async (req, res) => {
     const reopenedAt = new Date();
     // Atomic status transition: paid -> published
     const updated = await Salary.findOneAndUpdate(
-      { _id: req.params.id, status: 'paid' },
+      buildReopenFilter(req.params.id),
       {
         $set: {
           status: 'published',
@@ -961,9 +975,9 @@ exports.salaryReopen = async (req, res) => {
   } catch (err) {
     console.error('[salary] reopen error:', err);
     if (req.xhr || req.headers['x-requested-with'] === 'XMLHttpRequest') {
-      return res.status(500).json({ ok: false, error: 'Failed to reopen salary: ' + err.message });
+      return res.status(500).json({ ok: false, error: 'Failed to reopen salary.' });
     }
-    req.session.flash = { type: 'error', msg: 'Failed to reopen salary: ' + err.message };
+    req.session.flash = { type: 'error', msg: 'Failed to reopen salary.' };
     return res.redirect('/admin/salaries');
   }
 };

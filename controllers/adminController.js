@@ -11,8 +11,14 @@ const {
   validateCompetition,
 } = require('../services/reportInputService');
 const onboardingService = require('../services/onboardingService');
-const { activeUserFilter, isModeratable, isJsonRequest } = require('../services/userAccountService');
-const { notifyTeacherWelcome } = require('../services/notificationService');
+const {
+  activeUserFilter,
+  isModeratable,
+  isJsonRequest,
+  planStatusChange,
+  buildStatusChangeFilter,
+} = require('../services/userAccountService');
+const notificationService = require('../services/notificationService');
 
 const TEACHING_TYPES = [
   'Prime Teacher (Full)',
@@ -502,28 +508,39 @@ exports.userApprove = async (req, res) => {
       return res.status(404).render('error', { message: 'User not found.' });
     }
 
-    user.accountStatus = 'active';
-    user.statusReason = '';
-    user.statusChangedAt = new Date();
-    user.statusChangedBy = req.session.user?._id;
-
-    if (!user.onboarding) user.onboarding = {};
-    if (!user.onboarding.startedAt) {
-      user.onboarding.startedAt = new Date();
+    const superadminCount = await User.countDocuments({ role: 'superadmin' });
+    const plan = planStatusChange(req.session?.user, user, 'approve', { superadminCount });
+    if (!plan.ok) {
+      if (isJsonRequest(req)) return res.status(plan.status).json({ error: plan.message });
+      return res.status(plan.status).render('error', { message: plan.message });
     }
 
-    await user.save();
-
-    try {
-      await notifyTeacherWelcome(user);
-    } catch (notifErr) {
-      console.error('Welcome notification failed (non-fatal):', notifErr);
+    const now = new Date();
+    const filter = buildStatusChangeFilter(user._id, ['pending', 'rejected']);
+    const updateSet = {
+      accountStatus: 'active',
+      statusReason: '',
+      statusChangedAt: now,
+      statusChangedBy: req.session?.user?._id,
+    };
+    if (!user.onboarding?.startedAt) {
+      updateSet['onboarding.startedAt'] = now;
     }
 
-    await logAudit(req, 'user_approve', 'user', user._id, `${user.displayName} (@${user.username})`, {
-      userId: user._id,
-      username: user.username,
-    });
+    const updated = await User.findOneAndUpdate(filter, { $set: updateSet }, { new: true });
+
+    if (updated) {
+      try {
+        await notificationService.notifyTeacherWelcome(updated);
+      } catch (notifErr) {
+        console.error('Welcome notification failed (non-fatal):', notifErr);
+      }
+
+      await logAudit(req, 'user_approve', 'user', updated._id, `${updated.displayName} (@${updated.username})`, {
+        userId: updated._id,
+        username: updated.username,
+      });
+    }
 
     if (isJsonRequest(req)) {
       return res.status(200).json({ ok: true, message: 'Teacher approved successfully.' });
@@ -545,20 +562,35 @@ exports.userReject = async (req, res) => {
       return res.status(404).render('error', { message: 'User not found.' });
     }
 
-    const reason = (req.body.reason || '').trim().slice(0, 200);
+    const superadminCount = await User.countDocuments({ role: 'superadmin' });
+    const plan = planStatusChange(req.session?.user, user, 'reject', { superadminCount });
+    if (!plan.ok) {
+      if (isJsonRequest(req)) return res.status(plan.status).json({ error: plan.message });
+      return res.status(plan.status).render('error', { message: plan.message });
+    }
 
-    user.accountStatus = 'rejected';
-    user.statusReason = reason;
-    user.statusChangedAt = new Date();
-    user.statusChangedBy = req.session.user?._id;
+    const reason = (req.body?.reason || '').trim().slice(0, 200);
+    const filter = buildStatusChangeFilter(user._id, 'pending');
+    const updated = await User.findOneAndUpdate(
+      filter,
+      {
+        $set: {
+          accountStatus: 'rejected',
+          statusReason: reason,
+          statusChangedAt: new Date(),
+          statusChangedBy: req.session?.user?._id,
+        },
+      },
+      { new: true }
+    );
 
-    await user.save();
-
-    await logAudit(req, 'user_reject', 'user', user._id, `${user.displayName} (@${user.username})`, {
-      userId: user._id,
-      username: user.username,
-      reason,
-    });
+    if (updated) {
+      await logAudit(req, 'user_reject', 'user', updated._id, `${updated.displayName} (@${updated.username})`, {
+        userId: updated._id,
+        username: updated.username,
+        reason,
+      });
+    }
 
     if (isJsonRequest(req)) {
       return res.status(200).json({ ok: true, message: 'Registration rejected.' });
@@ -574,7 +606,7 @@ exports.userReject = async (req, res) => {
 
 exports.usersBulkApprove = async (req, res) => {
   try {
-    let ids = req.body.ids || req.body.userIds;
+    let ids = req.body?.ids || req.body?.userIds;
     if (!ids) {
       if (isJsonRequest(req)) return res.status(400).json({ error: 'No users selected.' });
       return res.redirect('/admin/users');
@@ -586,36 +618,70 @@ exports.usersBulkApprove = async (req, res) => {
     }
 
     const cappedIds = ids.slice(0, 100);
-    const users = await User.find({ _id: { $in: cappedIds }, accountStatus: 'pending' });
+    const users = await User.find({ _id: { $in: cappedIds } });
+
+    const superadminCount = await User.countDocuments({ role: 'superadmin' });
+    const allowedIds = [];
+    let skippedCount = 0;
+
+    for (const u of users) {
+      const plan = planStatusChange(req.session?.user, u, 'approve', { superadminCount });
+      if (plan.ok) {
+        allowedIds.push(u._id);
+      } else {
+        skippedCount++;
+      }
+    }
 
     let approvedCount = 0;
-    const now = new Date();
-    for (const u of users) {
-      u.accountStatus = 'active';
-      u.statusReason = '';
-      u.statusChangedAt = now;
-      u.statusChangedBy = req.session.user?._id;
-      if (!u.onboarding) u.onboarding = {};
-      if (!u.onboarding.startedAt) u.onboarding.startedAt = now;
-      await u.save();
-
-      try {
-        await notifyTeacherWelcome(u);
-      } catch (e) {
-        console.error('Welcome notification failed for bulk approve:', e);
-      }
-
-      await logAudit(req, 'user_approve', 'user', u._id, `${u.displayName} (@${u.username})`, {
-        userId: u._id,
-        username: u.username,
+    if (allowedIds.length > 0) {
+      const now = new Date();
+      const filter = buildStatusChangeFilter(allowedIds, ['pending', 'rejected']);
+      await User.updateMany(filter, {
+        $set: {
+          accountStatus: 'active',
+          statusReason: '',
+          statusChangedAt: now,
+          statusChangedBy: req.session?.user?._id,
+        },
       });
-      approvedCount++;
+
+      // Re-read accounts that were actually updated
+      const actuallyUpdated = await User.find({
+        _id: { $in: allowedIds },
+        accountStatus: 'active',
+        statusChangedAt: now,
+      });
+
+      for (const u of actuallyUpdated) {
+        if (!u.onboarding) u.onboarding = {};
+        if (!u.onboarding.startedAt) {
+          u.onboarding.startedAt = now;
+          await User.updateOne({ _id: u._id }, { $set: { 'onboarding.startedAt': now } });
+        }
+
+        try {
+          await notificationService.notifyTeacherWelcome(u);
+        } catch (e) {
+          console.error('Welcome notification failed for bulk approve:', e);
+        }
+
+        await logAudit(req, 'user_approve', 'user', u._id, `${u.displayName} (@${u.username})`, {
+          userId: u._id,
+          username: u.username,
+        });
+        approvedCount++;
+      }
     }
 
     if (isJsonRequest(req)) {
-      return res.status(200).json({ ok: true, approvedCount });
+      return res.status(200).json({ ok: true, approvedCount, skippedCount });
     }
-    req.session.flash = `Approved ${approvedCount} teacher(s).`;
+    let flashMsg = `Approved ${approvedCount} teacher(s).`;
+    if (skippedCount > 0) {
+      flashMsg += ` (${skippedCount} skipped due to status or permissions)`;
+    }
+    req.session.flash = flashMsg;
     return res.redirect('/admin/users');
   } catch (err) {
     console.error('usersBulkApprove error:', err);
@@ -632,33 +698,35 @@ exports.userSuspend = async (req, res) => {
       return res.status(404).render('error', { message: 'User not found.' });
     }
 
+    const reason = (req.body?.reason || '').trim().slice(0, 200);
     const superadminCount = await User.countDocuments({ role: 'superadmin' });
-    const check = isModeratable(req.session.user, user, { superadminCount });
-    if (!check.ok) {
-      if (isJsonRequest(req)) return res.status(403).json({ error: check.reason });
-      req.session.flash = check.reason;
-      return res.redirect(`/admin/users/${user._id}/edit`);
+    const plan = planStatusChange(req.session?.user, user, 'suspend', { superadminCount, reason });
+    if (!plan.ok) {
+      if (isJsonRequest(req)) return res.status(plan.status).json({ error: plan.message });
+      return res.status(plan.status).render('error', { message: plan.message });
     }
 
-    const reason = (req.body.reason || '').trim().slice(0, 200);
-    if (!reason) {
-      if (isJsonRequest(req)) return res.status(400).json({ error: 'Suspension reason is required.' });
-      req.session.flash = 'Suspension reason is required.';
-      return res.redirect(`/admin/users/${user._id}/edit`);
+    const filter = buildStatusChangeFilter(user._id, 'active');
+    const updated = await User.findOneAndUpdate(
+      filter,
+      {
+        $set: {
+          accountStatus: 'suspended',
+          statusReason: reason,
+          statusChangedAt: new Date(),
+          statusChangedBy: req.session?.user?._id,
+        },
+      },
+      { new: true }
+    );
+
+    if (updated) {
+      await logAudit(req, 'user_suspend', 'user', updated._id, `${updated.displayName} (@${updated.username})`, {
+        userId: updated._id,
+        username: updated.username,
+        reason,
+      });
     }
-
-    user.accountStatus = 'suspended';
-    user.statusReason = reason;
-    user.statusChangedAt = new Date();
-    user.statusChangedBy = req.session.user?._id;
-
-    await user.save();
-
-    await logAudit(req, 'user_suspend', 'user', user._id, `${user.displayName} (@${user.username})`, {
-      userId: user._id,
-      username: user.username,
-      reason,
-    });
 
     if (isJsonRequest(req)) {
       return res.status(200).json({ ok: true, message: 'User suspended.' });
@@ -681,24 +749,32 @@ exports.userReactivate = async (req, res) => {
     }
 
     const superadminCount = await User.countDocuments({ role: 'superadmin' });
-    const check = isModeratable(req.session.user, user, { superadminCount });
-    if (!check.ok) {
-      if (isJsonRequest(req)) return res.status(403).json({ error: check.reason });
-      req.session.flash = check.reason;
-      return res.redirect(`/admin/users/${user._id}/edit`);
+    const plan = planStatusChange(req.session?.user, user, 'reactivate', { superadminCount });
+    if (!plan.ok) {
+      if (isJsonRequest(req)) return res.status(plan.status).json({ error: plan.message });
+      return res.status(plan.status).render('error', { message: plan.message });
     }
 
-    user.accountStatus = 'active';
-    user.statusReason = '';
-    user.statusChangedAt = new Date();
-    user.statusChangedBy = req.session.user?._id;
+    const filter = buildStatusChangeFilter(user._id, 'suspended');
+    const updated = await User.findOneAndUpdate(
+      filter,
+      {
+        $set: {
+          accountStatus: 'active',
+          statusReason: '',
+          statusChangedAt: new Date(),
+          statusChangedBy: req.session?.user?._id,
+        },
+      },
+      { new: true }
+    );
 
-    await user.save();
-
-    await logAudit(req, 'user_reactivate', 'user', user._id, `${user.displayName} (@${user.username})`, {
-      userId: user._id,
-      username: user.username,
-    });
+    if (updated) {
+      await logAudit(req, 'user_reactivate', 'user', updated._id, `${updated.displayName} (@${updated.username})`, {
+        userId: updated._id,
+        username: updated.username,
+      });
+    }
 
     if (isJsonRequest(req)) {
       return res.status(200).json({ ok: true, message: 'User reactivated.' });

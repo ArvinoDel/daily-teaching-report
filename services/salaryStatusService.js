@@ -227,12 +227,14 @@ function planMarkPaid({ slips = [], paidAtStr, note = '', now = new Date() }) {
  * Builds atomic database filters for status transitions.
  */
 function buildPublishFilter(idOrIds, extra = {}) {
-  const isArray = Array.isArray(idOrIds);
-  return {
-    _id: isArray ? { $in: idOrIds } : idOrIds,
+  const filter = {
     status: SALARY_STATUSES.DRAFT,
     ...extra,
   };
+  if (idOrIds !== undefined && idOrIds !== null) {
+    filter._id = Array.isArray(idOrIds) ? { $in: idOrIds } : idOrIds;
+  }
+  return filter;
 }
 
 function buildRetractFilter(id, extra = {}) {

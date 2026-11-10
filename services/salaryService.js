@@ -1,5 +1,5 @@
 const { activeUserFilter } = require('./userAccountService');
-const { planGenerationAction } = require('./salaryStatusService');
+const { planGenerationAction, buildPublishFilter } = require('./salaryStatusService');
 'use strict';
 /**
  * salaryService.js
@@ -350,10 +350,11 @@ async function generateSalariesForPeriod(opts) {
  * @returns {Promise<number>} count of published records
  */
 async function publishSalaries(month, year, teacherIds = null) {
-  const filter = { month, year, status: { $in: ['draft'] } };
+  const extra = { month, year };
   if (teacherIds && teacherIds.length) {
-    filter.teacher = { $in: teacherIds };
+    extra.teacher = { $in: teacherIds };
   }
+  const filter = buildPublishFilter(null, extra);
 
   // Fetch drafts to be published so we can send notifications
   const draftsToPublish = await Salary.find(filter).populate('teacher', 'displayName username').lean();

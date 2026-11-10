@@ -488,5 +488,189 @@ describe('Static Source Guard - No direct .status = assignment in adminSalaryCon
       `Found direct .status = write assignments in adminSalaryController.js: ${JSON.stringify(assignmentMatches)}. All status updates must be atomic via database queries.`
     );
   });
+
+  test('controllers/adminSalaryController.js writes salary status ONLY via tested filter builders', () => {
+    const filePath = path.resolve(__dirname, '../controllers/adminSalaryController.js');
+    const source = fs.readFileSync(filePath, 'utf8');
+    const lines = source.split(/\r?\n/);
+
+    const approvedBuilders = [
+      'buildPublishFilter',
+      'buildMarkPaidFilter',
+      'buildRetractFilter',
+      'buildReopenFilter',
+      'buildDraftEditFilter',
+    ];
+
+    // Allowlist for lines where status write is permitted without a builder:
+    // Format: line number (1-based) -> reason
+    const allowlist = {
+      // none currently needed because all status writes use the builders
+    };
+
+    const violations = [];
+
+    // Find all lines that write salary status (e.g. status: 'draft', status: 'published', status: 'paid')
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const lineNum = i + 1;
+
+      // Skip comments
+      const trimmed = line.trim();
+      if (trimmed.startsWith('//') || trimmed.startsWith('*')) continue;
+
+      // Check for status write in update / $set
+      if (/status:\s*['"](draft|published|paid)['"]/.test(line)) {
+        if (allowlist[lineNum]) continue;
+
+        // Check the enclosing block (look back up to 15 lines for the query call)
+        const windowStart = Math.max(0, i - 15);
+        const windowText = lines.slice(windowStart, i + 1).join('\n');
+
+        const usesApprovedBuilder = approvedBuilders.some(b => windowText.includes(b));
+        if (!usesApprovedBuilder) {
+          violations.push(`Line ${lineNum}: "${trimmed}" is writing salary status without using an approved builder`);
+        }
+      }
+    }
+
+    assert.equal(
+      violations.length,
+      0,
+      `adminSalaryController status writes must go through approved builders:\n${violations.join('\n')}`
+    );
+  });
+
+  test('no err.message is concatenated into responses or flash in adminSalaryController and adminController', () => {
+    const controllerFiles = [
+      path.resolve(__dirname, '../controllers/adminSalaryController.js'),
+      path.resolve(__dirname, '../controllers/adminController.js'),
+    ];
+
+    const violations = [];
+
+    for (const filePath of controllerFiles) {
+      const fileName = path.basename(filePath);
+      const source = fs.readFileSync(filePath, 'utf8');
+      const lines = source.split(/\r?\n/);
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const lineNum = i + 1;
+
+        // Skip comments
+        const trimmed = line.trim();
+        if (trimmed.startsWith('//') || trimmed.startsWith('*')) continue;
+
+        // Check if line contains err.message (or e.message, error.message) in a response or flash
+        const hasErrMessage = /(err|e|error)\.message/.test(line);
+        if (hasErrMessage) {
+          // Check if this line or enclosing context is related to flash, res.json, res.render, res.send
+          const windowStart = Math.max(0, i - 3);
+          const windowEnd = Math.min(lines.length, i + 4);
+          const windowText = lines.slice(windowStart, windowEnd).join('\n');
+
+          const isResponseOrFlash = /(flash|json|render|send|error:|message:|msg:)/i.test(windowText);
+          const isInternalTxCheck = /Transaction numbers are only allowed|transactions are not supported/.test(windowText);
+
+          if (isResponseOrFlash && !isInternalTxCheck) {
+            violations.push(`${fileName}:${lineNum}: "${trimmed}" appears to leak err.message to user/response`);
+          }
+        }
+      }
+    }
+
+    assert.equal(
+      violations.length,
+      0,
+      `Controllers must never leak err.message into user responses or flash:\n${violations.join('\n')}`
+    );
+  });
+});
+
+describe('Salary Controller - salaryMarkPaid atomic notification', () => {
+  const Salary = require('../models/Salary');
+  const AuditLog = require('../models/AuditLog');
+  const adminSalaryController = require('../controllers/adminSalaryController');
+  const notificationService = require('../services/notificationService');
+
+  test('salaryMarkPaid notifies only the slips actually changed by update, never the whole eligible list', async () => {
+    const origFind = Salary.find;
+    const origUpdateMany = Salary.updateMany;
+    const origAuditCreate = AuditLog.create;
+    const origNotifyPaid = notificationService.notifySalaryPaid;
+
+    AuditLog.create = async () => {};
+
+    const slip1Id = '670000000000000000000001';
+    const slip2Id = '670000000000000000000002';
+
+    const candidateSlips = [
+      {
+        _id: slip1Id,
+        status: 'published',
+        publishedAt: new Date('2026-11-01T12:00:00+07:00'),
+        month: 11,
+        year: 2026,
+        teacher: { displayName: 'Teacher One', username: 't1' },
+      },
+      {
+        _id: slip2Id,
+        status: 'published',
+        publishedAt: new Date('2026-11-01T12:00:00+07:00'),
+        month: 11,
+        year: 2026,
+        teacher: { displayName: 'Teacher Two', username: 't2' },
+      },
+    ];
+
+    let notifiedSlips = [];
+    notificationService.notifySalaryPaid = async (salary, teacher) => {
+      notifiedSlips.push(String(salary._id));
+    };
+
+    let findCallCount = 0;
+    Salary.find = (filter) => {
+      findCallCount++;
+      return {
+        populate: () => {
+          if (findCallCount === 1) {
+            // Initial candidate lookup: returns both slips as eligible
+            return candidateSlips;
+          }
+          // Second lookup (re-reading actually updated slips): only slip1 was actually changed!
+          return [candidateSlips[0]];
+        },
+      };
+    };
+
+    Salary.updateMany = async () => ({ modifiedCount: 1 });
+
+    try {
+      const req = {
+        session: { user: { _id: '507f191e810c19729de860e1', displayName: 'Admin' } },
+        body: { ids: [slip1Id, slip2Id], paidAt: '2026-11-05' },
+        xhr: true,
+        headers: { accept: 'application/json' },
+      };
+
+      const res = {
+        statusCode: 200,
+        jsonPayload: null,
+        status(c) { this.statusCode = c; return this; },
+        json(p) { this.jsonPayload = p; return this; },
+      };
+
+      await adminSalaryController.salaryMarkPaid(req, res);
+
+      assert.equal(res.statusCode, 200);
+      assert.deepEqual(notifiedSlips, [slip1Id], 'Must notify ONLY the slip actually returned as updated, not slip2');
+    } finally {
+      Salary.find = origFind;
+      Salary.updateMany = origUpdateMany;
+      AuditLog.create = origAuditCreate;
+      notificationService.notifySalaryPaid = origNotifyPaid;
+    }
+  });
 });
 
