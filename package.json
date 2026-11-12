@@ -10,7 +10,8 @@
     "test": "node --test --test-force-exit",
     "build:css": "tailwindcss -i ./public/css/input.css -o ./public/css/tailwind.css --minify",
     "build": "npm run build:css",
-    "vercel-build": "npm run build:css"
+    "vercel-build": "npm run build:css",
+    "env:example": "node scripts/generateEnvExample.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -40,6 +41,6 @@
     "tailwindcss": "^3.4.19"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20"
   }
 }
